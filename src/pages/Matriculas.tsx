@@ -13,7 +13,7 @@ export default function Matriculas() {
   async function loadMatriculas() {
     const { data } = await supabase
       .from('matriculas')
-      .select('*, contato:contatos(*), professor:professores(*), plano:planos(*)')
+      .select('*, aluno:alunos(*), professor:professores(*), plano:planos(*)')
       .order('data_matricula', { ascending: false })
     if (data) setMatriculas(data)
   }
@@ -82,7 +82,7 @@ export default function Matriculas() {
           <tbody className="divide-y divide-gray-100">
             {matriculas.map((m) => (
               <tr key={m.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3 text-sm font-medium">{m.contato?.nome ?? '—'}</td>
+                <td className="px-4 py-3 text-sm font-medium">{m.aluno?.nome ?? '—'}</td>
                 <td className="px-4 py-3 text-sm text-gray-700">
                   {new Date(m.data_matricula).toLocaleDateString('pt-BR')}
                 </td>

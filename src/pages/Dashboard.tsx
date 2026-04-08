@@ -6,8 +6,14 @@ import {
   BookOpen,
   DollarSign,
   TrendingUp,
+  TrendingDown,
   Calendar,
   PhoneForwarded,
+  Target,
+  UserCheck,
+  Bot,
+  ArrowRight,
+  MessageSquare,
 } from 'lucide-react'
 import {
   BarChart,
@@ -19,139 +25,395 @@ import {
   PieChart,
   Pie,
   Cell,
+  AreaChart,
+  Area,
+  CartesianGrid,
 } from 'recharts'
-import type { Contato, AulaExperimental, Matricula } from '@/types'
+import type { Contato, AulaExperimental } from '@/types'
 
-const COLORS = ['#ef9a10', '#3b82f6', '#10b981', '#f43f5e', '#8b5cf6', '#06b6d4']
+const COLORS = ['#2183a8', '#7ed9ed', '#10b981', '#f43f5e', '#155a76', '#06b6d4']
 
-interface KPI {
-  totalContatos: number
-  totalExperimentais: number
-  totalMatriculas: number
-  faturamento: number
-  conversaoExperimental: number
-  conversaoMatricula: number
+interface FunnelKPIs {
+  // Topo do funil
+  leadsRecebidos: number
+  leadsMesAnterior: number
+  // Qualificação
+  leadsQualificados: number
+  taxaQualificacao: number
+  // Agendamento
+  aulasAgendadas: number
+  taxaAgendamento: number
+  // Comparecimento
+  aulasRealizadas: number
+  taxaComparecimento: number
+  // Conversão
+  matriculasNovas: number
+  taxaConversao: number
+  // Retenção / Faturamento
+  faturamentoTotal: number
+  ticketMedio: number
+  // AI
+  totalConversas: number
+  intencoesPrincipais: { name: string; value: number }[]
+}
+
+const defaultKPIs: FunnelKPIs = {
+  leadsRecebidos: 0,
+  leadsMesAnterior: 0,
+  leadsQualificados: 0,
+  taxaQualificacao: 0,
+  aulasAgendadas: 0,
+  taxaAgendamento: 0,
+  aulasRealizadas: 0,
+  taxaComparecimento: 0,
+  matriculasNovas: 0,
+  taxaConversao: 0,
+  faturamentoTotal: 0,
+  ticketMedio: 0,
+  totalConversas: 0,
+  intencoesPrincipais: [],
 }
 
 export default function Dashboard() {
-  const [kpi, setKpi] = useState<KPI>({
-    totalContatos: 0,
-    totalExperimentais: 0,
-    totalMatriculas: 0,
-    faturamento: 0,
-    conversaoExperimental: 0,
-    conversaoMatricula: 0,
-  })
+  const [kpi, setKpi] = useState<FunnelKPIs>(defaultKPIs)
   const [contatosPorCanal, setContatosPorCanal] = useState<{ name: string; value: number }[]>([])
   const [contatosPorInstrumento, setContatosPorInstrumento] = useState<{ name: string; value: number }[]>([])
+  const [leadsTimeline, setLeadsTimeline] = useState<{ date: string; leads: number; agendadas: number }[]>([])
   const [contatosRecentes, setContatosRecentes] = useState<Contato[]>([])
   const [proximasAulas, setProximasAulas] = useState<AulaExperimental[]>([])
   const [followups, setFollowups] = useState<Contato[]>([])
+  const [funnelData, setFunnelData] = useState<{ stage: string; value: number; color: string }[]>([])
 
   useEffect(() => {
     loadDashboard()
   }, [])
 
   async function loadDashboard() {
-    const { data: contatos } = await supabase
-      .from('contatos')
-      .select('*')
-      .order('created_at', { ascending: false })
+    const now = new Date()
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    const firstOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
 
-    const { data: experimentais } = await supabase
-      .from('aulas_experimentais')
-      .select('*, contato:contatos(*), professor:professores(*)')
-      .order('data', { ascending: true })
+    const [
+      { data: contatos },
+      { data: experimentais },
+      { data: matriculas },
+      { data: conversas },
+      { data: contatosMesAnterior },
+    ] = await Promise.all([
+      supabase.from('alunos').select('*').order('created_at', { ascending: false }),
+      supabase.from('aulas_experimentais').select('*, professor:professores(*)').order('data_aula', { ascending: true }),
+      supabase.from('matriculas').select('*'),
+      supabase.from('conversas').select('intencao_detectada, created_at').gte('created_at', firstOfMonth),
+      supabase.from('alunos').select('id').gte('created_at', firstOfLastMonth).lt('created_at', firstOfMonth),
+    ])
 
-    const { data: matriculas } = await supabase
-      .from('matriculas')
-      .select('*')
+    if (!contatos) return
 
-    if (contatos) {
-      setKpi({
-        totalContatos: contatos.length,
-        totalExperimentais: experimentais?.length ?? 0,
-        totalMatriculas: matriculas?.length ?? 0,
-        faturamento: matriculas?.reduce((acc, m) => acc + (m.taxa_matricula || 0) + (m.valor_plano || 0), 0) ?? 0,
-        conversaoExperimental: contatos.length > 0 ? ((experimentais?.length ?? 0) / contatos.length) * 100 : 0,
-        conversaoMatricula: (experimentais?.length ?? 0) > 0 ? ((matriculas?.length ?? 0) / (experimentais?.length ?? 1)) * 100 : 0,
-      })
+    const leadsEste = contatos.filter(c => c.created_at && c.created_at >= firstOfMonth).length
+    const leadsMesAnt = contatosMesAnterior?.length ?? 0
+    const qualificados = contatos.filter(c => c.status && !['lead', 'perdido'].includes(c.status)).length
+    const agendadas = experimentais?.length ?? 0
+    const realizadas = experimentais?.filter(a => ['concluido', 'pago'].includes(a.status)).length ?? 0
+    const matriculasCount = matriculas?.length ?? 0
+    const totalFat = matriculas?.reduce((acc, m) => acc + (m.taxa_matricula || 0) + (m.valor_plano || 0), 0) ?? 0
 
-      // Por canal
-      const canais: Record<string, number> = {}
-      contatos.forEach((c) => {
-        canais[c.canal_origem] = (canais[c.canal_origem] || 0) + 1
-      })
-      setContatosPorCanal(Object.entries(canais).map(([name, value]) => ({ name, value })))
+    // Intenções da IA
+    const intencoes: Record<string, number> = {}
+    conversas?.forEach(c => {
+      if (c.intencao_detectada) {
+        intencoes[c.intencao_detectada] = (intencoes[c.intencao_detectada] || 0) + 1
+      }
+    })
+    const intencoesSorted = Object.entries(intencoes)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name, value]) => ({ name, value }))
 
-      // Por instrumento
-      const instrumentos: Record<string, number> = {}
-      contatos.forEach((c) => {
-        instrumentos[c.instrumento] = (instrumentos[c.instrumento] || 0) + 1
-      })
-      setContatosPorInstrumento(Object.entries(instrumentos).map(([name, value]) => ({ name, value })))
+    setKpi({
+      leadsRecebidos: leadsEste,
+      leadsMesAnterior: leadsMesAnt,
+      leadsQualificados: qualificados,
+      taxaQualificacao: contatos.length > 0 ? (qualificados / contatos.length) * 100 : 0,
+      aulasAgendadas: agendadas,
+      taxaAgendamento: contatos.length > 0 ? (agendadas / contatos.length) * 100 : 0,
+      aulasRealizadas: realizadas,
+      taxaComparecimento: agendadas > 0 ? (realizadas / agendadas) * 100 : 0,
+      matriculasNovas: matriculasCount,
+      taxaConversao: realizadas > 0 ? (matriculasCount / realizadas) * 100 : 0,
+      faturamentoTotal: totalFat,
+      ticketMedio: matriculasCount > 0 ? totalFat / matriculasCount : 0,
+      totalConversas: conversas?.length ?? 0,
+      intencoesPrincipais: intencoesSorted,
+    })
 
-      // Recentes
-      setContatosRecentes(contatos.slice(0, 5))
+    // Funnel data
+    setFunnelData([
+      { stage: 'Leads', value: contatos.length, color: '#D8F4FF' },
+      { stage: 'Qualificados', value: qualificados, color: '#7ED9ED' },
+      { stage: 'Agendados', value: agendadas, color: '#2183A8' },
+      { stage: 'Compareceram', value: realizadas, color: '#155A76' },
+      { stage: 'Matriculados', value: matriculasCount, color: '#0C3549' },
+    ])
 
-      // Follow-ups
-      setFollowups(contatos.filter((c) => ['Em Follow-up', 'Primeiro Contato', 'Aguardando Experimental'].includes(c.status)))
+    // Por canal
+    const canais: Record<string, number> = {}
+    contatos.forEach((c) => {
+      const canal = c.origem || 'WhatsApp'
+      canais[canal] = (canais[canal] || 0) + 1
+    })
+    setContatosPorCanal(Object.entries(canais).map(([name, value]) => ({ name, value })))
+
+    // Por instrumento
+    const instrumentos: Record<string, number> = {}
+    contatos.forEach((c) => {
+      const inst = c.instrumento_interesse || 'Não definido'
+      instrumentos[inst] = (instrumentos[inst] || 0) + 1
+    })
+    setContatosPorInstrumento(
+      Object.entries(instrumentos)
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, value]) => ({ name, value }))
+    )
+
+    // Timeline (últimos 30 dias)
+    const timeline: Record<string, { leads: number; agendadas: number }> = {}
+    for (let d = 29; d >= 0; d--) {
+      const date = new Date(now)
+      date.setDate(date.getDate() - d)
+      const key = date.toISOString().slice(0, 10)
+      timeline[key] = { leads: 0, agendadas: 0 }
     }
+    contatos.forEach(c => {
+      const day = c.created_at?.slice(0, 10)
+      if (day && timeline[day]) timeline[day].leads++
+    })
+    experimentais?.forEach(a => {
+      const day = a.created_at?.slice(0, 10)
+      if (day && timeline[day]) timeline[day].agendadas++
+    })
+    setLeadsTimeline(
+      Object.entries(timeline).map(([date, vals]) => ({
+        date: new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+        ...vals,
+      }))
+    )
 
+    // Recentes
+    setContatosRecentes(contatos.slice(0, 5))
+
+    // Follow-ups
+    setFollowups(
+      contatos.filter(c =>
+        ['Em Follow-up', 'Primeiro Contato', 'Aguardando Experimental', 'lead', 'qualificado'].includes(c.status || '')
+      )
+    )
+
+    // Próximas aulas
     if (experimentais) {
       setProximasAulas(
-        experimentais.filter((a) => a.status === 'Agendada').slice(0, 5)
+        experimentais
+          .filter(a => ['aguardando_professor', 'confirmado_professor', 'aguardando_pagamento', 'pago'].includes(a.status))
+          .slice(0, 5)
       )
     }
   }
 
   const statusColor: Record<string, string> = {
-    'Primeiro Contato': 'bg-blue-100 text-blue-800',
-    'Aguardando Experimental': 'bg-yellow-100 text-yellow-800',
-    'Aula Experimental Marcada': 'bg-orange-100 text-orange-800',
-    'Em Follow-up': 'bg-purple-100 text-purple-800',
-    'Matriculado': 'bg-green-100 text-green-800',
-    'Perdido': 'bg-red-100 text-red-800',
+    lead: 'bg-blue-100 text-blue-800',
+    qualificado: 'bg-cyan-100 text-cyan-800',
+    experimental_agendada: 'bg-brand-50 text-brand-800',
+    matriculado: 'bg-green-100 text-green-800',
+    perdido: 'bg-red-100 text-red-800',
   }
+
+  const leadDelta = kpi.leadsMesAnterior > 0
+    ? ((kpi.leadsRecebidos - kpi.leadsMesAnterior) / kpi.leadsMesAnterior) * 100
+    : 0
+  const leadUp = leadDelta >= 0
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500">Visão geral do fluxo comercial do CMMF</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-500">Funil comercial do Centro de Música Murilo Finger</p>
+        </div>
+        <button
+          onClick={loadDashboard}
+          className="text-sm bg-brand-500 text-white px-4 py-2 rounded-lg hover:bg-brand-600 transition-colors"
+        >
+          Atualizar
+        </button>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Top 5 KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <KPICard
           icon={<Users className="w-5 h-5" />}
-          label="Total de Contatos"
-          value={kpi.totalContatos.toString()}
-          sub="Este mês"
-          color="text-blue-600 bg-blue-50"
+          label="Leads Recebidos"
+          value={kpi.leadsRecebidos.toString()}
+          sub={
+            leadUp
+              ? `+${leadDelta.toFixed(0)}% vs mês anterior`
+              : `${leadDelta.toFixed(0)}% vs mês anterior`
+          }
+          trend={leadUp}
+          color="text-brand-600 bg-brand-50"
         />
         <KPICard
-          icon={<GraduationCap className="w-5 h-5" />}
-          label="Aulas Experimentais"
-          value={kpi.totalExperimentais.toString()}
-          sub={`${kpi.conversaoExperimental.toFixed(1)}% de conversão`}
-          color="text-orange-600 bg-orange-50"
+          icon={<Target className="w-5 h-5" />}
+          label="Taxa Agendamento"
+          value={`${kpi.taxaAgendamento.toFixed(1)}%`}
+          sub={`${kpi.aulasAgendadas} aulas agendadas`}
+          trend={kpi.taxaAgendamento > 30}
+          color="text-cyan-600 bg-cyan-50"
+        />
+        <KPICard
+          icon={<UserCheck className="w-5 h-5" />}
+          label="Taxa Comparecimento"
+          value={`${kpi.taxaComparecimento.toFixed(1)}%`}
+          sub={`${kpi.aulasRealizadas} aulas realizadas`}
+          trend={kpi.taxaComparecimento > 60}
+          color="text-teal-600 bg-teal-50"
         />
         <KPICard
           icon={<BookOpen className="w-5 h-5" />}
-          label="Matrículas"
-          value={kpi.totalMatriculas.toString()}
-          sub={`${kpi.conversaoMatricula.toFixed(1)}% de conversão`}
+          label="Taxa Conversão"
+          value={`${kpi.taxaConversao.toFixed(1)}%`}
+          sub={`${kpi.matriculasNovas} matrículas`}
+          trend={kpi.taxaConversao > 40}
           color="text-green-600 bg-green-50"
         />
         <KPICard
           icon={<DollarSign className="w-5 h-5" />}
-          label="Faturamento"
-          value={`R$ ${kpi.faturamento.toLocaleString('pt-BR')}`}
-          sub="Taxa + primeiro mês"
-          color="text-brand-600 bg-brand-50"
+          label="Ticket Médio"
+          value={`R$ ${kpi.ticketMedio.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`}
+          sub={`Fat. total: R$ ${kpi.faturamentoTotal.toLocaleString('pt-BR')}`}
+          trend={true}
+          color="text-brand-700 bg-brand-50"
         />
+      </div>
+
+      {/* Funnel Visualization */}
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <h3 className="font-semibold text-gray-900 mb-1">Funil de Conversão</h3>
+        <p className="text-sm text-gray-500 mb-5">Lead → Qualificação → Agendamento → Comparecimento → Matrícula</p>
+        <div className="flex items-end gap-2 justify-center h-40">
+          {funnelData.map((stage, i) => {
+            const maxVal = funnelData[0]?.value || 1
+            const height = Math.max(20, (stage.value / maxVal) * 100)
+            return (
+              <div key={stage.stage} className="flex flex-col items-center gap-2 flex-1">
+                <span className="text-sm font-bold text-gray-900">{stage.value}</span>
+                <div
+                  className="w-full rounded-t-lg transition-all duration-500"
+                  style={{ height: `${height}%`, backgroundColor: stage.color }}
+                />
+                <span className="text-xs text-gray-600 text-center">{stage.stage}</span>
+                {i < funnelData.length - 1 && funnelData[i + 1] && (
+                  <span className="text-[10px] text-gray-400">
+                    {stage.value > 0
+                      ? `${((funnelData[i + 1]!.value / stage.value) * 100).toFixed(0)}%`
+                      : '—'}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Timeline + AI Metrics Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Leads Over Time */}
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border p-6">
+          <h3 className="font-semibold text-gray-900 mb-1">Leads & Agendamentos</h3>
+          <p className="text-sm text-gray-500 mb-4">Últimos 30 dias</p>
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={leadsTimeline}>
+                <defs>
+                  <linearGradient id="gradLeads" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2183a8" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#2183a8" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="gradAgend" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#7ed9ed" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#7ed9ed" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Area
+                  type="monotone"
+                  dataKey="leads"
+                  stroke="#2183a8"
+                  fill="url(#gradLeads)"
+                  strokeWidth={2}
+                  name="Leads"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="agendadas"
+                  stroke="#7ed9ed"
+                  fill="url(#gradAgend)"
+                  strokeWidth={2}
+                  name="Agendadas"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* AI Metrics */}
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            <Bot className="w-4 h-4 text-brand-500" />
+            Métricas da IA (Sofia)
+          </h3>
+          <p className="text-sm text-gray-500 mb-4">Este mês</p>
+
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">Conversas processadas</span>
+              <span className="text-sm font-bold text-brand-700">{kpi.totalConversas}</span>
+            </div>
+
+            {kpi.intencoesPrincipais.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-500 mb-2 uppercase tracking-wider">Intenções detectadas</p>
+                <div className="space-y-2">
+                  {kpi.intencoesPrincipais.map((int, i) => (
+                    <div key={int.name} className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-gray-700 capitalize">{int.name}</span>
+                          <span className="text-gray-500">{int.value}</span>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${(int.value / (kpi.intencoesPrincipais[0]?.value || 1)) * 100}%`,
+                              backgroundColor: COLORS[i % COLORS.length],
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {kpi.intencoesPrincipais.length === 0 && (
+              <p className="text-sm text-gray-400 italic">Sem dados de intenção ainda</p>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Charts Row */}
@@ -163,7 +425,14 @@ export default function Dashboard() {
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={contatosPorCanal} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, value }) => `${name}: ${value}`}>
+                <Pie
+                  data={contatosPorCanal}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  dataKey="value"
+                  label={({ name, value }) => `${name}: ${value}`}
+                >
                   {contatosPorCanal.map((_, i) => (
                     <Cell key={i} fill={COLORS[i % COLORS.length]} />
                   ))}
@@ -176,15 +445,15 @@ export default function Dashboard() {
 
         {/* Por Instrumento */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
-          <h3 className="font-semibold text-gray-900 mb-1">Contatos por Instrumento</h3>
-          <p className="text-sm text-gray-500 mb-4">Interesse por curso</p>
+          <h3 className="font-semibold text-gray-900 mb-1">Demanda por Instrumento</h3>
+          <p className="text-sm text-gray-500 mb-4">Interesse dos leads</p>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={contatosPorInstrumento} layout="vertical">
                 <XAxis type="number" />
-                <YAxis type="category" dataKey="name" width={80} />
+                <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 12 }} />
                 <Tooltip />
-                <Bar dataKey="value" fill="#ef9a10" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="value" fill="#2183a8" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -204,10 +473,12 @@ export default function Dashboard() {
               <div key={c.id} className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium">{c.nome}</p>
-                  <p className="text-xs text-gray-500">{c.instrumento}</p>
+                  <p className="text-xs text-gray-500">{c.instrumento_interesse || '—'}</p>
                 </div>
-                <span className={`text-xs px-2 py-1 rounded-full ${statusColor[c.status] ?? 'bg-gray-100 text-gray-800'}`}>
-                  {c.status}
+                <span
+                  className={`text-xs px-2 py-1 rounded-full ${statusColor[c.status ?? ''] ?? 'bg-gray-100 text-gray-800'}`}
+                >
+                  {c.status || '—'}
                 </span>
               </div>
             ))}
@@ -227,14 +498,17 @@ export default function Dashboard() {
             {proximasAulas.map((a) => (
               <div key={a.id} className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium">{a.contato?.nome ?? '—'}</p>
+                  <p className="text-sm font-medium">{a.nome ?? '—'}</p>
                   <p className="text-xs text-gray-500">{a.instrumento}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-medium">
-                    {new Date(a.data).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                    {new Date(a.data_aula + 'T12:00:00').toLocaleDateString('pt-BR', {
+                      day: '2-digit',
+                      month: 'short',
+                    })}
                   </p>
-                  <p className="text-xs text-gray-500">{a.horario}</p>
+                  <p className="text-xs text-gray-500">{a.hora_inicio}</p>
                 </div>
               </div>
             ))}
@@ -255,10 +529,12 @@ export default function Dashboard() {
               <div key={c.id} className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium">{c.nome}</p>
-                  <p className="text-xs text-gray-500">{c.instrumento}</p>
+                  <p className="text-xs text-gray-500">{c.instrumento_interesse || '—'}</p>
                 </div>
-                <span className={`text-xs px-2 py-1 rounded-full ${statusColor[c.status] ?? 'bg-gray-100 text-gray-800'}`}>
-                  {c.status}
+                <span
+                  className={`text-xs px-2 py-1 rounded-full ${statusColor[c.status ?? ''] ?? 'bg-gray-100 text-gray-800'}`}
+                >
+                  {c.status || '—'}
                 </span>
               </div>
             ))}
@@ -272,18 +548,34 @@ export default function Dashboard() {
   )
 }
 
-function KPICard({ icon, label, value, sub, color }: { icon: React.ReactNode; label: string; value: string; sub: string; color: string }) {
+function KPICard({
+  icon,
+  label,
+  value,
+  sub,
+  trend,
+  color,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  sub: string
+  trend: boolean
+  color: string
+}) {
   return (
-    <div className="bg-white rounded-xl shadow-sm border p-5">
+    <div className="bg-white rounded-xl shadow-sm border p-5 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm text-gray-500">{label}</span>
-        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${color}`}>
-          {icon}
-        </div>
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${color}`}>{icon}</div>
       </div>
       <p className="text-2xl font-bold text-gray-900">{value}</p>
       <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-        <TrendingUp className="w-3 h-3" />
+        {trend ? (
+          <TrendingUp className="w-3 h-3 text-green-500" />
+        ) : (
+          <TrendingDown className="w-3 h-3 text-red-400" />
+        )}
         {sub}
       </p>
     </div>

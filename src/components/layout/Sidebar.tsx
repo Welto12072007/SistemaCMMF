@@ -5,6 +5,7 @@ import {
   GraduationCap,
   BookOpen,
   PhoneForwarded,
+  Send,
   BarChart3,
   Settings,
   Music,
@@ -19,6 +20,7 @@ const navItems = [
   { to: '/aulas-experimentais', label: 'Aulas Experimentais', icon: GraduationCap },
   { to: '/matriculas', label: 'Matrículas', icon: BookOpen },
   { to: '/followup', label: 'Follow-up', icon: PhoneForwarded },
+  { to: '/disparos', label: 'Disparos', icon: Send },
   { to: '/relatorios', label: 'Relatórios', icon: BarChart3 },
 ]
 
@@ -33,8 +35,19 @@ export default function Sidebar() {
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-6 border-b border-white/10">
-        <div className="w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
-          <Music className="w-6 h-6 text-white" />
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <img
+            src="/logos/cmmf-logo.png"
+            alt="CMMF"
+            className="w-10 h-10 object-contain"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none'
+              e.currentTarget.nextElementSibling?.classList.remove('hidden')
+            }}
+          />
+          <div className="hidden w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center">
+            <Music className="w-6 h-6 text-white" />
+          </div>
         </div>
         {!collapsed && (
           <div>

@@ -12,21 +12,22 @@ export default function Followup() {
 
   async function loadFollowups() {
     const { data } = await supabase
-      .from('contatos')
+      .from('alunos')
       .select('*')
-      .in('status', ['Em Follow-up', 'Primeiro Contato', 'Aguardando Experimental'])
-      .order('data_contato', { ascending: true })
+      .in('status', ['lead', 'qualificado', 'Em Follow-up', 'Primeiro Contato', 'Aguardando Experimental'])
+      .order('created_at', { ascending: true })
     if (data) setContatos(data)
   }
 
-  const tresMaisTentativas = contatos.filter((c) => (c as any).tentativas >= 3).length
+  const followupEnviado = contatos.filter((c) => c.followup_enviado).length
   const hoje = new Date().toISOString().split('T')[0]
-  const followupsHoje = 0 // Will be enhanced with scheduled follow-ups
+  const followupsHoje = 0
 
   const statusColor: Record<string, string> = {
-    'Primeiro Contato': 'bg-blue-100 text-blue-800',
-    'Aguardando Experimental': 'bg-yellow-100 text-yellow-800',
+    lead: 'bg-blue-100 text-blue-800',
+    qualificado: 'bg-yellow-100 text-yellow-800',
     'Em Follow-up': 'bg-purple-100 text-purple-800',
+    experimental_agendada: 'bg-brand-50 text-brand-800',
   }
 
   return (
@@ -54,10 +55,10 @@ export default function Followup() {
         <div className="bg-white rounded-xl shadow-sm border p-5">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="w-4 h-4 text-red-600" />
-            <span className="text-sm text-gray-500">3+ Tentativas</span>
+            <span className="text-sm text-gray-500">Follow-up já Enviado</span>
           </div>
-          <p className="text-3xl font-bold">{tresMaisTentativas}</p>
-          <p className="text-xs text-gray-400 mt-1">Considerar marcar como perdido</p>
+          <p className="text-3xl font-bold">{followupEnviado}</p>
+          <p className="text-xs text-gray-400 mt-1">Já houve tentativa anterior</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm border p-5">
           <div className="flex items-center gap-2 mb-2">
@@ -79,7 +80,7 @@ export default function Followup() {
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Contato</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Instrumento</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Data</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Tentativas</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Origem</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -93,16 +94,14 @@ export default function Followup() {
                     <Phone className="w-3 h-3" /> {c.telefone}
                   </p>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-700">{c.instrumento}</td>
+                <td className="px-4 py-3 text-sm text-gray-700">{c.instrumento_interesse || '—'}</td>
                 <td className="px-4 py-3 text-sm text-gray-700">
-                  {new Date(c.data_contato).toLocaleDateString('pt-BR')}
+                  {c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : '—'}
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-700">
-                  {(c as any).tentativas ?? 0} tentativas
-                </td>
+                <td className="px-4 py-3 text-sm text-gray-700">{c.origem || '—'}</td>
                 <td className="px-4 py-3">
-                  <span className={`text-xs px-2 py-1 rounded-full ${statusColor[c.status] ?? 'bg-gray-100 text-gray-800'}`}>
-                    {c.status}
+                  <span className={`text-xs px-2 py-1 rounded-full ${statusColor[c.status ?? ''] ?? 'bg-gray-100 text-gray-800'}`}>
+                    {c.status || '—'}
                   </span>
                 </td>
                 <td className="px-4 py-3">

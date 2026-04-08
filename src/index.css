@@ -10,8 +10,8 @@
 
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background-color: #f8f9fa;
-  color: #1a1a2e;
+  background-color: #f0f9fc;
+  color: #0c3549;
 }
 
 ::-webkit-scrollbar {
@@ -23,6 +23,10 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c4c4c4;
+  background: #7ed9ed;
   border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2183a8;
 }

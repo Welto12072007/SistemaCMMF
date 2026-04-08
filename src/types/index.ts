@@ -1,41 +1,49 @@
+// Mapeia a tabela "alunos" do Supabase
 export interface Contato {
   id: string
   nome: string
   telefone: string
   email?: string
-  tipo_pessoa?: 'Adulto' | 'Criança' | 'Adolescente'
-  instrumento: string
-  canal_origem: 'WhatsApp' | 'Instagram' | 'Indicação' | 'Google'
-  data_contato: string
-  status: 'Primeiro Contato' | 'Aguardando Experimental' | 'Aula Experimental Marcada' | 'Em Follow-up' | 'Matriculado' | 'Perdido'
+  idade?: number
+  instrumento_interesse?: string
+  origem?: string
+  data_primeiro_contato?: string
+  status?: string
   observacoes?: string
-  created_at: string
+  nome_responsavel?: string
+  modalidade_preferida?: string
+  experiencia_musical?: string
+  followup_enviado?: boolean
+  created_at?: string
 }
 
 export interface Professor {
   id: string
   nome: string
-  instrumentos: string[]
-  modalidades: ('Individual' | 'Grupo')[]
-  ativo: boolean
-  created_at: string
+  instrumentos?: string[]
+  telefone?: string
+  ativo?: boolean
+  observacoes?: string
+  created_at?: string
 }
 
 export interface Sala {
   id: string
   nome: string
-  instrumentos: string[]
+  instrumentos?: string[]
   capacidade: number
   ativa: boolean
 }
 
+// Mapeia a tabela "planos" do Supabase (periodo = frequência, valor_mensal = valor)
 export interface Plano {
   id: string
   nome: string
-  modalidade: 'Individual' | 'Grupo'
-  frequencia: 'Mensal' | 'Trimestral' | 'Semestral'
-  valor: number
-  ativo: boolean
+  modalidade: string
+  periodo?: string
+  valor_mensal: number
+  descricao?: string
+  ativo?: boolean
 }
 
 export interface Curso {
@@ -45,27 +53,29 @@ export interface Curso {
   ativo: boolean
 }
 
+// Mapeia a tabela "aulas_experimentais" do Supabase
 export interface AulaExperimental {
   id: string
-  contato_id: string
-  contato?: Contato
-  professor_id: string
+  aluno_id?: string
+  aluno?: Contato
+  professor_id?: string
   professor?: Professor
-  sala_id?: string
-  sala?: Sala
   instrumento: string
-  modalidade: 'Individual' | 'Grupo'
-  data: string
-  horario: string
-  status: 'Agendada' | 'Realizada' | 'Cancelada' | 'Remarcada'
+  nome: string
+  telefone: string
+  data_aula: string
+  hora_inicio: string
+  hora_fim: string
+  status: string
   observacoes?: string
-  created_at: string
+  professor_nome?: string
+  created_at?: string
 }
 
 export interface Matricula {
   id: string
-  contato_id: string
-  contato?: Contato
+  aluno_id: string
+  aluno?: Contato
   professor_id: string
   professor?: Professor
   plano_id: string
@@ -74,17 +84,6 @@ export interface Matricula {
   data_matricula: string
   taxa_matricula: number
   valor_plano: number
-  forma_pagamento: 'Pix' | 'Cartão de Crédito' | 'Boleto' | 'Dinheiro'
-  created_at: string
-}
-
-export interface Followup {
-  id: string
-  contato_id: string
-  contato?: Contato
-  tentativas: number
-  ultimo_contato?: string
-  proxima_acao?: string
-  observacoes?: string
-  created_at: string
+  forma_pagamento: string
+  created_at?: string
 }

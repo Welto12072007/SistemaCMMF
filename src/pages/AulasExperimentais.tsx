@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Calendar, Music, User, MapPin } from 'lucide-react'
+import { Plus, Calendar, Music, User } from 'lucide-react'
 import type { AulaExperimental } from '@/types'
 
 const statusColor: Record<string, string> = {
+  agendada: 'bg-blue-100 text-blue-800 border-blue-200',
+  confirmada: 'bg-blue-100 text-blue-800 border-blue-200',
+  realizada: 'bg-green-100 text-green-800 border-green-200',
+  concluida: 'bg-green-100 text-green-800 border-green-200',
+  cancelada: 'bg-red-100 text-red-800 border-red-200',
+  remarcada: 'bg-yellow-100 text-yellow-800 border-yellow-200',
   Agendada: 'bg-blue-100 text-blue-800 border-blue-200',
   Realizada: 'bg-green-100 text-green-800 border-green-200',
   Cancelada: 'bg-red-100 text-red-800 border-red-200',
@@ -21,24 +27,27 @@ export default function AulasExperimentais() {
   async function loadAulas() {
     const { data } = await supabase
       .from('aulas_experimentais')
-      .select('*, contato:contatos(*), professor:professores(*), sala:salas(*)')
-      .order('data', { ascending: true })
+      .select('*, professor:professores(*)')
+      .order('data_aula', { ascending: true })
     if (data) setAulas(data)
   }
 
-  const filtered = aulas.filter((a) => filtro === 'Todos os status' || a.status === filtro)
+  const filtered = aulas.filter((a) => {
+    if (filtro === 'Todos os status') return true
+    return a.status?.toLowerCase() === filtro.toLowerCase()
+  })
 
-  const agendadas = filtered.filter((a) => a.status === 'Agendada').length
-  const realizadas = filtered.filter((a) => a.status === 'Realizada').length
-  const canceladas = filtered.filter((a) => ['Cancelada', 'Remarcada'].includes(a.status)).length
+  const agendadas = filtered.filter((a) => ['agendada', 'confirmada'].includes(a.status?.toLowerCase())).length
+  const realizadas = filtered.filter((a) => ['realizada', 'concluida'].includes(a.status?.toLowerCase())).length
+  const canceladas = filtered.filter((a) => ['cancelada', 'remarcada'].includes(a.status?.toLowerCase())).length
 
   async function marcarRealizada(id: string) {
-    await supabase.from('aulas_experimentais').update({ status: 'Realizada' }).eq('id', id)
+    await supabase.from('aulas_experimentais').update({ status: 'concluida' }).eq('id', id)
     loadAulas()
   }
 
   async function remarcar(id: string) {
-    await supabase.from('aulas_experimentais').update({ status: 'Remarcada' }).eq('id', id)
+    await supabase.from('aulas_experimentais').update({ status: 'remarcada' }).eq('id', id)
     loadAulas()
   }
 
@@ -58,10 +67,11 @@ export default function AulasExperimentais() {
       {/* Filters */}
       <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm">
         <option>Todos os status</option>
-        <option>Agendada</option>
-        <option>Realizada</option>
-        <option>Cancelada</option>
-        <option>Remarcada</option>
+        <option>agendada</option>
+        <option>confirmada</option>
+        <option>concluida</option>
+        <option>cancelada</option>
+        <option>remarcada</option>
       </select>
 
       {/* KPIs */}
@@ -86,16 +96,15 @@ export default function AulasExperimentais() {
           <div key={a.id} className={`bg-white rounded-xl shadow-sm border p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4`}>
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
-                <p className="font-semibold text-gray-900">{a.contato?.nome ?? '—'}</p>
-                <span className={`text-xs px-2 py-0.5 rounded-full border ${statusColor[a.status] ?? ''}`}>
+                <p className="font-semibold text-gray-900">{a.nome || '—'}</p>
+                <span className={`text-xs px-2 py-0.5 rounded-full border ${statusColor[a.status] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                   {a.status}
                 </span>
-                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{a.modalidade}</span>
               </div>
               <div className="flex flex-wrap gap-4 text-sm text-gray-600">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5" />
-                  {new Date(a.data).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} — {a.horario}
+                  {a.data_aula ? new Date(a.data_aula).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : '—'} — {a.hora_inicio}
                 </span>
                 <span className="flex items-center gap-1">
                   <Music className="w-3.5 h-3.5" />
@@ -103,19 +112,13 @@ export default function AulasExperimentais() {
                 </span>
                 <span className="flex items-center gap-1">
                   <User className="w-3.5 h-3.5" />
-                  {a.professor?.nome ?? '—'}
+                  {a.professor_nome || a.professor?.nome || '—'}
                 </span>
-                {a.sala && (
-                  <span className="flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5" />
-                    {a.sala.nome}
-                  </span>
-                )}
               </div>
               {a.observacoes && <p className="text-xs text-gray-500 mt-2 italic">{a.observacoes}</p>}
             </div>
 
-            {a.status === 'Agendada' && (
+            {['agendada', 'confirmada'].includes(a.status?.toLowerCase()) && (
               <div className="flex gap-2">
                 <button onClick={() => remarcar(a.id)} className="text-xs px-3 py-1.5 border rounded-lg hover:bg-gray-50 transition-colors">
                   Remarcar

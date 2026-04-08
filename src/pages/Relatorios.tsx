@@ -14,11 +14,11 @@ import {
   LabelList,
 } from 'recharts'
 
-const COLORS = ['#3b82f6', '#ef9a10', '#10b981']
+const COLORS = ['#2183a8', '#7ed9ed', '#10b981']
 
 export default function Relatorios() {
   const [dataInicio, setDataInicio] = useState('2025-01-01')
-  const [dataFim, setDataFim] = useState('2025-12-31')
+  const [dataFim, setDataFim] = useState('2026-12-31')
   const [stats, setStats] = useState({
     contatos: 0,
     experimentais: 0,
@@ -39,20 +39,20 @@ export default function Relatorios() {
 
   async function loadRelatorios() {
     const { data: contatos } = await supabase
-      .from('contatos')
+      .from('alunos')
       .select('*')
-      .gte('data_contato', dataInicio)
-      .lte('data_contato', dataFim)
+      .gte('created_at', dataInicio)
+      .lte('created_at', dataFim)
 
     const { data: experimentais } = await supabase
       .from('aulas_experimentais')
       .select('*')
-      .gte('data', dataInicio)
-      .lte('data', dataFim)
+      .gte('data_aula', dataInicio)
+      .lte('data_aula', dataFim)
 
     const { data: matriculas } = await supabase
       .from('matriculas')
-      .select('*, contato:contatos(*)')
+      .select('*, aluno:alunos(*)')
       .gte('data_matricula', dataInicio)
       .lte('data_matricula', dataFim)
 
@@ -77,11 +77,12 @@ export default function Relatorios() {
     // Group by canal
     const canais: Record<string, { contatos: number; matriculas: number; faturamento: number }> = {}
     c.forEach((x) => {
-      if (!canais[x.canal_origem]) canais[x.canal_origem] = { contatos: 0, matriculas: 0, faturamento: 0 }
-      canais[x.canal_origem]!.contatos++
+      const canal = x.origem || 'Outro'
+      if (!canais[canal]) canais[canal] = { contatos: 0, matriculas: 0, faturamento: 0 }
+      canais[canal]!.contatos++
     })
     m.forEach((x) => {
-      const canal = x.contato?.canal_origem ?? 'Outro'
+      const canal = x.aluno?.origem ?? 'Outro'
       if (!canais[canal]) canais[canal] = { contatos: 0, matriculas: 0, faturamento: 0 }
       canais[canal]!.matriculas++
       canais[canal]!.faturamento += (x.taxa_matricula || 0) + (x.valor_plano || 0)
@@ -100,12 +101,14 @@ export default function Relatorios() {
     // Group by instrumento
     const inst: Record<string, { contatos: number; matriculas: number }> = {}
     c.forEach((x) => {
-      if (!inst[x.instrumento]) inst[x.instrumento] = { contatos: 0, matriculas: 0 }
-      inst[x.instrumento]!.contatos++
+      const instr = x.instrumento_interesse || 'Não definido'
+      if (!inst[instr]) inst[instr] = { contatos: 0, matriculas: 0 }
+      inst[instr]!.contatos++
     })
     m.forEach((x) => {
-      if (!inst[x.instrumento]) inst[x.instrumento] = { contatos: 0, matriculas: 0 }
-      inst[x.instrumento]!.matriculas++
+      const instr = x.instrumento || 'Não definido'
+      if (!inst[instr]) inst[instr] = { contatos: 0, matriculas: 0 }
+      inst[instr]!.matriculas++
     })
     setPorInstrumento(Object.entries(inst).map(([instrumento, v]) => ({ instrumento, ...v })))
   }
@@ -145,7 +148,7 @@ export default function Relatorios() {
           <p className="text-2xl font-bold">{stats.contatos}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm border p-5">
-          <div className="flex items-center gap-2 mb-2"><GraduationCap className="w-4 h-4 text-orange-600" /><span className="text-sm text-gray-500">Aulas Experimentais</span></div>
+          <div className="flex items-center gap-2 mb-2"><GraduationCap className="w-4 h-4 text-brand-600" /><span className="text-sm text-gray-500">Aulas Experimentais</span></div>
           <p className="text-2xl font-bold">{stats.experimentais}</p>
           <p className="text-xs text-gray-400">{stats.conversaoExp.toFixed(1)}% conversão</p>
         </div>

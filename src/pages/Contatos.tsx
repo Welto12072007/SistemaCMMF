@@ -5,31 +5,33 @@ import type { Contato } from '@/types'
 
 const STATUS_OPTIONS = [
   'Todos os status',
-  'Primeiro Contato',
-  'Aguardando Experimental',
-  'Aula Experimental Marcada',
+  'lead',
+  'qualificado',
+  'experimental_agendada',
+  'experimental_concluida',
+  'matriculado',
+  'perdido',
   'Em Follow-up',
-  'Matriculado',
-  'Perdido',
 ]
 
-const CANAL_OPTIONS = ['Todos os canais', 'WhatsApp', 'Instagram', 'Indicação', 'Google']
+const CANAL_OPTIONS = ['Todas as origens', 'WhatsApp', 'Instagram', 'Indicação', 'Google']
 const INSTRUMENTO_OPTIONS = ['Todos os instrumentos', 'Piano', 'Violão', 'Canto', 'Guitarra', 'Bateria', 'Ukulele', 'Violino', 'Contrabaixo', 'Cavaquinho', 'Percussão']
 
 const statusColor: Record<string, string> = {
-  'Primeiro Contato': 'bg-blue-100 text-blue-800',
-  'Aguardando Experimental': 'bg-yellow-100 text-yellow-800',
-  'Aula Experimental Marcada': 'bg-orange-100 text-orange-800',
+  lead: 'bg-blue-100 text-blue-800',
+  qualificado: 'bg-yellow-100 text-yellow-800',
+  experimental_agendada: 'bg-brand-50 text-brand-800',
+  experimental_concluida: 'bg-purple-100 text-purple-800',
+  matriculado: 'bg-green-100 text-green-800',
+  perdido: 'bg-red-100 text-red-800',
   'Em Follow-up': 'bg-purple-100 text-purple-800',
-  'Matriculado': 'bg-green-100 text-green-800',
-  'Perdido': 'bg-red-100 text-red-800',
 }
 
 export default function Contatos() {
   const [contatos, setContatos] = useState<Contato[]>([])
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('Todos os status')
-  const [filtroCanal, setFiltroCanal] = useState('Todos os canais')
+  const [filtroCanal, setFiltroCanal] = useState('Todas as origens')
   const [filtroInstrumento, setFiltroInstrumento] = useState('Todos os instrumentos')
   const [showForm, setShowForm] = useState(false)
   const [editando, setEditando] = useState<Contato | null>(null)
@@ -40,25 +42,25 @@ export default function Contatos() {
 
   async function loadContatos() {
     const { data } = await supabase
-      .from('contatos')
+      .from('alunos')
       .select('*')
       .order('created_at', { ascending: false })
     if (data) setContatos(data)
   }
 
   const filtered = contatos.filter((c) => {
-    if (busca && !c.nome.toLowerCase().includes(busca.toLowerCase()) && !c.telefone.includes(busca) && !(c.email?.toLowerCase().includes(busca.toLowerCase()))) return false
+    if (busca && !c.nome?.toLowerCase().includes(busca.toLowerCase()) && !c.telefone?.includes(busca) && !(c.email?.toLowerCase().includes(busca.toLowerCase()))) return false
     if (filtroStatus !== 'Todos os status' && c.status !== filtroStatus) return false
-    if (filtroCanal !== 'Todos os canais' && c.canal_origem !== filtroCanal) return false
-    if (filtroInstrumento !== 'Todos os instrumentos' && c.instrumento !== filtroInstrumento) return false
+    if (filtroCanal !== 'Todas as origens' && c.origem !== filtroCanal) return false
+    if (filtroInstrumento !== 'Todos os instrumentos' && c.instrumento_interesse !== filtroInstrumento) return false
     return true
   })
 
   async function handleSave(data: Partial<Contato>) {
     if (editando) {
-      await supabase.from('contatos').update(data).eq('id', editando.id)
+      await supabase.from('alunos').update(data).eq('id', editando.id)
     } else {
-      await supabase.from('contatos').insert(data)
+      await supabase.from('alunos').insert(data)
     }
     setShowForm(false)
     setEditando(null)
@@ -67,7 +69,7 @@ export default function Contatos() {
 
   async function handleDelete(id: string) {
     if (!confirm('Tem certeza que deseja excluir este contato?')) return
-    await supabase.from('contatos').delete().eq('id', id)
+    await supabase.from('alunos').delete().eq('id', id)
     loadContatos()
   }
 
@@ -123,7 +125,7 @@ export default function Contatos() {
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Nome</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Contato</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Instrumento</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Canal</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Origem</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Data</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
               <th className="px-4 py-3"></th>
@@ -134,7 +136,7 @@ export default function Contatos() {
               <tr key={c.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3">
                   <p className="text-sm font-medium text-gray-900">{c.nome}</p>
-                  <p className="text-xs text-gray-500">{c.tipo_pessoa}</p>
+                  {c.nome_responsavel && <p className="text-xs text-gray-500">Resp: {c.nome_responsavel}</p>}
                 </td>
                 <td className="px-4 py-3">
                   <p className="text-sm text-gray-700 flex items-center gap-1">
@@ -146,14 +148,14 @@ export default function Contatos() {
                     </p>
                   )}
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-700">{c.instrumento}</td>
-                <td className="px-4 py-3 text-sm text-gray-700">{c.canal_origem}</td>
+                <td className="px-4 py-3 text-sm text-gray-700">{c.instrumento_interesse || '—'}</td>
+                <td className="px-4 py-3 text-sm text-gray-700">{c.origem || '—'}</td>
                 <td className="px-4 py-3 text-sm text-gray-700">
-                  {new Date(c.data_contato).toLocaleDateString('pt-BR')}
+                  {c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : '—'}
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`text-xs px-2 py-1 rounded-full ${statusColor[c.status] ?? 'bg-gray-100 text-gray-800'}`}>
-                    {c.status}
+                  <span className={`text-xs px-2 py-1 rounded-full ${statusColor[c.status ?? ''] ?? 'bg-gray-100 text-gray-800'}`}>
+                    {c.status || '—'}
                   </span>
                 </td>
                 <td className="px-4 py-3">
@@ -204,11 +206,9 @@ function ContatoForm({ contato, onSave, onClose }: {
     nome: contato?.nome ?? '',
     telefone: contato?.telefone ?? '',
     email: contato?.email ?? '',
-    tipo_pessoa: contato?.tipo_pessoa ?? 'Adulto',
-    instrumento: contato?.instrumento ?? '',
-    canal_origem: contato?.canal_origem ?? 'WhatsApp',
-    status: contato?.status ?? 'Primeiro Contato',
-    data_contato: contato?.data_contato ?? new Date().toISOString().split('T')[0],
+    instrumento_interesse: contato?.instrumento_interesse ?? '',
+    origem: contato?.origem ?? 'WhatsApp',
+    status: contato?.status ?? 'lead',
     observacoes: contato?.observacoes ?? '',
   })
 
@@ -220,20 +220,16 @@ function ContatoForm({ contato, onSave, onClose }: {
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nome completo" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Telefone" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Email (opcional)" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.tipo_pessoa} onChange={(e) => setForm({ ...form, tipo_pessoa: e.target.value as any })}>
-            <option>Adulto</option><option>Criança</option><option>Adolescente</option>
-          </select>
-          <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.instrumento} onChange={(e) => setForm({ ...form, instrumento: e.target.value })}>
+          <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.instrumento_interesse} onChange={(e) => setForm({ ...form, instrumento_interesse: e.target.value })}>
             <option value="">Selecione o instrumento</option>
             {INSTRUMENTO_OPTIONS.slice(1).map((i) => <option key={i}>{i}</option>)}
           </select>
-          <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.canal_origem} onChange={(e) => setForm({ ...form, canal_origem: e.target.value as any })}>
+          <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.origem} onChange={(e) => setForm({ ...form, origem: e.target.value })}>
             {CANAL_OPTIONS.slice(1).map((c) => <option key={c}>{c}</option>)}
           </select>
-          <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as any })}>
+          <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
             {STATUS_OPTIONS.slice(1).map((s) => <option key={s}>{s}</option>)}
           </select>
-          <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.data_contato} onChange={(e) => setForm({ ...form, data_contato: e.target.value })} />
           <textarea className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Observações" rows={3} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
         </div>
         <div className="flex justify-end gap-3 mt-5">

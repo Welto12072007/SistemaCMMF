@@ -92,7 +92,7 @@ function ProfessoresTab() {
           <tr>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Nome</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Instrumentos</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Modalidades</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Telefone</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
             <th className="px-4 py-3"></th>
           </tr>
@@ -108,13 +108,7 @@ function ProfessoresTab() {
                   ))}
                 </div>
               </td>
-              <td className="px-4 py-3">
-                <div className="flex flex-wrap gap-1">
-                  {p.modalidades?.map((m) => (
-                    <span key={m} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{m}</span>
-                  ))}
-                </div>
-              </td>
+              <td className="px-4 py-3 text-sm text-gray-600">{p.telefone || '—'}</td>
               <td className="px-4 py-3">
                 <span className={`text-xs px-2 py-1 rounded-full ${p.ativo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                   {p.ativo ? 'Ativo' : 'Inativo'}
@@ -149,7 +143,7 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
   const [form, setForm] = useState({
     nome: professor?.nome ?? '',
     instrumentos: professor?.instrumentos?.join(', ') ?? '',
-    modalidades: professor?.modalidades ?? ['Individual'],
+    telefone: professor?.telefone ?? '',
     ativo: professor?.ativo ?? true,
   })
 
@@ -160,20 +154,7 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
         <div className="space-y-3">
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Instrumentos (separados por vírgula)" value={form.instrumentos} onChange={(e) => setForm({ ...form, instrumentos: e.target.value })} />
-          <div className="flex gap-3">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={form.modalidades.includes('Individual')} onChange={(e) => {
-                const mods = e.target.checked ? [...form.modalidades, 'Individual'] : form.modalidades.filter(m => m !== 'Individual')
-                setForm({ ...form, modalidades: mods as any })
-              }} /> Individual
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={form.modalidades.includes('Grupo')} onChange={(e) => {
-                const mods = e.target.checked ? [...form.modalidades, 'Grupo'] : form.modalidades.filter(m => m !== 'Grupo')
-                setForm({ ...form, modalidades: mods as any })
-              }} /> Grupo
-            </label>
-          </div>
+          <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Telefone" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} /> Ativo
           </label>
@@ -183,7 +164,7 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
           <button onClick={() => onSave({
             nome: form.nome,
             instrumentos: form.instrumentos.split(',').map(s => s.trim()).filter(Boolean),
-            modalidades: form.modalidades,
+            telefone: form.telefone || null,
             ativo: form.ativo,
           })} className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">Salvar</button>
         </div>
@@ -339,8 +320,8 @@ function PlanosTab() {
           <tr>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Nome</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Modalidade</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Frequência</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Valor</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Período</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Valor Mensal</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
             <th className="px-4 py-3"></th>
           </tr>
@@ -350,8 +331,8 @@ function PlanosTab() {
             <tr key={p.id} className="hover:bg-gray-50">
               <td className="px-4 py-3 text-sm font-medium">{p.nome}</td>
               <td className="px-4 py-3 text-sm">{p.modalidade}</td>
-              <td className="px-4 py-3 text-sm">{p.frequencia}</td>
-              <td className="px-4 py-3 text-sm font-medium">R$ {p.valor?.toLocaleString('pt-BR')}</td>
+              <td className="px-4 py-3 text-sm">{p.periodo || '—'}</td>
+              <td className="px-4 py-3 text-sm font-medium">R$ {p.valor_mensal?.toLocaleString('pt-BR')}</td>
               <td className="px-4 py-3">
                 <span className={`text-xs px-2 py-1 rounded-full ${p.ativo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                   {p.ativo ? 'Ativo' : 'Inativo'}
