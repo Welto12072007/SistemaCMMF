@@ -7,6 +7,7 @@ import Matriculas from './pages/Matriculas'
 import Followup from './pages/Followup'
 import Disparos from './pages/Disparos'
 import Relatorios from './pages/Relatorios'
+import Horarios from './pages/Horarios'
 import Configuracoes from './pages/Configuracoes'
 
 export default function App() {
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/matriculas" element={<Matriculas />} />
         <Route path="/followup" element={<Followup />} />
         <Route path="/disparos" element={<Disparos />} />
+        <Route path="/horarios" element={<Horarios />} />
         <Route path="/relatorios" element={<Relatorios />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
       </Route>

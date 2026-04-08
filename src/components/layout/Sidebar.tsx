@@ -7,12 +7,14 @@ import {
   PhoneForwarded,
   Send,
   BarChart3,
+  CalendarClock,
   Settings,
-  Music,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
 import { useState } from 'react'
+import logoIcon from '../../assets/logos/cmmf-icon-branco.png'
+import logoHorizontal from '../../assets/logos/cmmf-logo-horizontal-branco.png'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -20,6 +22,7 @@ const navItems = [
   { to: '/aulas-experimentais', label: 'Aulas Experimentais', icon: GraduationCap },
   { to: '/matriculas', label: 'Matrículas', icon: BookOpen },
   { to: '/followup', label: 'Follow-up', icon: PhoneForwarded },
+  { to: '/horarios', label: 'Horários', icon: CalendarClock },
   { to: '/disparos', label: 'Disparos', icon: Send },
   { to: '/relatorios', label: 'Relatórios', icon: BarChart3 },
 ]
@@ -34,26 +37,19 @@ export default function Sidebar() {
       }`}
     >
       {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-6 border-b border-white/10">
-        <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
+      <div className="flex items-center justify-center px-3 py-4 border-b border-white/10">
+        {collapsed ? (
           <img
-            src="/logos/cmmf-logo.png"
+            src={logoIcon}
             alt="CMMF"
             className="w-10 h-10 object-contain"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none'
-              e.currentTarget.nextElementSibling?.classList.remove('hidden')
-            }}
           />
-          <div className="hidden w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center">
-            <Music className="w-6 h-6 text-white" />
-          </div>
-        </div>
-        {!collapsed && (
-          <div>
-            <h1 className="font-bold text-lg leading-tight">CMMF</h1>
-            <p className="text-xs text-white/60">Centro de Música</p>
-          </div>
+        ) : (
+          <img
+            src={logoHorizontal}
+            alt="CMMF - Centro de Música Murilo Finger"
+            className="w-full h-10 object-contain"
+          />
         )}
       </div>
 
