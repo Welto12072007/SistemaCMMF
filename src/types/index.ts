@@ -1,3 +1,79 @@
+// === Roles e Auth ===
+export type UserRole = 'admin' | 'recepcao' | 'professor' | 'aluno'
+
+export interface Perfil {
+  id: string
+  user_id: string
+  nome: string
+  email: string
+  role: UserRole
+  professor_id?: string
+  telefone?: string
+  avatar_url?: string
+  ativo: boolean
+  created_at?: string
+}
+
+// === Fluxo de Alunos ===
+export interface FluxoAluno {
+  id: string
+  tipo: 'entrada' | 'saida'
+  mes: number
+  ano: number
+  aluno_nome: string
+  professor_nome?: string
+  vendedor?: string
+  tipo_aula?: string
+  matricula_confirmada?: boolean
+  data_evento?: string
+  observacoes?: string
+  created_at?: string
+}
+
+// === Biblioteca ===
+export interface BibliotecaItem {
+  id: string
+  titulo: string
+  descricao?: string
+  tipo: string
+  categoria?: string
+  instrumento?: string
+  url?: string
+  arquivo_nome?: string
+  visivel_para?: string[]
+  autor?: string
+  created_at?: string
+}
+
+// === Conteúdos (Material de Apoio + FingerTV) ===
+export interface Conteudo {
+  id: string
+  titulo: string
+  descricao?: string
+  tipo: 'material_professor' | 'material_aluno' | 'fingertv'
+  categoria?: string
+  instrumento?: string
+  url?: string
+  thumbnail_url?: string
+  arquivo_nome?: string
+  visivel_para?: string[]
+  ordem?: number
+  destaque?: boolean
+  created_at?: string
+}
+
+// === System Logs ===
+export interface SystemLog {
+  id: string
+  user_id?: string
+  user_nome?: string
+  action: string
+  entity?: string
+  entity_id?: string
+  details?: Record<string, unknown>
+  created_at?: string
+}
+
 // Mapeia a tabela "alunos" do Supabase
 export interface Contato {
   id: string
@@ -72,18 +148,4 @@ export interface AulaExperimental {
   created_at?: string
 }
 
-export interface Matricula {
-  id: string
-  aluno_id: string
-  aluno?: Contato
-  professor_id: string
-  professor?: Professor
-  plano_id: string
-  plano?: Plano
-  instrumento: string
-  data_matricula: string
-  taxa_matricula: number
-  valor_plano: number
-  forma_pagamento: string
-  created_at?: string
-}
+

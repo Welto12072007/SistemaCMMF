@@ -48,7 +48,10 @@ export default function Contatos() {
     if (data) setContatos(data)
   }
 
-  const filtered = contatos.filter((c) => {
+  // Filtrar apenas leads — exclui alunos ativos (estes aparecem em Usuários)
+  const leads = contatos.filter(c => !['ativo', 'matriculado'].includes(c.status || ''))
+
+  const filtered = leads.filter((c) => {
     if (busca && !c.nome?.toLowerCase().includes(busca.toLowerCase()) && !c.telefone?.includes(busca) && !(c.email?.toLowerCase().includes(busca.toLowerCase()))) return false
     if (filtroStatus !== 'Todos os status' && c.status !== filtroStatus) return false
     if (filtroCanal !== 'Todas as origens' && c.origem !== filtroCanal) return false
@@ -78,15 +81,8 @@ export default function Contatos() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Contatos</h1>
-          <p className="text-gray-500">Gerencie todos os contatos e leads da escola</p>
+          <p className="text-gray-500">Leads e futuros clientes que entraram em contato</p>
         </div>
-        <button
-          onClick={() => { setEditando(null); setShowForm(true) }}
-          className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Novo Contato
-        </button>
       </div>
 
       {/* Filters */}
@@ -159,16 +155,16 @@ export default function Contatos() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-1">
+                  <div className="flex gap-2">
                     <button
                       onClick={() => { setEditando(c); setShowForm(true) }}
-                      className="text-xs text-blue-600 hover:underline"
+                      className="text-xs px-3 py-1.5 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
                     >
                       Editar
                     </button>
                     <button
                       onClick={() => handleDelete(c.id)}
-                      className="text-xs text-red-600 hover:underline"
+                      className="text-xs px-3 py-1.5 rounded-md bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
                     >
                       Excluir
                     </button>

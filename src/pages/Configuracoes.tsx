@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard } from 'lucide-react'
-import type { Professor, Curso, Sala, Plano } from '@/types'
+import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard, Shield, Mail } from 'lucide-react'
+import type { Professor, Curso, Sala, Plano, Perfil, UserRole } from '@/types'
 
-type Tab = 'professores' | 'cursos' | 'salas' | 'planos'
+type Tab = 'acessos' | 'professores' | 'cursos' | 'salas' | 'planos'
 
 export default function Configuracoes() {
-  const [tab, setTab] = useState<Tab>('professores')
+  const [tab, setTab] = useState<Tab>('acessos')
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+    { key: 'acessos', label: 'Acessos', icon: <Shield className="w-4 h-4" /> },
     { key: 'professores', label: 'Professores', icon: <Users className="w-4 h-4" /> },
     { key: 'cursos', label: 'Cursos', icon: <Music className="w-4 h-4" /> },
     { key: 'salas', label: 'Salas', icon: <MapPin className="w-4 h-4" /> },
@@ -38,10 +39,256 @@ export default function Configuracoes() {
         ))}
       </div>
 
+      {tab === 'acessos' && <AcessosTab />}
       {tab === 'professores' && <ProfessoresTab />}
       {tab === 'cursos' && <CursosTab />}
       {tab === 'salas' && <SalasTab />}
       {tab === 'planos' && <PlanosTab />}
+    </div>
+  )
+}
+
+const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Administrador',
+  recepcao: 'Recepção',
+  professor: 'Professor',
+  aluno: 'Aluno',
+}
+
+const ROLE_COLORS: Record<UserRole, string> = {
+  admin: 'bg-purple-100 text-purple-800',
+  recepcao: 'bg-blue-100 text-blue-800',
+  professor: 'bg-amber-100 text-amber-800',
+  aluno: 'bg-green-100 text-green-800',
+}
+
+function AcessosTab() {
+  const [perfis, setPerfis] = useState<Perfil[]>([])
+  const [professores, setProfessores] = useState<Professor[]>([])
+  const [showForm, setShowForm] = useState(false)
+  const [editando, setEditando] = useState<Perfil | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [erro, setErro] = useState('')
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    const [{ data: p }, { data: profs }] = await Promise.all([
+      supabase.from('perfis').select('*').order('nome'),
+      supabase.from('professores').select('id, nome').eq('ativo', true).order('nome'),
+    ])
+    if (p) setPerfis(p)
+    if (profs) setProfessores(profs)
+  }
+
+  async function handleSave(form: { nome: string; email: string; role: UserRole; professor_id: string; telefone: string }) {
+    setErro('')
+    setLoading(true)
+
+    if (editando) {
+      // Update existing perfil
+      await supabase.from('perfis').update({
+        nome: form.nome,
+        role: form.role,
+        professor_id: form.role === 'professor' ? form.professor_id || null : null,
+        telefone: form.telefone || null,
+      }).eq('id', editando.id)
+    } else {
+      // Create new user via Supabase Admin API
+      const { data, error } = await supabase.auth.admin.inviteUserByEmail(form.email, {
+        data: { nome: form.nome, role: form.role },
+        redirectTo: `${window.location.origin}/definir-senha`,
+      })
+
+      if (error) {
+        setErro(error.message)
+        setLoading(false)
+        return
+      }
+
+      // Create perfil record
+      await supabase.from('perfis').insert({
+        user_id: data.user.id,
+        nome: form.nome,
+        email: form.email,
+        role: form.role,
+        professor_id: form.role === 'professor' ? form.professor_id || null : null,
+        telefone: form.telefone || null,
+        ativo: true,
+      })
+    }
+
+    setShowForm(false)
+    setEditando(null)
+    setLoading(false)
+    load()
+  }
+
+  async function handleToggleAtivo(perfil: Perfil) {
+    await supabase.from('perfis').update({ ativo: !perfil.ativo }).eq('id', perfil.id)
+    load()
+  }
+
+  async function handleDelete(perfil: Perfil) {
+    if (!confirm(`Excluir acesso de ${perfil.nome}? Isso remove o login da pessoa.`)) return
+    await supabase.auth.admin.deleteUser(perfil.user_id)
+    await supabase.from('perfis').delete().eq('id', perfil.id)
+    load()
+  }
+
+  async function handleResendInvite(perfil: Perfil) {
+    setErro('')
+    const { error } = await supabase.auth.admin.inviteUserByEmail(perfil.email, {
+      redirectTo: `${window.location.origin}/definir-senha`,
+    })
+    if (error) {
+      setErro(error.message)
+    } else {
+      alert(`Convite reenviado para ${perfil.email}`)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b bg-gray-50">
+        <h3 className="font-semibold text-gray-900">Usuários do Sistema</h3>
+        <button
+          onClick={() => { setEditando(null); setShowForm(true); setErro('') }}
+          className="flex items-center gap-2 bg-brand-500 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-brand-600"
+        >
+          <Plus className="w-4 h-4" /> Novo Acesso
+        </button>
+      </div>
+      <p className="text-sm text-gray-500 px-5 pt-3">Cadastre quem pode acessar o sistema. A pessoa receberá um email para criar a senha.</p>
+
+      {erro && <div className="mx-5 mt-3 bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg">{erro}</div>}
+
+      <table className="w-full mt-3">
+        <thead className="bg-gray-50 border-b">
+          <tr>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Nome</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Email</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Perfil</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+            <th className="px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {perfis.map((p) => (
+            <tr key={p.id} className="hover:bg-gray-50">
+              <td className="px-4 py-3 text-sm font-medium">{p.nome}</td>
+              <td className="px-4 py-3 text-sm text-gray-600">{p.email}</td>
+              <td className="px-4 py-3">
+                <span className={`text-xs px-2 py-1 rounded-full ${ROLE_COLORS[p.role]}`}>
+                  {ROLE_LABELS[p.role]}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <span className={`text-xs px-2 py-1 rounded-full ${p.ativo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                  {p.ativo ? 'Ativo' : 'Inativo'}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex gap-2">
+                  <button onClick={() => handleResendInvite(p)} title="Reenviar convite" className="text-gray-400 hover:text-brand-600"><Mail className="w-4 h-4" /></button>
+                  <button onClick={() => { setEditando(p); setShowForm(true); setErro('') }} className="text-gray-400 hover:text-blue-600"><Pencil className="w-4 h-4" /></button>
+                  <button onClick={() => handleToggleAtivo(p)} className={`text-xs px-2 py-1 rounded ${p.ativo ? 'text-orange-600 hover:bg-orange-50' : 'text-green-600 hover:bg-green-50'}`}>
+                    {p.ativo ? 'Desativar' : 'Ativar'}
+                  </button>
+                  <button onClick={() => handleDelete(p)} className="text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {perfis.length === 0 && <div className="text-center py-10 text-gray-400">Nenhum acesso cadastrado</div>}
+
+      {showForm && (
+        <AcessoForm
+          perfil={editando}
+          professores={professores}
+          loading={loading}
+          onSave={handleSave}
+          onClose={() => { setShowForm(false); setEditando(null) }}
+        />
+      )}
+    </div>
+  )
+}
+
+function AcessoForm({ perfil, professores, loading, onSave, onClose }: {
+  perfil: Perfil | null
+  professores: Professor[]
+  loading: boolean
+  onSave: (data: { nome: string; email: string; role: UserRole; professor_id: string; telefone: string }) => void
+  onClose: () => void
+}) {
+  const [form, setForm] = useState({
+    nome: perfil?.nome ?? '',
+    email: perfil?.email ?? '',
+    role: perfil?.role ?? 'aluno' as UserRole,
+    professor_id: perfil?.professor_id ?? '',
+    telefone: perfil?.telefone ?? '',
+  })
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold mb-4">{perfil ? 'Editar Acesso' : 'Novo Acesso'}</h2>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nome completo" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email"
+              className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+              placeholder="email@exemplo.com"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              disabled={!!perfil}
+            />
+            {!perfil && <p className="text-xs text-gray-400 mt-1">A pessoa receberá um email para criar a senha</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Perfil de acesso</label>
+            <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}>
+              <option value="admin">Administrador</option>
+              <option value="recepcao">Recepção</option>
+              <option value="professor">Professor</option>
+              <option value="aluno">Aluno</option>
+            </select>
+          </div>
+          {form.role === 'professor' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Vincular ao professor</label>
+              <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.professor_id} onChange={(e) => setForm({ ...form, professor_id: e.target.value })}>
+                <option value="">Selecione...</option>
+                {professores.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Telefone (opcional)</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="(48) 99999-9999" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 mt-5">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+          <button
+            onClick={() => onSave(form)}
+            disabled={loading || !form.nome || !form.email}
+            className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50"
+          >
+            {loading ? 'Salvando...' : perfil ? 'Salvar' : 'Enviar convite'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

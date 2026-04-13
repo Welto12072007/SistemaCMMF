@@ -14,6 +14,8 @@ import {
   Bot,
   ArrowRight,
   MessageSquare,
+  Building2,
+  BarChart2,
 } from 'lucide-react'
 import {
   BarChart,
@@ -83,6 +85,9 @@ export default function Dashboard() {
   const [proximasAulas, setProximasAulas] = useState<AulaExperimental[]>([])
   const [followups, setFollowups] = useState<Contato[]>([])
   const [funnelData, setFunnelData] = useState<{ stage: string; value: number; color: string }[]>([])
+  const [ocupacao, setOcupacao] = useState({ total: 0, ocupados: 0, disponiveis: 0, taxa: 0 })
+  const [ocupacaoPorProf, setOcupacaoPorProf] = useState<{ name: string; ocupados: number; total: number; taxa: number }[]>([])
+  const [totalAlunosAtivos, setTotalAlunosAtivos] = useState(0)
 
   useEffect(() => {
     loadDashboard()
@@ -96,32 +101,61 @@ export default function Dashboard() {
     const [
       { data: contatos },
       { data: experimentais },
-      { data: matriculas },
       { data: conversas },
       { data: contatosMesAnterior },
+      { data: horarios },
+      { data: professores },
     ] = await Promise.all([
       supabase.from('alunos').select('*').order('created_at', { ascending: false }),
       supabase.from('aulas_experimentais').select('*, professor:professores(*)').order('data_aula', { ascending: true }),
-      supabase.from('matriculas').select('*'),
-      supabase.from('conversas').select('intencao_detectada, created_at').gte('created_at', firstOfMonth),
+      supabase.from('conversas').select('intencao, created_at').gte('created_at', firstOfMonth),
       supabase.from('alunos').select('id').gte('created_at', firstOfLastMonth).lt('created_at', firstOfMonth),
+      supabase.from('horarios').select('*, professor:professores(nome)'),
+      supabase.from('professores').select('id, nome').eq('ativo', true),
     ])
 
     if (!contatos) return
+
+    // Alunos ativos
+    const ativos = contatos.filter(c => c.status === 'ativo').length
+    setTotalAlunosAtivos(ativos)
+
+    // Taxa de ocupação
+    if (horarios) {
+      const slotsUteis = horarios.filter((h: { status: string }) => h.status !== 'indisponivel')
+      const ocupados = slotsUteis.filter((h: { status: string }) => h.status === 'ocupado')
+      const taxa = slotsUteis.length > 0 ? (ocupados.length / slotsUteis.length) * 100 : 0
+      setOcupacao({ total: slotsUteis.length, ocupados: ocupados.length, disponiveis: slotsUteis.length - ocupados.length, taxa })
+
+      // Por professor
+      const profMap: Record<string, { ocupados: number; total: number }> = {}
+      slotsUteis.forEach((h: { professor: { nome: string } | null; status: string }) => {
+        const nome = h.professor?.nome || 'Desconhecido'
+        if (!profMap[nome]) profMap[nome] = { ocupados: 0, total: 0 }
+        profMap[nome].total++
+        if (h.status === 'ocupado') profMap[nome].ocupados++
+      })
+      setOcupacaoPorProf(
+        Object.entries(profMap)
+          .map(([name, v]) => ({ name, ...v, taxa: v.total > 0 ? (v.ocupados / v.total) * 100 : 0 }))
+          .sort((a, b) => b.taxa - a.taxa)
+      )
+    }
 
     const leadsEste = contatos.filter(c => c.created_at && c.created_at >= firstOfMonth).length
     const leadsMesAnt = contatosMesAnterior?.length ?? 0
     const qualificados = contatos.filter(c => c.status && !['lead', 'perdido'].includes(c.status)).length
     const agendadas = experimentais?.length ?? 0
     const realizadas = experimentais?.filter(a => ['concluido', 'pago'].includes(a.status)).length ?? 0
-    const matriculasCount = matriculas?.length ?? 0
-    const totalFat = matriculas?.reduce((acc, m) => acc + (m.taxa_matricula || 0) + (m.valor_plano || 0), 0) ?? 0
+    const matriculados = contatos.filter(c => c.status === 'ativo')
+    const matriculasCount = matriculados.length
+    const totalFat = matriculados.reduce((acc, m) => acc + (m.taxa_matricula || 0) + (m.valor_plano || 0), 0)
 
     // Intenções da IA
     const intencoes: Record<string, number> = {}
     conversas?.forEach(c => {
-      if (c.intencao_detectada) {
-        intencoes[c.intencao_detectada] = (intencoes[c.intencao_detectada] || 0) + 1
+      if (c.intencao) {
+        intencoes[c.intencao] = (intencoes[c.intencao] || 0) + 1
       }
     })
     const intencoesSorted = Object.entries(intencoes)
@@ -295,6 +329,42 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* Ocupação e Alunos Ativos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-gray-500">Alunos Ativos</span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center text-green-600 bg-green-50"><Users className="w-5 h-5" /></div>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{totalAlunosAtivos}</p>
+          <p className="text-xs text-gray-500 mt-1">Matriculados no centro</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-gray-500">Taxa de Ocupação</span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center text-brand-600 bg-brand-50"><Building2 className="w-5 h-5" /></div>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{ocupacao.taxa.toFixed(1)}%</p>
+          <p className="text-xs text-gray-500 mt-1">{ocupacao.ocupados} de {ocupacao.total} horários</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-gray-500">Horários Ocupados</span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center text-blue-600 bg-blue-50"><BarChart2 className="w-5 h-5" /></div>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{ocupacao.ocupados}</p>
+          <p className="text-xs text-gray-500 mt-1">Slots com aluno</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-gray-500">Horários Disponíveis</span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center text-emerald-600 bg-emerald-50"><Calendar className="w-5 h-5" /></div>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{ocupacao.disponiveis}</p>
+          <p className="text-xs text-gray-500 mt-1">Vagas abertas</p>
+        </div>
+      </div>
+
       {/* Funnel Visualization */}
       <div className="bg-white rounded-xl shadow-sm border p-6">
         <h3 className="font-semibold text-gray-900 mb-1">Funil de Conversão</h3>
@@ -457,6 +527,26 @@ export default function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      </div>
+
+      {/* Ocupação por Professor */}
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-brand-500" />
+          Ocupação por Professor
+        </h3>
+        <p className="text-sm text-gray-500 mb-4">Taxa de preenchimento dos horários</p>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={ocupacaoPorProf} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+              <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+              <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 12 }} />
+              <Tooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
+              <Bar dataKey="taxa" fill="#2183a8" radius={[0, 4, 4, 0]} name="Ocupação" />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
