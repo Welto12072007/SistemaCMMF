@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard, Shield, Mail } from 'lucide-react'
 import type { Professor, Curso, Sala, Plano, Perfil, UserRole } from '@/types'
 
@@ -95,7 +95,7 @@ function AcessosTab() {
       }).eq('id', editando.id)
     } else {
       // Create new user via Supabase Admin API
-      const { data, error } = await supabase.auth.admin.inviteUserByEmail(form.email, {
+      const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(form.email, {
         data: { nome: form.nome, role: form.role },
         redirectTo: `${window.location.origin}/definir-senha`,
       })
@@ -131,14 +131,14 @@ function AcessosTab() {
 
   async function handleDelete(perfil: Perfil) {
     if (!confirm(`Excluir acesso de ${perfil.nome}? Isso remove o login da pessoa.`)) return
-    await supabase.auth.admin.deleteUser(perfil.user_id)
+    await supabaseAdmin.auth.admin.deleteUser(perfil.user_id)
     await supabase.from('perfis').delete().eq('id', perfil.id)
     load()
   }
 
   async function handleResendInvite(perfil: Perfil) {
     setErro('')
-    const { error } = await supabase.auth.admin.inviteUserByEmail(perfil.email, {
+    const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(perfil.email, {
       redirectTo: `${window.location.origin}/definir-senha`,
     })
     if (error) {
