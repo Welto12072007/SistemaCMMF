@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard, Shield, Mail } from 'lucide-react'
+import { maskPhone, normalizePhone, formatPhoneDisplay } from '@/lib/utils'
 import type { Professor, Curso, Sala, Plano, Perfil, UserRole } from '@/types'
 
 type Tab = 'acessos' | 'professores' | 'cursos' | 'salas' | 'planos'
@@ -84,6 +85,7 @@ function AcessosTab() {
   async function handleSave(form: { nome: string; email: string; role: UserRole; professor_id: string; telefone: string }) {
     setErro('')
     setLoading(true)
+    const telNorm = form.telefone ? normalizePhone(form.telefone) : null
 
     if (editando) {
       // Update existing perfil
@@ -91,7 +93,7 @@ function AcessosTab() {
         nome: form.nome,
         role: form.role,
         professor_id: form.role === 'professor' ? form.professor_id || null : null,
-        telefone: form.telefone || null,
+        telefone: telNorm,
       }).eq('id', editando.id)
     } else {
       // Create new user via Supabase Admin API
@@ -113,7 +115,7 @@ function AcessosTab() {
         email: form.email,
         role: form.role,
         professor_id: form.role === 'professor' ? form.professor_id || null : null,
-        telefone: form.telefone || null,
+        telefone: telNorm,
         ativo: true,
       })
     }
@@ -168,6 +170,7 @@ function AcessosTab() {
           <tr>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Nome</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Email</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Telefone</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Perfil</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
             <th className="px-4 py-3"></th>
@@ -178,6 +181,7 @@ function AcessosTab() {
             <tr key={p.id} className="hover:bg-gray-50">
               <td className="px-4 py-3 text-sm font-medium">{p.nome}</td>
               <td className="px-4 py-3 text-sm text-gray-600">{p.email}</td>
+              <td className="px-4 py-3 text-sm text-gray-600">{formatPhoneDisplay(p.telefone)}</td>
               <td className="px-4 py-3">
                 <span className={`text-xs px-2 py-1 rounded-full ${ROLE_COLORS[p.role]}`}>
                   {ROLE_LABELS[p.role]}
@@ -229,7 +233,7 @@ function AcessoForm({ perfil, professores, loading, onSave, onClose }: {
     email: perfil?.email ?? '',
     role: perfil?.role ?? 'aluno' as UserRole,
     professor_id: perfil?.professor_id ?? '',
-    telefone: perfil?.telefone ?? '',
+    telefone: perfil?.telefone ? formatPhoneDisplay(perfil.telefone) : '',
   })
 
   return (
@@ -274,15 +278,21 @@ function AcessoForm({ perfil, professores, loading, onSave, onClose }: {
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Telefone (opcional)</label>
-            <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="(48) 99999-9999" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Telefone <span className="text-red-500">*</span></label>
+            <input
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              placeholder="(51) 99999-9999"
+              value={form.telefone}
+              onChange={(e) => setForm({ ...form, telefone: maskPhone(e.target.value) })}
+            />
+            <p className="text-xs text-gray-400 mt-1">Usado pela Antonia para enviar mensagens</p>
           </div>
         </div>
         <div className="flex justify-end gap-3 mt-5">
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
           <button
             onClick={() => onSave(form)}
-            disabled={loading || !form.nome || !form.email}
+            disabled={loading || !form.nome || !form.email || form.telefone.replace(/\D/g, '').length < 11}
             className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50"
           >
             {loading ? 'Salvando...' : perfil ? 'Salvar' : 'Enviar convite'}
@@ -355,7 +365,7 @@ function ProfessoresTab() {
                   ))}
                 </div>
               </td>
-              <td className="px-4 py-3 text-sm text-gray-600">{p.telefone || '—'}</td>
+              <td className="px-4 py-3 text-sm text-gray-600">{formatPhoneDisplay(p.telefone)}</td>
               <td className="px-4 py-3">
                 <span className={`text-xs px-2 py-1 rounded-full ${p.ativo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                   {p.ativo ? 'Ativo' : 'Inativo'}
@@ -390,7 +400,7 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
   const [form, setForm] = useState({
     nome: professor?.nome ?? '',
     instrumentos: professor?.instrumentos?.join(', ') ?? '',
-    telefone: professor?.telefone ?? '',
+    telefone: professor?.telefone ? formatPhoneDisplay(professor.telefone) : '',
     ativo: professor?.ativo ?? true,
   })
 
@@ -401,7 +411,7 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
         <div className="space-y-3">
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Instrumentos (separados por vírgula)" value={form.instrumentos} onChange={(e) => setForm({ ...form, instrumentos: e.target.value })} />
-          <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Telefone" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+          <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="(51) 99999-9999" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: maskPhone(e.target.value) })} />
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} /> Ativo
           </label>
@@ -411,9 +421,9 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
           <button onClick={() => onSave({
             nome: form.nome,
             instrumentos: form.instrumentos.split(',').map(s => s.trim()).filter(Boolean),
-            telefone: form.telefone || null,
+            telefone: form.telefone ? normalizePhone(form.telefone) : null,
             ativo: form.ativo,
-          })} className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">Salvar</button>
+          })} className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600" disabled={!form.nome}>Salvar</button>
         </div>
       </div>
     </div>

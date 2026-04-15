@@ -15,7 +15,6 @@ interface Aluno {
   data_nascimento?: string
   sexo?: string
   cpf?: string
-  rg?: string
   pais?: string
   cep?: string
   endereco_rua?: string
@@ -226,7 +225,6 @@ function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete }: {
               <Detail label="Data de Nascimento" value={a.data_nascimento ? new Date(a.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR') : undefined} />
               <Detail label="Sexo" value={a.sexo} />
               <Detail label="CPF" value={a.cpf} />
-              <Detail label="RG" value={a.rg} />
               <Detail label="Endereço" value={[a.endereco_rua, a.endereco_numero].filter(Boolean).join(', ')} />
               <Detail label="Bairro" value={a.bairro} />
               <Detail label="Cidade/UF" value={[a.cidade, a.estado].filter(Boolean).join(' - ')} />
@@ -235,6 +233,13 @@ function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete }: {
               <Detail label="Origem" value={a.origem} />
               <Detail label="Rede Social" value={a.rede_social_link ? `${a.rede_social_tipo || ''}: ${a.rede_social_link}` : undefined} />
               <Detail label="Resp. Financeiro" value={a.responsavel_financeiro === 'proprio' ? 'O Próprio' : a.nome_responsavel} />
+              {a.nome_responsavel && (
+                <>
+                  <Detail label="Tel. Responsável" value={a.telefone_responsavel} />
+                  <Detail label="CPF Responsável" value={a.cpf_responsavel} />
+                  <Detail label="Parentesco" value={a.grau_parentesco} />
+                </>
+              )}
               {a.tags && a.tags.length > 0 && (
                 <div className="col-span-2">
                   <p className="text-xs text-gray-500">Tags</p>
@@ -288,7 +293,6 @@ function AlunoForm({ aluno, onSave, onClose }: {
     data_nascimento: aluno?.data_nascimento ?? '',
     sexo: aluno?.sexo ?? '',
     cpf: aluno?.cpf ?? '',
-    rg: aluno?.rg ?? '',
     pais: aluno?.pais ?? 'Brasil',
     cep: aluno?.cep ?? '',
     endereco_rua: aluno?.endereco_rua ?? '',
@@ -314,6 +318,19 @@ function AlunoForm({ aluno, onSave, onClose }: {
   })
 
   const [showFull, setShowFull] = useState(false)
+
+  // Auto-detect minor and switch responsável
+  const isMinor = form.data_nascimento ? (() => {
+    const nascimento = new Date(form.data_nascimento + 'T12:00:00')
+    const hoje = new Date()
+    return (hoje.getFullYear() - nascimento.getFullYear() - (hoje < new Date(hoje.getFullYear(), nascimento.getMonth(), nascimento.getDate()) ? 1 : 0)) < 18
+  })() : false
+
+  useEffect(() => {
+    if (isMinor && form.responsavel_financeiro === 'proprio') {
+      setForm(f => ({ ...f, responsavel_financeiro: 'pai_mae' }))
+    }
+  }, [isMinor])
 
   function handleSubmit() {
     const payload: Record<string, unknown> = { ...form }
@@ -347,10 +364,9 @@ function AlunoForm({ aluno, onSave, onClose }: {
         {showFull && (
           <>
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Dados Adicionais:</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
               <FormInput label="Data de Nascimento" type="date" value={form.data_nascimento} onChange={(v) => setForm({ ...form, data_nascimento: v })} />
               <FormSelect label="Sexo" value={form.sexo} onChange={(v) => setForm({ ...form, sexo: v })} options={SEXO_OPTIONS} />
-              <FormInput label="RG" value={form.rg} onChange={(v) => setForm({ ...form, rg: v })} />
               <FormInput label="CPF" value={form.cpf} onChange={(v) => setForm({ ...form, cpf: v })} placeholder="000.000.000-00" />
             </div>
 
@@ -372,16 +388,24 @@ function AlunoForm({ aluno, onSave, onClose }: {
               <div className="col-span-2"><FormInput label="Link" value={form.rede_social_link} onChange={(v) => setForm({ ...form, rede_social_link: v })} placeholder="https://..." /></div>
             </div>
 
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Responsável Financeiro:</h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">
+              Responsável Financeiro:
+              {form.data_nascimento && (() => {
+                const nascimento = new Date(form.data_nascimento + 'T12:00:00')
+                const hoje = new Date()
+                const idade = hoje.getFullYear() - nascimento.getFullYear() - (hoje < new Date(hoje.getFullYear(), nascimento.getMonth(), nascimento.getDate()) ? 1 : 0)
+                return idade < 18 ? <span className="ml-2 text-xs text-amber-600 font-normal">(Aluno menor de idade — preencher responsável)</span> : null
+              })()}
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <FormSelect label="Quem é?" value={form.responsavel_financeiro} onChange={(v) => setForm({ ...form, responsavel_financeiro: v })} options={['proprio', 'pai_mae', 'outro']} />
               {form.responsavel_financeiro !== 'proprio' && (
                 <>
-                  <FormInput label="Nome do Responsável" value={form.nome_responsavel} onChange={(v) => setForm({ ...form, nome_responsavel: v })} />
+                  <FormInput label="Nome do Responsável" value={form.nome_responsavel} onChange={(v) => setForm({ ...form, nome_responsavel: v })} required />
                   <FormInput label="Telefone Responsável" value={form.telefone_responsavel} onChange={(v) => setForm({ ...form, telefone_responsavel: v })} />
                   <FormInput label="Email Responsável" value={form.email_responsavel} onChange={(v) => setForm({ ...form, email_responsavel: v })} />
                   <FormInput label="CPF Responsável" value={form.cpf_responsavel} onChange={(v) => setForm({ ...form, cpf_responsavel: v })} />
-                  <FormInput label="Grau de Parentesco" value={form.grau_parentesco} onChange={(v) => setForm({ ...form, grau_parentesco: v })} />
+                  <FormInput label="Grau de Parentesco" value={form.grau_parentesco} onChange={(v) => setForm({ ...form, grau_parentesco: v })} placeholder="Ex. Pai, Mãe, Tio" />
                 </>
               )}
             </div>
