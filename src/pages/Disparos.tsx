@@ -59,7 +59,7 @@ export default function Disparos() {
   const [busca, setBusca] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [enviando, setEnviando] = useState(false)
-  const [resultado, setResultado] = useState<{ sucesso: number; erro: number } | null>(null)
+  const [resultado, setResultado] = useState<{ sucesso: number; erro: number; detalhes?: string[] } | null>(null)
 
   useEffect(() => {
     loadContatos()
@@ -138,10 +138,20 @@ export default function Disparos() {
 
     let sucesso = 0
     let erro = 0
+    const erroDetalhes: string[] = []
 
     for (const dest of selecionados) {
       try {
-        const tel = dest.telefone.replace(/\D/g, '')
+        let tel = dest.telefone.replace(/\D/g, '')
+        // Normalizar: se tem 11 dígitos (DDD+9 dígitos), adicionar DDI 55
+        if (tel.length === 11) tel = `55${tel}`
+        // Se não tem formato válido, pular
+        if (tel.length < 12) {
+          erroDetalhes.push(`${dest.nome}: telefone inválido (${dest.telefone})`)
+          erro++
+          continue
+        }
+
         const res = await fetch(
           `${import.meta.env.VITE_EVOLUTION_URL || 'https://api.centrodemusicamurilofinger.com'}/message/sendText/CentroMusica`,
           {
@@ -156,14 +166,20 @@ export default function Disparos() {
             }),
           }
         )
-        if (res.ok) sucesso++
-        else erro++
-      } catch {
+        if (res.ok) {
+          sucesso++
+        } else {
+          const body = await res.text().catch(() => '')
+          erroDetalhes.push(`${dest.nome}: ${res.status} ${body.slice(0, 100)}`)
+          erro++
+        }
+      } catch (e) {
+        erroDetalhes.push(`${dest.nome}: ${e instanceof Error ? e.message : 'erro de rede'}`)
         erro++
       }
     }
 
-    setResultado({ sucesso, erro })
+    setResultado({ sucesso, erro, detalhes: erroDetalhes })
     setEnviando(false)
   }
 
@@ -358,6 +374,11 @@ export default function Disparos() {
                   <div className="flex justify-between text-sm">
                     <span className="text-red-500">Erros</span>
                     <span className="font-bold text-red-500">{resultado.erro}</span>
+                  </div>
+                )}
+                {resultado.detalhes && resultado.detalhes.length > 0 && (
+                  <div className="mt-2 text-xs text-red-500 bg-red-50 rounded-lg p-2 max-h-32 overflow-y-auto space-y-1">
+                    {resultado.detalhes.map((d, i) => <div key={i}>{d}</div>)}
                   </div>
                 )}
               </div>
