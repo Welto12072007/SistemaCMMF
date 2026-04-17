@@ -6,6 +6,10 @@ import {
   X,
   ChevronDown,
   RefreshCw,
+  Check,
+  Ban,
+  Clock,
+  Trash2,
 } from 'lucide-react'
 
 interface Professor {
@@ -29,9 +33,15 @@ type Status = 'disponivel' | 'ocupado' | 'indisponivel'
 const DIAS_SEMANA = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 
 const STATUS_STYLES: Record<Status, string> = {
-  disponivel: 'bg-emerald-100 hover:bg-emerald-200 border-emerald-300 text-emerald-600',
-  ocupado: 'bg-sky-100 hover:bg-sky-200 border-sky-300 text-sky-800',
-  indisponivel: 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-300',
+  disponivel: 'bg-emerald-100 border-emerald-300 text-emerald-600',
+  ocupado: 'bg-sky-100 border-sky-300 text-sky-800',
+  indisponivel: 'bg-gray-50 border-gray-200 text-gray-300',
+}
+
+const STATUS_STYLES_SELECTED: Record<Status, string> = {
+  disponivel: 'bg-emerald-200 border-emerald-500 text-emerald-700 ring-2 ring-emerald-400',
+  ocupado: 'bg-sky-200 border-sky-500 text-sky-900 ring-2 ring-sky-400',
+  indisponivel: 'bg-gray-200 border-gray-400 text-gray-500 ring-2 ring-gray-400',
 }
 
 const STATUS_LABEL: Record<Status, string> = {
@@ -51,6 +61,9 @@ export default function Horarios() {
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [lastSync, setLastSync] = useState<Date | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const [lastClicked, setLastClicked] = useState<string | null>(null)
   const popupRef = useRef<HTMLDivElement>(null)
 
   const fetchData = useCallback(async () => {
@@ -184,6 +197,137 @@ export default function Horarios() {
     setEditCell(h)
     setEditStatus(h.status as Status)
     setEditAluno(h.aluno_nome || '')
+  }
+
+  // Multi-select: toggle cell with Shift support for range
+  const toggleSelect = (h: Horario, profId: string, profSlots: Horario[], e: React.MouseEvent) => {
+    const newSel = new Set(selected)
+
+    if (e.shiftKey && lastClicked) {
+      // Range select: select all slots between lastClicked and current within same professor
+      const sorted = profSlots.sort((a, b) => {
+        const dayDiff = DIAS_SEMANA.indexOf(a.dia_semana) - DIAS_SEMANA.indexOf(b.dia_semana)
+        return dayDiff !== 0 ? dayDiff : a.hora_inicio.localeCompare(b.hora_inicio)
+      })
+      const idxA = sorted.findIndex(s => s.id === lastClicked)
+      const idxB = sorted.findIndex(s => s.id === h.id)
+      if (idxA >= 0 && idxB >= 0) {
+        const [start, end] = [Math.min(idxA, idxB), Math.max(idxA, idxB)]
+        for (let i = start; i <= end; i++) newSel.add(sorted[i].id)
+      }
+    } else {
+      if (newSel.has(h.id)) newSel.delete(h.id)
+      else newSel.add(h.id)
+    }
+
+    setLastClicked(h.id)
+    setSelected(newSel)
+  }
+
+  const clearSelection = () => {
+    setSelected(new Set())
+    setLastClicked(null)
+  }
+
+  // Select all visible slots for a professor
+  const selectAllProf = (profId: string) => {
+    const profSlotIds = horarios.filter(h => h.professor_id === profId).map(h => h.id)
+    const newSel = new Set(selected)
+    const allSelected = profSlotIds.every(id => newSel.has(id))
+    if (allSelected) {
+      profSlotIds.forEach(id => newSel.delete(id))
+    } else {
+      profSlotIds.forEach(id => newSel.add(id))
+    }
+    setSelected(newSel)
+  }
+
+  // Select entire column (day) for a professor
+  const selectDay = (profId: string, dia: string) => {
+    const daySlotIds = horarios.filter(h => h.professor_id === profId && h.dia_semana === dia).map(h => h.id)
+    const newSel = new Set(selected)
+    const allSelected = daySlotIds.every(id => newSel.has(id))
+    if (allSelected) {
+      daySlotIds.forEach(id => newSel.delete(id))
+    } else {
+      daySlotIds.forEach(id => newSel.add(id))
+    }
+    setSelected(newSel)
+  }
+
+  // Select entire row (time) for a professor
+  const selectTime = (profId: string, hora: string) => {
+    const timeSlotIds = horarios.filter(h => h.professor_id === profId && h.hora_inicio.slice(0, 5) === hora).map(h => h.id)
+    const newSel = new Set(selected)
+    const allSelected = timeSlotIds.every(id => newSel.has(id))
+    if (allSelected) {
+      timeSlotIds.forEach(id => newSel.delete(id))
+    } else {
+      timeSlotIds.forEach(id => newSel.add(id))
+    }
+    setSelected(newSel)
+  }
+
+  // Bulk status change
+  const bulkChangeStatus = async (newStatus: Status) => {
+    if (selected.size === 0) return
+    setBulkSaving(true)
+
+    const selectedHorarios = horarios.filter(h => selected.has(h.id))
+    const aluno = newStatus === 'ocupado' ? null : null
+
+    // Build professor sheet name lookup
+    const sheetNameMap: Record<string, string> = {
+      'Alberto Gabriel Maracheski (Betto)': 'Betto',
+      'Fabiana Cezar Renner': 'Fabi',
+      'Jeferson Coelho Rodrigues': 'Jeferson',
+      'João Vitor Saft': 'João',
+      'Lucas Cardoso da Silva': 'Lucas Cardoso',
+      'Maria Eduarda Ermel Thoen (Madu)': 'Madu',
+      'Olmiro Daniel Velho Neto (Neto)': 'Neto Bateria',
+      'Uilian Dornelles': 'Uilian Dorneles',
+      'Wesley Goncalves da Silva Araujo': 'Wesley Gonçalves',
+      'Willian Batista Fruscalso': 'Willian Fruscalso',
+    }
+
+    // Batch update Supabase (chunks of 50)
+    for (let i = 0; i < selectedHorarios.length; i += 50) {
+      const chunk = selectedHorarios.slice(i, i + 50)
+      await Promise.all(chunk.map(h =>
+        supabase.from('horarios').update({
+          status: newStatus,
+          aluno_nome: aluno,
+        }).eq('id', h.id)
+      ))
+    }
+
+    // Write-back to Google Sheets (fire-and-forget, in chunks)
+    for (const h of selectedHorarios) {
+      const prof = professores.find(p => p.id === h.professor_id)
+      if (prof) {
+        const sheetName = sheetNameMap[prof.nome] || prof.nome
+        fetch('https://cmmf.app.n8n.cloud/webhook/verificar-disponibilidade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'update-cell',
+            professor: sheetName,
+            dia_semana: h.dia_semana,
+            hora_inicio: h.hora_inicio.slice(0, 5),
+            status: newStatus,
+            aluno_nome: '',
+          }),
+        }).catch(() => {})
+      }
+    }
+
+    // Update local state
+    setHorarios(prev => prev.map(h =>
+      selected.has(h.id) ? { ...h, status: newStatus, aluno_nome: aluno } : h
+    ))
+
+    clearSelection()
+    setBulkSaving(false)
   }
 
   const handleSave = async () => {
@@ -327,17 +471,38 @@ export default function Horarios() {
             if (h.status in profStats) profStats[h.status as Status]++
           }
 
+          const profSelected = profSlots.filter(h => selected.has(h.id)).length
+          const allProfSelected = profSelected === profSlots.length && profSlots.length > 0
+
           return (
             <div key={prof.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               {/* Professor header */}
               <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-100">
-                <div>
-                  <span className="font-semibold text-gray-900">{prof.nome}</span>
-                  <span className="text-xs text-gray-400 ml-2">
-                    {prof.instrumentos?.join(', ')}
-                  </span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => selectAllProf(prof.id)}
+                    className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                      allProfSelected
+                        ? 'bg-brand-500 border-brand-500 text-white'
+                        : profSelected > 0
+                        ? 'bg-brand-100 border-brand-400'
+                        : 'border-gray-300 hover:border-gray-400'
+                    }`}
+                    title={allProfSelected ? 'Desmarcar todos' : 'Selecionar todos os horários'}
+                  >
+                    {allProfSelected && <Check className="w-3 h-3" />}
+                  </button>
+                  <div>
+                    <span className="font-semibold text-gray-900">{prof.nome}</span>
+                    <span className="text-xs text-gray-400 ml-2">
+                      {prof.instrumentos?.join(', ')}
+                    </span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-gray-500">
+                  {profSelected > 0 && (
+                    <span className="text-brand-600 font-semibold">{profSelected} selecionados</span>
+                  )}
                   <span className="text-emerald-600">{profStats.disponivel} livres</span>
                   <span className="text-blue-600">{profStats.ocupado} ocupados</span>
                 </div>
@@ -352,7 +517,12 @@ export default function Horarios() {
                         Horário
                       </th>
                       {profDays.map(dia => (
-                        <th key={dia} className="px-1 py-2 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b border-gray-200">
+                        <th
+                          key={dia}
+                          onClick={() => selectDay(prof.id, dia)}
+                          className="px-1 py-2 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 select-none"
+                          title={`Selecionar toda ${dia}`}
+                        >
                           {dia}
                         </th>
                       ))}
@@ -361,7 +531,11 @@ export default function Horarios() {
                   <tbody>
                     {profTimeSlots.map(hora => (
                       <tr key={hora} className="border-b border-gray-100">
-                        <td className="px-2 py-0.5 font-mono text-[11px] text-gray-500 bg-gray-50 border-r border-gray-200 sticky left-0 z-10">
+                        <td
+                          onClick={() => selectTime(prof.id, hora)}
+                          className="px-2 py-0.5 font-mono text-[11px] text-gray-500 bg-gray-50 border-r border-gray-200 sticky left-0 z-10 cursor-pointer hover:bg-gray-100 select-none"
+                          title={`Selecionar toda linha ${hora}`}
+                        >
                           {hora}
                         </td>
                         {profDays.map(dia => {
@@ -370,19 +544,24 @@ export default function Horarios() {
                             return <td key={dia} className="px-1 py-1 border-r border-gray-100" />
                           }
                           const st = cell.status as Status
+                          const isSelected = selected.has(cell.id)
                           return (
                             <td key={dia} className="px-0.5 py-0.5 border-r border-gray-100">
                               <button
-                                onClick={() => openEdit(cell)}
-                                className={`w-full h-7 px-1 rounded border text-[11px] font-medium truncate transition-colors cursor-pointer ${STATUS_STYLES[st]}`}
+                                onClick={(e) => toggleSelect(cell, prof.id, profSlots, e)}
+                                onDoubleClick={() => openEdit(cell)}
+                                className={`w-full h-7 px-1 rounded border text-[11px] font-medium truncate transition-all cursor-pointer select-none ${
+                                  isSelected ? STATUS_STYLES_SELECTED[st] : STATUS_STYLES[st] + ' hover:opacity-75'
+                                }`}
                                 title={
                                   st === 'ocupado'
-                                    ? cell.aluno_nome || 'Ocupado'
+                                    ? `${cell.aluno_nome || 'Ocupado'} — clique para selecionar, duplo-clique para editar`
                                     : st === 'indisponivel'
-                                    ? 'Indisponível'
-                                    : 'Disponível — clique para editar'
+                                    ? 'Indisponível — clique para selecionar'
+                                    : 'Disponível — clique para selecionar, duplo-clique para editar'
                                 }
                               >
+                                {isSelected && <Check className="w-3 h-3 inline mr-0.5" />}
                                 {st === 'ocupado'
                                   ? cell.aluno_nome || 'Ocupado'
                                   : st === 'indisponivel'
@@ -401,6 +580,61 @@ export default function Horarios() {
           )
         })}
       </div>
+
+      {/* Floating bulk action bar */}
+      {selected.size > 0 && !editCell && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-gray-900 text-white rounded-2xl shadow-2xl px-5 py-3 flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
+          <span className="text-sm font-medium whitespace-nowrap">
+            {selected.size} {selected.size === 1 ? 'horário selecionado' : 'horários selecionados'}
+          </span>
+
+          <div className="h-6 w-px bg-gray-600" />
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => bulkChangeStatus('disponivel')}
+              disabled={bulkSaving}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              title="Marcar como disponível"
+            >
+              <Check className="w-3.5 h-3.5" />
+              Disponível
+            </button>
+            <button
+              onClick={() => bulkChangeStatus('indisponivel')}
+              disabled={bulkSaving}
+              className="flex items-center gap-1.5 bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              title="Marcar como indisponível"
+            >
+              <Ban className="w-3.5 h-3.5" />
+              Indisponível
+            </button>
+            <button
+              onClick={() => bulkChangeStatus('ocupado')}
+              disabled={bulkSaving}
+              className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              title="Marcar como ocupado"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              Ocupado
+            </button>
+          </div>
+
+          <div className="h-6 w-px bg-gray-600" />
+
+          <button
+            onClick={clearSelection}
+            className="flex items-center gap-1 text-gray-400 hover:text-white text-sm transition-colors"
+          >
+            <X className="w-4 h-4" />
+            Limpar
+          </button>
+
+          {bulkSaving && (
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+          )}
+        </div>
+      )}
 
       {/* Edit popup */}
       {editCell && (
