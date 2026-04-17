@@ -174,10 +174,10 @@ export default function Disparos() {
     for (const dest of selecionados) {
       try {
         let tel = dest.telefone.replace(/\D/g, '')
-        // Normalizar: se tem 11 dígitos (DDD+9 dígitos), adicionar DDI 55
-        if (tel.length === 11) tel = `55${tel}`
-        // Se não tem formato válido, pular
-        if (tel.length < 12) {
+        // Normalizar telefone brasileiro
+        if (tel.length === 11) tel = `55${tel}` // DDD+9dig → adicionar DDI
+        if (tel.length === 12) tel = tel.slice(0, 4) + '9' + tel.slice(4) // 55+DDD+8dig → inserir 9
+        if (tel.length !== 13) {
           erroDetalhes.push(`${dest.nome}: telefone inválido (${dest.telefone})`)
           erro++
           continue
