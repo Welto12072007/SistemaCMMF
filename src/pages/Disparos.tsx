@@ -82,16 +82,16 @@ export default function Disparos() {
 
     switch (grupoAtivo) {
       case 'alunos_ativos':
-        lista = lista.filter((c) => c.status === 'matriculado')
+        lista = lista.filter((c) => c.status === 'ativo')
         break
       case 'ex_alunos':
-        lista = lista.filter((c) => ['concluido', 'perdido', 'cancelado'].includes(c.status || ''))
+        lista = lista.filter((c) => ['perdido', 'cancelado', 'concluido'].includes(c.status || ''))
         break
       case 'leads':
-        lista = lista.filter((c) => ['lead', 'qualificado'].includes(c.status || ''))
+        lista = lista.filter((c) => c.status === 'lead')
         break
       case 'aguardando_pagamento':
-        lista = lista.filter((c) => c.status === 'aguardando_pagamento')
+        lista = lista.filter((c) => c.status === 'agendado')
         break
       case 'instrumento':
         if (instrumentoFiltro) {

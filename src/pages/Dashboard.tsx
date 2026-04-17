@@ -442,7 +442,7 @@ export default function Dashboard() {
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
             <Bot className="w-4 h-4 text-brand-500" />
-            Métricas da IA (Sofia)
+            Métricas da IA (Antonia)
           </h3>
           <p className="text-sm text-gray-500 mb-4">Este mês</p>
 
