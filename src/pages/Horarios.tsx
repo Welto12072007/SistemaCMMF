@@ -65,6 +65,7 @@ export default function Horarios() {
   const [bulkSaving, setBulkSaving] = useState(false)
   const [lastClicked, setLastClicked] = useState<string | null>(null)
   const popupRef = useRef<HTMLDivElement>(null)
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -548,8 +549,20 @@ export default function Horarios() {
                           return (
                             <td key={dia} className="px-0.5 py-0.5 border-r border-gray-100">
                               <button
-                                onClick={(e) => toggleSelect(cell, prof.id, profSlots, e)}
-                                onDoubleClick={() => openEdit(cell)}
+                                onClick={(e) => {
+                                  if (clickTimer.current) clearTimeout(clickTimer.current)
+                                  clickTimer.current = setTimeout(() => {
+                                    toggleSelect(cell, prof.id, profSlots, e)
+                                    clickTimer.current = null
+                                  }, 250)
+                                }}
+                                onDoubleClick={() => {
+                                  if (clickTimer.current) {
+                                    clearTimeout(clickTimer.current)
+                                    clickTimer.current = null
+                                  }
+                                  openEdit(cell)
+                                }}
                                 className={`w-full h-7 px-1 rounded border text-[11px] font-medium truncate transition-all cursor-pointer select-none ${
                                   isSelected ? STATUS_STYLES_SELECTED[st] : STATUS_STYLES[st] + ' hover:opacity-75'
                                 }`}
