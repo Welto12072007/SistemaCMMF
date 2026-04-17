@@ -19,6 +19,7 @@ interface Destinatario {
   telefone: string
   instrumento_interesse?: string
   status?: string
+  label?: string
   selected: boolean
 }
 
@@ -66,14 +67,44 @@ export default function Disparos() {
   }, [])
 
   async function loadContatos() {
-    const { data } = await supabase
-      .from('alunos')
-      .select('id, nome, telefone, instrumento_interesse, status')
-      .order('nome')
+    // Fetch alunos and labels in parallel
+    const [alunosRes, labelsRes] = await Promise.all([
+      supabase.from('alunos').select('id, nome, telefone, instrumento_interesse, status').order('nome'),
+      supabase.from('contato_labels').select('telefone, label_name'),
+    ])
 
-    if (data) {
-      setContatos(data.map((c) => ({ ...c, selected: false })))
+    const alunos = alunosRes.data || []
+    const labels = labelsRes.data || []
+
+    // Build label map by phone
+    const labelMap = new Map<string, string>()
+    for (const l of labels) {
+      labelMap.set(l.telefone, l.label_name)
     }
+
+    // Merge labels into alunos
+    const merged: Destinatario[] = alunos.map((c) => ({
+      ...c,
+      label: labelMap.get(c.telefone),
+      selected: false,
+    }))
+
+    // Add label-only contacts (not in alunos table)
+    const alunoPhones = new Set(alunos.map((a) => a.telefone))
+    for (const l of labels) {
+      if (!alunoPhones.has(l.telefone)) {
+        merged.push({
+          id: `label-${l.telefone}`,
+          nome: '',
+          telefone: l.telefone,
+          status: undefined,
+          label: l.label_name,
+          selected: false,
+        })
+      }
+    }
+
+    setContatos(merged)
   }
 
   // Filter by group and search
@@ -82,10 +113,10 @@ export default function Disparos() {
 
     switch (grupoAtivo) {
       case 'alunos_ativos':
-        lista = lista.filter((c) => c.status === 'ativo')
+        lista = lista.filter((c) => c.status === 'ativo' || c.label === 'Aluno CMMF')
         break
       case 'ex_alunos':
-        lista = lista.filter((c) => ['perdido', 'cancelado', 'concluido'].includes(c.status || ''))
+        lista = lista.filter((c) => ['perdido', 'cancelado', 'concluido'].includes(c.status || '') || c.label === 'Ex aluno')
         break
       case 'leads':
         lista = lista.filter((c) => c.status === 'lead')
