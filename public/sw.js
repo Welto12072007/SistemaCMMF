@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cmmf-v1'
+const CACHE_NAME = 'cmmf-v8'
 
 self.addEventListener('install', () => {
   self.skipWaiting()
@@ -22,10 +22,17 @@ self.addEventListener('fetch', (event) => {
   // Skip API calls and auth requests
   if (request.url.includes('supabase.co') || request.url.includes('/auth/')) return
 
+  // For navigation requests (HTML pages), always fetch from network first
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request).catch(() => caches.match(request))
+    )
+    return
+  }
+
   event.respondWith(
     fetch(request)
       .then((response) => {
-        // Cache successful responses
         if (response.status === 200) {
           const clone = response.clone()
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
