@@ -214,7 +214,7 @@ export default function Horarios() {
       const idxB = sorted.findIndex(s => s.id === h.id)
       if (idxA >= 0 && idxB >= 0) {
         const [start, end] = [Math.min(idxA, idxB), Math.max(idxA, idxB)]
-        for (let i = start; i <= end; i++) newSel.add(sorted[i].id)
+        for (let i = start; i <= end; i++) { const s = sorted[i]; if (s) newSel.add(s.id) }
       }
     } else {
       if (newSel.has(h.id)) newSel.delete(h.id)
