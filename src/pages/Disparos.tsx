@@ -11,6 +11,8 @@ import {
   Filter,
   MessageSquare,
   Loader2,
+  Image,
+  Paperclip,
 } from 'lucide-react'
 
 interface Destinatario {
@@ -61,6 +63,8 @@ export default function Disparos() {
   const [mensagem, setMensagem] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [resultado, setResultado] = useState<{ sucesso: number; erro: number; detalhes?: string[] } | null>(null)
+  const [mediaUrl, setMediaUrl] = useState('')
+  const [mediaType, setMediaType] = useState<'text' | 'image' | 'video' | 'audio' | 'document'>('text')
 
   useEffect(() => {
     loadContatos()
@@ -183,20 +187,45 @@ export default function Disparos() {
           continue
         }
 
-        const res = await fetch(
-          `${import.meta.env.VITE_EVOLUTION_URL || 'https://api.centrodemusicamurilofinger.com'}/message/sendText/CentroMusica`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              apikey: import.meta.env.VITE_EVOLUTION_KEY || '',
-            },
-            body: JSON.stringify({
-              number: tel,
-              text: mensagem,
-            }),
-          }
-        )
+        const baseUrl = import.meta.env.VITE_EVOLUTION_URL || 'https://api.centrodemusicamurilofinger.com'
+        const apiKey = import.meta.env.VITE_EVOLUTION_KEY || ''
+
+        let res: Response
+        if (mediaType !== 'text' && mediaUrl.trim()) {
+          // Send media message
+          res = await fetch(
+            `${baseUrl}/message/sendMedia/CentroMusica`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                apikey: apiKey,
+              },
+              body: JSON.stringify({
+                number: tel,
+                mediatype: mediaType,
+                media: mediaUrl.trim(),
+                caption: mensagem || undefined,
+              }),
+            }
+          )
+        } else {
+          // Send text message
+          res = await fetch(
+            `${baseUrl}/message/sendText/CentroMusica`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                apikey: apiKey,
+              },
+              body: JSON.stringify({
+                number: tel,
+                text: mensagem,
+              }),
+            }
+          )
+        }
         if (res.ok) {
           sucesso++
         } else {
@@ -364,6 +393,45 @@ export default function Disparos() {
               <MessageSquare className="w-4 h-4" />
               Mensagem
             </h3>
+
+            {/* Media Type Selector */}
+            <div className="flex gap-1 mb-3 bg-gray-100 rounded-lg p-1">
+              {([
+                { key: 'text', label: 'Texto' },
+                { key: 'image', label: 'Imagem' },
+                { key: 'video', label: 'Vídeo' },
+                { key: 'audio', label: 'Áudio' },
+                { key: 'document', label: 'Documento' },
+              ] as const).map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setMediaType(t.key)}
+                  className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    mediaType === t.key ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-600'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Media URL Input */}
+            {mediaType !== 'text' && (
+              <div className="mb-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Paperclip className="w-3.5 h-3.5 text-gray-400" />
+                  <label className="text-xs text-gray-500">URL da mídia</label>
+                </div>
+                <input
+                  type="url"
+                  value={mediaUrl}
+                  onChange={(e) => setMediaUrl(e.target.value)}
+                  placeholder={`https://exemplo.com/arquivo.${mediaType === 'image' ? 'jpg' : mediaType === 'video' ? 'mp4' : mediaType === 'audio' ? 'mp3' : 'pdf'}`}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
+                />
+              </div>
+            )}
+
             <textarea
               value={mensagem}
               onChange={(e) => setMensagem(e.target.value)}
@@ -371,11 +439,14 @@ export default function Disparos() {
               rows={6}
               className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 resize-none"
             />
-            <p className="text-xs text-gray-400 mt-1">{mensagem.length} caracteres</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {mensagem.length} caracteres
+              {mediaType !== 'text' && mediaUrl && ' • com mídia'}
+            </p>
 
             <button
               onClick={enviarDisparos}
-              disabled={enviando || selecionados.length === 0 || !mensagem.trim()}
+              disabled={enviando || selecionados.length === 0 || (!mensagem.trim() && !(mediaType !== 'text' && mediaUrl.trim()))}
               className="w-full mt-3 flex items-center justify-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {enviando ? (

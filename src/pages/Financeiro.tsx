@@ -9,6 +9,9 @@ import {
   Plus,
   Trash2,
   CalendarDays,
+  Users,
+  CheckCircle2,
+  Clock,
 } from 'lucide-react'
 import {
   BarChart,
@@ -43,7 +46,32 @@ const TIPOS_AULA = [
   'Individual Mensal', 'Individual Semestral', 'Grupo', 'Avulsa',
 ]
 
+interface ProfPagamento {
+  professor_id: string
+  professor_nome: string
+  tipo: string
+  valor_hora: number
+  aulas_mes: number
+  presencas: number
+  faltas_justificadas: number
+  total_aulas_pagas: number
+  valor_aulas: number
+  extras: number
+  total: number
+}
+
+interface TrabalhoExtra {
+  id: string
+  professor_id: string
+  professor_nome?: string
+  descricao: string
+  valor: number
+  data: string
+  aprovado: boolean
+}
+
 export default function Financeiro() {
+  const [tab, setTab] = useState<'fluxo' | 'professores'>('fluxo')
   const [mesAtual, setMesAtual] = useState(new Date().getMonth() + 1)
   const [anoAtual, setAnoAtual] = useState(new Date().getFullYear())
   const [entradas, setEntradas] = useState<FluxoItem[]>([])
@@ -53,11 +81,25 @@ export default function Financeiro() {
   const [totalMatriculas, setTotalMatriculas] = useState(0)
   const [faturamentoMes, setFaturamentoMes] = useState(0)
 
+  // Professor payment state
+  const [profPagamentos, setProfPagamentos] = useState<ProfPagamento[]>([])
+  const [extras, setExtras] = useState<TrabalhoExtra[]>([])
+  const [showExtraForm, setShowExtraForm] = useState(false)
+  const [professores, setProfessores] = useState<{ id: string; nome: string; tipo_professor: string; valor_hora_aula: number }[]>([])
+
   useEffect(() => {
     loadFluxo()
     loadResumoAnual()
     loadFaturamento()
+    loadProfPagamentos()
+    loadExtras()
+    loadProfessores()
   }, [mesAtual, anoAtual])
+
+  async function loadProfessores() {
+    const { data } = await supabase.from('professores').select('id, nome, tipo_professor, valor_hora_aula').eq('ativo', true).order('nome')
+    if (data) setProfessores(data.map(p => ({ ...p, tipo_professor: p.tipo_professor || 'B', valor_hora_aula: Number(p.valor_hora_aula) || 20 })))
+  }
 
   async function loadFluxo() {
     const { data } = await supabase
@@ -105,6 +147,96 @@ export default function Financeiro() {
     }
   }
 
+  async function loadProfPagamentos() {
+    const primeiroDia = `${anoAtual}-${String(mesAtual).padStart(2, '0')}-01`
+    const ultimoDia = new Date(anoAtual, mesAtual, 0).toISOString().slice(0, 10)
+
+    // Buscar professores
+    const { data: profs } = await supabase.from('professores').select('id, nome, tipo_professor, valor_hora_aula').eq('ativo', true)
+    if (!profs) return
+
+    // Buscar presenças do mês
+    const { data: presencasMes } = await supabase
+      .from('presencas')
+      .select('*')
+      .gte('data', primeiroDia)
+      .lte('data', ultimoDia)
+
+    // Buscar extras do mês
+    const { data: extrasMes } = await supabase
+      .from('trabalhos_extras')
+      .select('*')
+      .gte('data', primeiroDia)
+      .lte('data', ultimoDia)
+      .eq('aprovado', true)
+
+    const pagamentos: ProfPagamento[] = profs.map(prof => {
+      const presProf = (presencasMes || []).filter(p => p.professor_id === prof.id)
+      const presentes = presProf.filter(p => p.presente === true).length
+      const fj = presProf.filter(p => !p.presente && p.tipo_falta === 'falta_justificada').length
+      const totalAulasPagas = presentes // FJ não paga, injustificada também não
+      const valorHora = Number(prof.valor_hora_aula) || (prof.tipo_professor === 'A' ? 26.66 : 20.00)
+      const valorAulas = totalAulasPagas * valorHora
+      const extrasProf = (extrasMes || []).filter(e => e.professor_id === prof.id).reduce((s, e) => s + Number(e.valor), 0)
+
+      return {
+        professor_id: prof.id,
+        professor_nome: prof.nome,
+        tipo: prof.tipo_professor || 'B',
+        valor_hora: valorHora,
+        aulas_mes: presProf.length,
+        presencas: presentes,
+        faltas_justificadas: fj,
+        total_aulas_pagas: totalAulasPagas,
+        valor_aulas: valorAulas,
+        extras: extrasProf,
+        total: valorAulas + extrasProf,
+      }
+    }).filter(p => p.aulas_mes > 0 || p.extras > 0)
+
+    setProfPagamentos(pagamentos)
+  }
+
+  async function loadExtras() {
+    const primeiroDia = `${anoAtual}-${String(mesAtual).padStart(2, '0')}-01`
+    const ultimoDia = new Date(anoAtual, mesAtual, 0).toISOString().slice(0, 10)
+
+    const { data } = await supabase
+      .from('trabalhos_extras')
+      .select('*, professor:professores(nome)')
+      .gte('data', primeiroDia)
+      .lte('data', ultimoDia)
+      .order('data', { ascending: false })
+
+    if (data) {
+      setExtras(data.map((e: any) => ({
+        ...e,
+        professor_nome: (e.professor as any)?.nome || '—',
+        valor: Number(e.valor),
+      })))
+    }
+  }
+
+  async function handleApproveExtra(id: string, approve: boolean) {
+    await supabase.from('trabalhos_extras').update({ aprovado: approve }).eq('id', id)
+    loadExtras()
+    loadProfPagamentos()
+  }
+
+  async function handleAddExtra(form: { professor_id: string; descricao: string; valor: number; data: string }) {
+    await supabase.from('trabalhos_extras').insert(form)
+    setShowExtraForm(false)
+    loadExtras()
+    loadProfPagamentos()
+  }
+
+  async function handleDeleteExtra(id: string) {
+    if (!confirm('Excluir este trabalho extra?')) return
+    await supabase.from('trabalhos_extras').delete().eq('id', id)
+    loadExtras()
+    loadProfPagamentos()
+  }
+
   async function handleAddFluxo(form: Partial<FluxoItem>) {
     await supabase.from('fluxo_alunos').insert({
       ...form,
@@ -134,6 +266,20 @@ export default function Financeiro() {
           <p className="text-gray-500">Controle financeiro e fluxo de alunos</p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mr-3">
+            <button
+              onClick={() => setTab('fluxo')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === 'fluxo' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-600'}`}
+            >
+              Fluxo de Alunos
+            </button>
+            <button
+              onClick={() => setTab('professores')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === 'professores' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-600'}`}
+            >
+              Pagamentos Professores
+            </button>
+          </div>
           <select
             value={mesAtual}
             onChange={(e) => setMesAtual(Number(e.target.value))}
@@ -156,6 +302,8 @@ export default function Financeiro() {
       </div>
 
       {/* KPIs */}
+      {tab === 'fluxo' && (
+      <>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl shadow-sm border p-5">
           <div className="flex items-center gap-2 mb-2">
@@ -341,6 +489,193 @@ export default function Financeiro() {
           onClose={() => setShowForm(null)}
         />
       )}
+      </>
+      )}
+
+      {/* PROFESSOR PAYMENT TAB */}
+      {tab === 'professores' && (
+        <>
+          {/* Professor Payment KPIs */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl shadow-sm border p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="w-5 h-5 text-blue-500" />
+                <span className="text-sm text-gray-500">Professores Ativos</span>
+              </div>
+              <p className="text-2xl font-bold">{profPagamentos.length}</p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <span className="text-sm text-gray-500">Total Aulas</span>
+              </div>
+              <p className="text-2xl font-bold text-green-600">{profPagamentos.reduce((s, p) => s + p.presencas, 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="w-5 h-5 text-orange-500" />
+                <span className="text-sm text-gray-500">Extras Pendentes</span>
+              </div>
+              <p className="text-2xl font-bold text-orange-600">{extras.filter(e => !e.aprovado).length}</p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign className="w-5 h-5 text-brand-500" />
+                <span className="text-sm text-gray-500">Total a Pagar</span>
+              </div>
+              <p className="text-2xl font-bold text-brand-600">
+                R$ {profPagamentos.reduce((s, p) => s + p.total, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
+
+          {/* Professor Payment Table */}
+          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div className="bg-brand-600 text-white px-4 py-3">
+              <h3 className="font-bold text-sm uppercase tracking-wider">
+                Honorários {MESES[mesAtual - 1]} / {anoAtual}
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Professor</th>
+                    <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">Tipo</th>
+                    <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">R$/Aula</th>
+                    <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">Aulas</th>
+                    <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">Presenças</th>
+                    <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">FJ</th>
+                    <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">Aulas R$</th>
+                    <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">Extras R$</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase">Total R$</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {profPagamentos.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="text-center py-8 text-gray-400 text-sm">
+                        Nenhum pagamento registrado para este mês
+                      </td>
+                    </tr>
+                  ) : (
+                    profPagamentos.map((p) => (
+                      <tr key={p.professor_id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm font-medium">{p.professor_nome}</td>
+                        <td className="px-3 py-3 text-center">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${p.tipo === 'A' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                            Tipo {p.tipo}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-sm text-center">R$ {p.valor_hora.toFixed(2)}</td>
+                        <td className="px-3 py-3 text-sm text-center">{p.aulas_mes}</td>
+                        <td className="px-3 py-3 text-sm text-center text-green-600 font-medium">{p.presencas}</td>
+                        <td className="px-3 py-3 text-sm text-center text-orange-600">{p.faltas_justificadas}</td>
+                        <td className="px-3 py-3 text-sm text-right">R$ {p.valor_aulas.toFixed(2)}</td>
+                        <td className="px-3 py-3 text-sm text-right">{p.extras > 0 ? `R$ ${p.extras.toFixed(2)}` : '—'}</td>
+                        <td className="px-4 py-3 text-sm text-right font-bold text-brand-700">R$ {p.total.toFixed(2)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {profPagamentos.length > 0 && (
+                  <tfoot className="bg-gray-50 border-t-2">
+                    <tr>
+                      <td colSpan={6} className="px-4 py-3 text-sm font-bold text-gray-700">TOTAL</td>
+                      <td className="px-3 py-3 text-sm text-right font-bold">
+                        R$ {profPagamentos.reduce((s, p) => s + p.valor_aulas, 0).toFixed(2)}
+                      </td>
+                      <td className="px-3 py-3 text-sm text-right font-bold">
+                        R$ {profPagamentos.reduce((s, p) => s + p.extras, 0).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-bold text-brand-700">
+                        R$ {profPagamentos.reduce((s, p) => s + p.total, 0).toFixed(2)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+
+          {/* Trabalhos Extras */}
+          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div className="bg-orange-600 text-white px-4 py-3 flex items-center justify-between">
+              <h3 className="font-bold text-sm uppercase tracking-wider">Trabalhos Extras</h3>
+              <button
+                onClick={() => setShowExtraForm(true)}
+                className="flex items-center gap-1 text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <Plus className="w-3 h-3" /> Adicionar
+              </button>
+            </div>
+            <table className="w-full">
+              <thead className="bg-orange-50 border-b">
+                <tr>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-gray-500">Professor</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-gray-500">Descrição</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-gray-500">Data</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium text-gray-500">Valor</th>
+                  <th className="text-center px-4 py-2 text-xs font-medium text-gray-500">Status</th>
+                  <th className="px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {extras.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-6 text-gray-400 text-sm">Nenhum trabalho extra</td>
+                  </tr>
+                ) : (
+                  extras.map((e) => (
+                    <tr key={e.id} className="hover:bg-orange-50/50">
+                      <td className="px-4 py-2.5 text-sm font-medium">{e.professor_nome}</td>
+                      <td className="px-4 py-2.5 text-sm text-gray-700">{e.descricao}</td>
+                      <td className="px-4 py-2.5 text-sm text-gray-700">
+                        {new Date(e.data + 'T12:00:00').toLocaleDateString('pt-BR')}
+                      </td>
+                      <td className="px-4 py-2.5 text-sm text-right font-medium">R$ {Number(e.valor).toFixed(2)}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        {e.aprovado ? (
+                          <span className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">Aprovado</span>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => handleApproveExtra(e.id, true)}
+                              className="text-xs font-medium text-green-700 bg-green-100 hover:bg-green-200 px-2 py-0.5 rounded-full"
+                            >
+                              Aprovar
+                            </button>
+                            <button
+                              onClick={() => handleApproveExtra(e.id, false)}
+                              className="text-xs font-medium text-red-700 bg-red-100 hover:bg-red-200 px-2 py-0.5 rounded-full"
+                            >
+                              Rejeitar
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <button onClick={() => handleDeleteExtra(e.id)} className="text-red-400 hover:text-red-600">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Extra Form Modal */}
+          {showExtraForm && (
+            <ExtraForm
+              professores={professores}
+              onSave={handleAddExtra}
+              onClose={() => setShowExtraForm(false)}
+            />
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -428,6 +763,78 @@ function FluxoForm({
           <button
             onClick={() => onSave({ ...form, tipo })}
             className={`px-4 py-2 text-sm text-white rounded-lg ${isEntrada ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+          >
+            Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ExtraForm({
+  professores,
+  onSave,
+  onClose,
+}: {
+  professores: { id: string; nome: string }[]
+  onSave: (data: { professor_id: string; descricao: string; valor: number; data: string }) => void
+  onClose: () => void
+}) {
+  const [form, setForm] = useState({
+    professor_id: '',
+    descricao: '',
+    valor: '',
+    data: new Date().toISOString().slice(0, 10),
+  })
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+          <Plus className="w-5 h-5 text-orange-500" />
+          Novo Trabalho Extra
+        </h2>
+        <div className="space-y-3">
+          <select
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+            value={form.professor_id}
+            onChange={(e) => setForm({ ...form, professor_id: e.target.value })}
+          >
+            <option value="">Selecionar professor</option>
+            {professores.map(p => (
+              <option key={p.id} value={p.id}>{p.nome}</option>
+            ))}
+          </select>
+          <input
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+            placeholder="Descrição do trabalho"
+            value={form.descricao}
+            onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+          />
+          <input
+            type="number"
+            step="0.01"
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+            placeholder="Valor (R$)"
+            value={form.valor}
+            onChange={(e) => setForm({ ...form, valor: e.target.value })}
+          />
+          <input
+            type="date"
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+            value={form.data}
+            onChange={(e) => setForm({ ...form, data: e.target.value })}
+          />
+        </div>
+        <div className="flex justify-end gap-3 mt-5">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+          <button
+            onClick={() => {
+              if (!form.professor_id || !form.descricao || !form.valor) return
+              onSave({ ...form, valor: parseFloat(form.valor) })
+            }}
+            className="px-4 py-2 text-sm text-white rounded-lg bg-orange-600 hover:bg-orange-700"
           >
             Salvar
           </button>

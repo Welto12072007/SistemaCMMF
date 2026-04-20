@@ -18,6 +18,8 @@ import {
   ScrollText,
   UserCheck,
   LogOut,
+  ClipboardCheck,
+  CalendarCheck,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -40,6 +42,7 @@ const sections: NavSection[] = [
       { to: '/usuarios', label: 'Usuários', icon: UserCheck, roles: ['admin', 'recepcao'] },
       { to: '/followup', label: 'Follow-up', icon: PhoneForwarded, roles: ['admin', 'recepcao'] },
       { to: '/horarios', label: 'Horários', icon: CalendarClock, roles: ['admin', 'recepcao', 'professor'] },
+      { to: '/presencas', label: 'Presenças', icon: ClipboardCheck, roles: ['admin', 'recepcao', 'professor'] },
     ],
   },
   {
@@ -54,6 +57,7 @@ const sections: NavSection[] = [
     roles: ['admin', 'recepcao'],
     items: [
       { to: '/disparos', label: 'Disparos', icon: Send, roles: ['admin', 'recepcao'] },
+      { to: '/disparos-programados', label: 'Programados', icon: CalendarCheck, roles: ['admin'] },
       { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'recepcao'] },
     ],
   },
