@@ -105,6 +105,13 @@ export default function Usuarios() {
           <h1 className="text-2xl font-bold text-gray-900">Usuários</h1>
           <p className="text-gray-500">Alunos ativos matriculados no centro de música</p>
         </div>
+        <button
+          onClick={() => { setEditando(null); setShowForm(true) }}
+          className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Novo Aluno
+        </button>
       </div>
 
       {/* KPIs */}
