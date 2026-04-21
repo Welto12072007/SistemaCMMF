@@ -1,5 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { getLabelGrupoBase } from '@/lib/crmSegmentos'
+import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
 import {
   Send,
   Users,
@@ -32,6 +34,7 @@ type Grupo =
   | 'leads'
   | 'aguardando_pagamento'
   | 'instrumento'
+  | `segmento:${string}`
 
 const GRUPOS: { key: Grupo; label: string; desc: string }[] = [
   { key: 'todos', label: 'Todos os contatos', desc: 'Enviar para toda a base' },
@@ -57,7 +60,8 @@ const INSTRUMENTOS = [
 
 export default function Disparos() {
   const [contatos, setContatos] = useState<Destinatario[]>([])
-  const [grupoAtivo, setGrupoAtivo] = useState<Grupo>('todos')
+  const [segmentos, setSegmentos] = useState<CRMSegmento[]>([])
+  const [grupoAtivo, setGrupoAtivo] = useState<Grupo | string>('todos')
   const [instrumentoFiltro, setInstrumentoFiltro] = useState('')
   const [busca, setBusca] = useState('')
   const [mensagem, setMensagem] = useState('')
@@ -67,8 +71,30 @@ export default function Disparos() {
   const [mediaType, setMediaType] = useState<'text' | 'image' | 'video' | 'audio' | 'document'>('text')
 
   useEffect(() => {
-    loadContatos()
+    void loadContatos()
+    void loadSegmentos()
   }, [])
+
+  async function loadSegmentos() {
+    const { data } = await supabase
+      .from('crm_segmentos')
+      .select('*')
+      .eq('ativo', true)
+      .order('nome')
+
+    const parsed: CRMSegmento[] = (data || []).map((s: any) => ({
+      id: s.id,
+      nome: s.nome,
+      descricao: s.descricao || '',
+      grupoBase: s.grupo_base as GrupoBaseSegmento,
+      instrumento: s.instrumento || '',
+      apenasComTelefone: Boolean(s.apenas_com_telefone),
+      ativo: Boolean(s.ativo),
+      createdAt: s.created_at,
+    }))
+
+    setSegmentos(parsed)
+  }
 
   async function loadContatos() {
     // Fetch alunos and labels in parallel
@@ -115,7 +141,33 @@ export default function Disparos() {
   const filtrados = useMemo(() => {
     let lista = contatos
 
-    switch (grupoAtivo) {
+    if (typeof grupoAtivo === 'string' && grupoAtivo.startsWith('segmento:')) {
+      const segmentoId = grupoAtivo.replace('segmento:', '')
+      const segmento = segmentos.find((s) => s.id === segmentoId)
+
+      if (segmento) {
+        if (segmento.grupoBase === 'alunos_ativos') {
+          lista = lista.filter((c) => c.status === 'ativo' || c.label === 'Aluno CMMF')
+        }
+        if (segmento.grupoBase === 'ex_alunos') {
+          lista = lista.filter((c) => ['perdido', 'cancelado', 'concluido'].includes(c.status || '') || c.label === 'Ex aluno')
+        }
+        if (segmento.grupoBase === 'leads') {
+          lista = lista.filter((c) => c.status === 'lead')
+        }
+        if (segmento.instrumento) {
+          lista = lista.filter((c) => c.instrumento_interesse?.toLowerCase().includes(segmento.instrumento.toLowerCase()))
+        }
+        if (segmento.apenasComTelefone) {
+          lista = lista.filter((c) => {
+            const tel = (c.telefone || '').replace(/\D/g, '')
+            return tel.length >= 10
+          })
+        }
+      }
+    } else {
+
+    switch (grupoAtivo as Grupo) {
       case 'alunos_ativos':
         lista = lista.filter((c) => c.status === 'ativo' || c.label === 'Aluno CMMF')
         break
@@ -136,6 +188,7 @@ export default function Disparos() {
         }
         break
     }
+    }
 
     if (busca) {
       const term = busca.toLowerCase()
@@ -145,7 +198,7 @@ export default function Disparos() {
     }
 
     return lista
-  }, [contatos, grupoAtivo, instrumentoFiltro, busca])
+  }, [contatos, segmentos, grupoAtivo, instrumentoFiltro, busca])
 
   const selecionados = contatos.filter((c) => c.selected)
 
@@ -276,6 +329,23 @@ export default function Disparos() {
                   title={g.desc}
                 >
                   {g.label}
+                </button>
+              ))}
+              {segmentos.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => {
+                    setGrupoAtivo(`segmento:${s.id}`)
+                    setInstrumentoFiltro('')
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                    grupoAtivo === `segmento:${s.id}`
+                      ? 'bg-brand-500 text-white'
+                      : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                  }`}
+                  title={`${getLabelGrupoBase(s.grupoBase)}${s.instrumento ? ` | ${s.instrumento}` : ''}`}
+                >
+                  {s.nome}
                 </button>
               ))}
             </div>

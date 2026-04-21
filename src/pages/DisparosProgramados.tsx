@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { getLabelGrupoBase } from '@/lib/crmSegmentos'
+import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
 import {
   Calendar,
   Plus,
@@ -64,12 +66,48 @@ const GRUPO_LABELS: Record<string, string> = {
 
 export default function DisparosProgramados() {
   const [disparos, setDisparos] = useState<DisparoProgramado[]>([])
+  const [segmentos, setSegmentos] = useState<CRMSegmento[]>([])
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<DisparoProgramado | null>(null)
 
   useEffect(() => {
     loadDisparos()
+    void loadSegmentos()
   }, [])
+
+  async function loadSegmentos() {
+    const { data } = await supabase
+      .from('crm_segmentos')
+      .select('*')
+      .eq('ativo', true)
+      .order('nome')
+
+    const parsed: CRMSegmento[] = (data || []).map((s: any) => ({
+      id: s.id,
+      nome: s.nome,
+      descricao: s.descricao || '',
+      grupoBase: s.grupo_base as GrupoBaseSegmento,
+      instrumento: s.instrumento || '',
+      apenasComTelefone: Boolean(s.apenas_com_telefone),
+      ativo: Boolean(s.ativo),
+      createdAt: s.created_at,
+    }))
+
+    setSegmentos(parsed)
+  }
+
+  function formatarGrupo(grupoAlvo: string) {
+    if (GRUPO_LABELS[grupoAlvo]) return GRUPO_LABELS[grupoAlvo]
+    if (grupoAlvo.startsWith('segmento:')) {
+      const segmentoId = grupoAlvo.replace('segmento:', '')
+      const seg = segmentos.find((s) => s.id === segmentoId)
+      if (!seg) return 'Segmento personalizado'
+      const base = getLabelGrupoBase(seg.grupoBase)
+      const filtroInstrumento = seg.instrumento ? ` | ${seg.instrumento}` : ''
+      return `${seg.nome} (${base}${filtroInstrumento})`
+    }
+    return grupoAlvo
+  }
 
   async function loadDisparos() {
     const { data } = await supabase
@@ -156,7 +194,7 @@ export default function DisparosProgramados() {
               <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
                 <span className="flex items-center gap-1">
                   <Users className="w-3 h-3" />
-                  {GRUPO_LABELS[d.grupo_alvo] || d.grupo_alvo}
+                  {formatarGrupo(d.grupo_alvo)}
                 </span>
                 <span className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
@@ -210,6 +248,7 @@ export default function DisparosProgramados() {
       {showForm && (
         <DisparoForm
           disparo={editing}
+          segmentos={segmentos}
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditing(null) }}
         />
@@ -220,10 +259,12 @@ export default function DisparosProgramados() {
 
 function DisparoForm({
   disparo,
+  segmentos,
   onSave,
   onClose,
 }: {
   disparo: DisparoProgramado | null
+  segmentos: CRMSegmento[]
   onSave: (data: Partial<DisparoProgramado>) => void
   onClose: () => void
 }) {
@@ -280,6 +321,12 @@ function DisparoForm({
             <option value="alunos_ativos">Alunos ativos</option>
             <option value="leads">Leads</option>
             <option value="ex_alunos">Ex-alunos</option>
+            {segmentos.length > 0 && <option disabled>──────────</option>}
+            {segmentos.map((s) => (
+              <option key={s.id} value={`segmento:${s.id}`}>
+                Segmento: {s.nome}
+              </option>
+            ))}
           </select>
           <div className="grid grid-cols-2 gap-3">
             <div>

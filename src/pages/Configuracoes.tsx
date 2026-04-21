@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
-import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard, Shield, Mail } from 'lucide-react'
+import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard, Shield, Mail, Target } from 'lucide-react'
 import { maskPhone, normalizePhone, formatPhoneDisplay } from '@/lib/utils'
+import { getLabelGrupoBase } from '@/lib/crmSegmentos'
 import type { Professor, Curso, Sala, Plano, Perfil, UserRole } from '@/types'
+import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
 
-type Tab = 'acessos' | 'professores' | 'cursos' | 'salas' | 'planos'
+type Tab = 'acessos' | 'professores' | 'cursos' | 'salas' | 'planos' | 'segmentos'
 
 export default function Configuracoes() {
   const [tab, setTab] = useState<Tab>('acessos')
@@ -15,6 +17,7 @@ export default function Configuracoes() {
     { key: 'cursos', label: 'Cursos', icon: <Music className="w-4 h-4" /> },
     { key: 'salas', label: 'Salas', icon: <MapPin className="w-4 h-4" /> },
     { key: 'planos', label: 'Planos', icon: <CreditCard className="w-4 h-4" /> },
+    { key: 'segmentos', label: 'Segmentos CRM', icon: <Target className="w-4 h-4" /> },
   ]
 
   return (
@@ -45,6 +48,7 @@ export default function Configuracoes() {
       {tab === 'cursos' && <CursosTab />}
       {tab === 'salas' && <SalasTab />}
       {tab === 'planos' && <PlanosTab />}
+      {tab === 'segmentos' && <SegmentosTab />}
     </div>
   )
 }
@@ -603,6 +607,242 @@ function PlanosTab() {
         </tbody>
       </table>
       {planos.length === 0 && <div className="text-center py-10 text-gray-400">Nenhum plano cadastrado</div>}
+    </div>
+  )
+}
+
+function SegmentosTab() {
+  const [segmentos, setSegmentos] = useState<CRMSegmento[]>([])
+  const [showForm, setShowForm] = useState(false)
+  const [editing, setEditing] = useState<CRMSegmento | null>(null)
+
+  useEffect(() => {
+    loadSegmentos()
+  }, [])
+
+  async function loadSegmentos() {
+    const { data } = await supabase
+      .from('crm_segmentos')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    const parsed: CRMSegmento[] = (data || []).map((s: any) => ({
+      id: s.id,
+      nome: s.nome,
+      descricao: s.descricao || '',
+      grupoBase: s.grupo_base,
+      instrumento: s.instrumento || '',
+      apenasComTelefone: Boolean(s.apenas_com_telefone),
+      ativo: Boolean(s.ativo),
+      createdAt: s.created_at,
+    }))
+
+    setSegmentos(parsed)
+  }
+
+  async function handleSave(payload: {
+    nome: string
+    descricao: string
+    grupoBase: GrupoBaseSegmento
+    instrumento: string
+    apenasComTelefone: boolean
+    ativo: boolean
+  }) {
+    if (editing) {
+      await supabase
+        .from('crm_segmentos')
+        .update({
+          nome: payload.nome,
+          descricao: payload.descricao || null,
+          grupo_base: payload.grupoBase,
+          instrumento: payload.instrumento || null,
+          apenas_com_telefone: payload.apenasComTelefone,
+          ativo: payload.ativo,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', editing.id)
+    } else {
+      await supabase.from('crm_segmentos').insert({
+        nome: payload.nome,
+        descricao: payload.descricao || null,
+        grupo_base: payload.grupoBase,
+        instrumento: payload.instrumento || null,
+        apenas_com_telefone: payload.apenasComTelefone,
+        ativo: payload.ativo,
+      })
+    }
+
+    await loadSegmentos()
+    setShowForm(false)
+    setEditing(null)
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Excluir este segmento?')) return
+    await supabase.from('crm_segmentos').delete().eq('id', id)
+    await loadSegmentos()
+  }
+
+  async function toggleAtivo(id: string) {
+    const item = segmentos.find((s) => s.id === id)
+    if (!item) return
+    await supabase.from('crm_segmentos').update({ ativo: !item.ativo }).eq('id', id)
+    await loadSegmentos()
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b bg-gray-50">
+        <div>
+          <h3 className="font-semibold text-gray-900">Segmentos CRM</h3>
+          <p className="text-xs text-gray-500 mt-1">Crie públicos personalizados para usar em disparos programados</p>
+        </div>
+        <button
+          onClick={() => { setEditing(null); setShowForm(true) }}
+          className="flex items-center gap-2 bg-brand-500 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-brand-600"
+        >
+          <Plus className="w-4 h-4" /> Novo Segmento
+        </button>
+      </div>
+
+      <table className="w-full">
+        <thead className="bg-gray-50 border-b">
+          <tr>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Segmento</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Base</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Filtro</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+            <th className="px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {segmentos.map((s) => (
+            <tr key={s.id} className="hover:bg-gray-50">
+              <td className="px-4 py-3">
+                <p className="text-sm font-medium text-gray-900">{s.nome}</p>
+                <p className="text-xs text-gray-500">{s.descricao || 'Sem descrição'}</p>
+              </td>
+              <td className="px-4 py-3 text-sm text-gray-700">{getLabelGrupoBase(s.grupoBase)}</td>
+              <td className="px-4 py-3 text-sm text-gray-700">
+                {s.instrumento ? `Instrumento: ${s.instrumento}` : 'Sem filtro de instrumento'}
+                {s.apenasComTelefone ? ' | Com telefone válido' : ''}
+              </td>
+              <td className="px-4 py-3">
+                <span className={`text-xs px-2 py-1 rounded-full ${s.ativo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                  {s.ativo ? 'Ativo' : 'Inativo'}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => { setEditing(s); setShowForm(true) }} className="text-gray-400 hover:text-blue-600"><Pencil className="w-4 h-4" /></button>
+                  <button onClick={() => toggleAtivo(s.id)} className="text-xs px-2 py-1 rounded text-orange-600 hover:bg-orange-50">Alternar</button>
+                  <button onClick={() => handleDelete(s.id)} className="text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {segmentos.length === 0 && <div className="text-center py-10 text-gray-400">Nenhum segmento criado</div>}
+
+      {showForm && (
+        <SegmentoForm
+          segmento={editing}
+          onSave={handleSave}
+          onClose={() => { setShowForm(false); setEditing(null) }}
+        />
+      )}
+    </div>
+  )
+}
+
+function SegmentoForm({
+  segmento,
+  onSave,
+  onClose,
+}: {
+  segmento: CRMSegmento | null
+  onSave: (data: {
+    nome: string
+    descricao: string
+    grupoBase: GrupoBaseSegmento
+    instrumento: string
+    apenasComTelefone: boolean
+    ativo: boolean
+  }) => void
+  onClose: () => void
+}) {
+  const [form, setForm] = useState({
+    nome: segmento?.nome ?? '',
+    descricao: segmento?.descricao ?? '',
+    grupoBase: segmento?.grupoBase ?? 'alunos_ativos' as GrupoBaseSegmento,
+    instrumento: segmento?.instrumento ?? '',
+    apenasComTelefone: segmento?.apenasComTelefone ?? true,
+    ativo: segmento?.ativo ?? true,
+  })
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold mb-4">{segmento ? 'Editar Segmento' : 'Novo Segmento CRM'}</h2>
+        <div className="space-y-3">
+          <input
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+            placeholder="Nome do segmento"
+            value={form.nome}
+            onChange={(e) => setForm({ ...form, nome: e.target.value })}
+          />
+          <input
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+            placeholder="Descrição (opcional)"
+            value={form.descricao}
+            onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+          />
+          <select
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+            value={form.grupoBase}
+            onChange={(e) => setForm({ ...form, grupoBase: e.target.value as GrupoBaseSegmento })}
+          >
+            <option value="todos">Todos os contatos</option>
+            <option value="alunos_ativos">Alunos ativos</option>
+            <option value="leads">Leads</option>
+            <option value="ex_alunos">Ex-alunos</option>
+          </select>
+          <input
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+            placeholder="Instrumento (opcional)"
+            value={form.instrumento}
+            onChange={(e) => setForm({ ...form, instrumento: e.target.value })}
+          />
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={form.apenasComTelefone}
+              onChange={(e) => setForm({ ...form, apenasComTelefone: e.target.checked })}
+            />
+            Somente contatos com telefone válido
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={form.ativo}
+              onChange={(e) => setForm({ ...form, ativo: e.target.checked })}
+            />
+            Segmento ativo
+          </label>
+        </div>
+        <div className="flex justify-end gap-3 mt-5">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+          <button
+            onClick={() => onSave(form)}
+            disabled={!form.nome}
+            className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50"
+          >
+            Salvar
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

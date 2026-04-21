@@ -40,6 +40,17 @@ interface AlertaFalta {
   professor_nome: string
   faltas_consecutivas: number
   faltas_mes: number
+  telefone?: string
+}
+
+interface AlertaFila {
+  id: string
+  aluno_nome: string
+  professor_nome: string
+  faltas_consecutivas: number
+  faltas_mes: number
+  status: 'pendente' | 'aprovado' | 'cancelado' | 'enviado'
+  created_at: string
 }
 
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
@@ -50,6 +61,7 @@ export default function Presencas() {
   const [filtroProfessor, setFiltroProfessor] = useState('todos')
   const [presencas, setPresencas] = useState<AlunoPresenca[]>([])
   const [alertas, setAlertas] = useState<AlertaFalta[]>([])
+  const [filaAlertas, setFilaAlertas] = useState<AlertaFila[]>([])
   const [loading, setLoading] = useState(false)
   const [busca, setBusca] = useState('')
   const [tab, setTab] = useState<'chamada' | 'historico'>('chamada')
@@ -67,6 +79,7 @@ export default function Presencas() {
 
   useEffect(() => {
     loadAlertas()
+    loadFilaAlertas()
   }, [])
 
   async function loadProfessores() {
@@ -198,11 +211,71 @@ export default function Presencas() {
           professor_nome: info.professor_nome,
           faltas_consecutivas: consecutivas,
           faltas_mes: faltasMes,
+          telefone: info.faltas[0]?.telefone || '',
         })
       }
     })
 
     setAlertas(alertasList)
+  }
+
+  async function loadFilaAlertas() {
+    const { data } = await supabase
+      .from('alertas_faltas_fila')
+      .select('id, aluno_nome, professor_nome, faltas_consecutivas, faltas_mes, status, created_at')
+      .in('status', ['pendente', 'aprovado'])
+      .order('created_at', { ascending: false })
+      .limit(30)
+
+    setFilaAlertas((data as AlertaFila[]) || [])
+  }
+
+  function montarMensagemAlerta(alunoNome: string, faltasConsecutivas: number, faltasMes: number) {
+    return `Olá, ${alunoNome}! Notamos ${faltasConsecutivas} falta(s) consecutiva(s) e ${faltasMes} no mês. Queremos te ajudar a manter a rotina das aulas. Podemos te apoiar em reagendamento e organização dos horários.`
+  }
+
+  async function enfileirarAlertas() {
+    if (alertas.length === 0) return
+
+    const alunoIds = alertas.map((a) => a.aluno_id).filter(Boolean)
+    const { data: existentes } = await supabase
+      .from('alertas_faltas_fila')
+      .select('aluno_id')
+      .eq('status', 'pendente')
+      .in('aluno_id', alunoIds)
+
+    const alunoComPendente = new Set((existentes || []).map((e: any) => e.aluno_id))
+    const paraInserir = alertas
+      .filter((a) => a.aluno_id && !alunoComPendente.has(a.aluno_id))
+      .map((a) => ({
+        aluno_id: a.aluno_id,
+        aluno_nome: a.aluno_nome,
+        professor_nome: a.professor_nome,
+        faltas_consecutivas: a.faltas_consecutivas,
+        faltas_mes: a.faltas_mes,
+        telefone: a.telefone || null,
+        mensagem_sugerida: montarMensagemAlerta(a.aluno_nome, a.faltas_consecutivas, a.faltas_mes),
+        status: 'pendente',
+      }))
+
+    if (paraInserir.length > 0) {
+      await supabase.from('alertas_faltas_fila').insert(paraInserir)
+    }
+
+    await loadFilaAlertas()
+  }
+
+  async function atualizarStatusFila(id: string, status: 'aprovado' | 'cancelado' | 'enviado') {
+    await supabase
+      .from('alertas_faltas_fila')
+      .update({
+        status,
+        aprovado_em: status === 'aprovado' ? new Date().toISOString() : null,
+        enviado_em: status === 'enviado' ? new Date().toISOString() : null,
+      })
+      .eq('id', id)
+
+    await loadFilaAlertas()
   }
 
   async function registrarPresenca(item: AlunoPresenca, presente: boolean, tipoFalta?: string) {
@@ -320,9 +393,17 @@ export default function Presencas() {
       {/* Alertas de Faltas */}
       {alertas.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-amber-600" />
             <h3 className="font-semibold text-amber-800">Alertas de Faltas ({alertas.length})</h3>
+            </div>
+            <button
+              onClick={enfileirarAlertas}
+              className="text-xs px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700"
+            >
+              Adicionar à fila
+            </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {alertas.map((a, i) => (
@@ -335,6 +416,42 @@ export default function Presencas() {
                   )}
                   {a.faltas_mes >= 2 && (
                     <span className="text-xs text-orange-600 font-medium">{a.faltas_mes} no mês</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {filaAlertas.length > 0 && (
+        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+            <h3 className="font-semibold text-gray-900">Fila de Alertas (aprovação manual)</h3>
+            <button
+              onClick={loadFilaAlertas}
+              className="text-xs px-2.5 py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200"
+            >
+              Atualizar
+            </button>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {filaAlertas.map((f) => (
+              <div key={f.id} className="px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{f.aluno_nome}</p>
+                  <p className="text-xs text-gray-500">Prof. {f.professor_nome || '—'} | {f.faltas_consecutivas} consecutivas | {f.faltas_mes} no mês</p>
+                  <p className="text-xs text-gray-400">Status: {f.status}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {f.status === 'pendente' && (
+                    <>
+                      <button onClick={() => atualizarStatusFila(f.id, 'aprovado')} className="text-xs px-2.5 py-1 rounded bg-green-100 text-green-700 hover:bg-green-200">Aprovar</button>
+                      <button onClick={() => atualizarStatusFila(f.id, 'cancelado')} className="text-xs px-2.5 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200">Cancelar</button>
+                    </>
+                  )}
+                  {f.status === 'aprovado' && (
+                    <button onClick={() => atualizarStatusFila(f.id, 'enviado')} className="text-xs px-2.5 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200">Marcar enviado</button>
                   )}
                 </div>
               </div>

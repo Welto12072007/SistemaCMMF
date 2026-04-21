@@ -20,6 +20,7 @@ import {
   LogOut,
   ClipboardCheck,
   CalendarCheck,
+  Calendar,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -43,6 +44,7 @@ const sections: NavSection[] = [
       { to: '/followup', label: 'Follow-up', icon: PhoneForwarded, roles: ['admin', 'recepcao'] },
       { to: '/horarios', label: 'Horários', icon: CalendarClock, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/presencas', label: 'Presenças', icon: ClipboardCheck, roles: ['admin', 'recepcao', 'professor'] },
+      { to: '/portal-aluno', label: 'Minhas Aulas', icon: Calendar, roles: ['aluno'] },
     ],
   },
   {

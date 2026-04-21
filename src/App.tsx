@@ -18,6 +18,7 @@ import MaterialApoio from './pages/MaterialApoio'
 import Logs from './pages/Logs'
 import Presencas from './pages/Presencas'
 import DisparosProgramados from './pages/DisparosProgramados'
+import PortalAluno from './pages/PortalAluno'
 import Configuracoes from './pages/Configuracoes'
 
 function Guard({ roles, children }: { roles: UserRole[]; children: React.ReactNode }) {
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="/horarios" element={<Guard roles={['admin', 'recepcao', 'professor']}><Horarios /></Guard>} />
         <Route path="/financeiro" element={<Guard roles={['admin']}><Financeiro /></Guard>} />
         <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Presencas /></Guard>} />
+        <Route path="/portal-aluno" element={<Guard roles={['aluno']}><PortalAluno /></Guard>} />
         <Route path="/biblioteca" element={<Biblioteca />} />
         <Route path="/fingertv" element={<FingerTV />} />
         <Route path="/material-apoio" element={<MaterialApoio />} />

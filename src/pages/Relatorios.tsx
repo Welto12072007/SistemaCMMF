@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Users, GraduationCap, BookOpen, DollarSign, TrendingUp } from 'lucide-react'
+import { Users, GraduationCap, BookOpen, DollarSign, TrendingUp, Download, FileSpreadsheet, FileText } from 'lucide-react'
+import * as XLSX from 'xlsx'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import {
   BarChart,
   Bar,
@@ -36,6 +39,148 @@ export default function Relatorios() {
   useEffect(() => {
     loadRelatorios()
   }, [])
+
+  function exportarCSV() {
+    const linhas: string[] = []
+
+    linhas.push('Resumo')
+    linhas.push('Indicador,Valor')
+    linhas.push(`Contatos,${stats.contatos}`)
+    linhas.push(`Aulas Experimentais,${stats.experimentais}`)
+    linhas.push(`Matriculas,${stats.matriculas}`)
+    linhas.push(`Conversao para Experimental (%),${stats.conversaoExp.toFixed(2)}`)
+    linhas.push(`Conversao para Matricula (%),${stats.conversaoMat.toFixed(2)}`)
+    linhas.push(`Faturamento Total,${stats.faturamento.toFixed(2)}`)
+    linhas.push(`Taxas de Matricula,${stats.taxas.toFixed(2)}`)
+    linhas.push(`Planos,${stats.planos.toFixed(2)}`)
+    linhas.push('')
+
+    linhas.push('Canal de Origem')
+    linhas.push('Canal,Contatos,Matriculas')
+    porCanal.forEach((c) => {
+      linhas.push(`${c.canal},${c.contatos},${c.matriculas}`)
+    })
+    linhas.push('')
+
+    linhas.push('Instrumento')
+    linhas.push('Instrumento,Contatos,Matriculas')
+    porInstrumento.forEach((i) => {
+      linhas.push(`${i.instrumento},${i.contatos},${i.matriculas}`)
+    })
+    linhas.push('')
+
+    linhas.push('Faturamento por Canal')
+    linhas.push('Canal,Contatos,Matriculas,Conversao,Faturamento')
+    faturamentoCanal.forEach((f) => {
+      linhas.push(`${f.canal},${f.contatos},${f.matriculas},${f.conversao},${f.faturamento.toFixed(2)}`)
+    })
+
+    const csv = '\ufeff' + linhas.join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `relatorio-cmmf-${dataInicio}-${dataFim}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  function exportarExcel() {
+    const wb = XLSX.utils.book_new()
+
+    const resumo = [
+      ['Indicador', 'Valor'],
+      ['Contatos', stats.contatos],
+      ['Aulas Experimentais', stats.experimentais],
+      ['Matriculas', stats.matriculas],
+      ['Conversao para Experimental (%)', Number(stats.conversaoExp.toFixed(2))],
+      ['Conversao para Matricula (%)', Number(stats.conversaoMat.toFixed(2))],
+      ['Faturamento Total', Number(stats.faturamento.toFixed(2))],
+      ['Taxas de Matricula', Number(stats.taxas.toFixed(2))],
+      ['Planos', Number(stats.planos.toFixed(2))],
+    ]
+
+    const canais = [
+      ['Canal', 'Contatos', 'Matriculas'],
+      ...porCanal.map((c) => [c.canal, c.contatos, c.matriculas]),
+    ]
+
+    const instrumentos = [
+      ['Instrumento', 'Contatos', 'Matriculas'],
+      ...porInstrumento.map((i) => [i.instrumento, i.contatos, i.matriculas]),
+    ]
+
+    const faturamento = [
+      ['Canal', 'Contatos', 'Matriculas', 'Conversao', 'Faturamento'],
+      ...faturamentoCanal.map((f) => [f.canal, f.contatos, f.matriculas, f.conversao, Number(f.faturamento.toFixed(2))]),
+    ]
+
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumo), 'Resumo')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(canais), 'Canal')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(instrumentos), 'Instrumento')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(faturamento), 'Faturamento')
+
+    XLSX.writeFile(wb, `relatorio-cmmf-${dataInicio}-${dataFim}.xlsx`)
+  }
+
+  function exportarPDF() {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
+    const titulo = `Relatorio CMMF ${dataInicio} a ${dataFim}`
+
+    doc.setFontSize(14)
+    doc.text(titulo, 40, 40)
+
+    autoTable(doc, {
+      startY: 60,
+      head: [['Indicador', 'Valor']],
+      body: [
+        ['Contatos', String(stats.contatos)],
+        ['Aulas Experimentais', String(stats.experimentais)],
+        ['Matriculas', String(stats.matriculas)],
+        ['Conversao para Experimental (%)', stats.conversaoExp.toFixed(2)],
+        ['Conversao para Matricula (%)', stats.conversaoMat.toFixed(2)],
+        ['Faturamento Total', `R$ ${stats.faturamento.toLocaleString('pt-BR')}`],
+        ['Taxas de Matricula', `R$ ${stats.taxas.toLocaleString('pt-BR')}`],
+        ['Planos', `R$ ${stats.planos.toLocaleString('pt-BR')}`],
+      ],
+      theme: 'striped',
+      styles: { fontSize: 9 },
+    })
+
+    autoTable(doc, {
+      startY: ((doc as any).lastAutoTable?.finalY || 80) + 16,
+      head: [['Canal', 'Contatos', 'Matriculas']],
+      body: porCanal.map((c) => [c.canal, String(c.contatos), String(c.matriculas)]),
+      theme: 'grid',
+      styles: { fontSize: 9 },
+    })
+
+    autoTable(doc, {
+      startY: ((doc as any).lastAutoTable?.finalY || 120) + 16,
+      head: [['Instrumento', 'Contatos', 'Matriculas']],
+      body: porInstrumento.map((i) => [i.instrumento, String(i.contatos), String(i.matriculas)]),
+      theme: 'grid',
+      styles: { fontSize: 9 },
+    })
+
+    autoTable(doc, {
+      startY: ((doc as any).lastAutoTable?.finalY || 160) + 16,
+      head: [['Canal', 'Contatos', 'Matriculas', 'Conversao', 'Faturamento']],
+      body: faturamentoCanal.map((f) => [
+        f.canal,
+        String(f.contatos),
+        String(f.matriculas),
+        f.conversao,
+        `R$ ${f.faturamento.toLocaleString('pt-BR')}`,
+      ]),
+      theme: 'grid',
+      styles: { fontSize: 9 },
+    })
+
+    doc.save(`relatorio-cmmf-${dataInicio}-${dataFim}.pdf`)
+  }
 
   async function loadRelatorios() {
     const { data: contatos } = await supabase
@@ -138,6 +283,27 @@ export default function Relatorios() {
         </div>
         <button onClick={loadRelatorios} className="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-brand-600">
           Aplicar Filtro
+        </button>
+        <button
+          onClick={exportarCSV}
+          className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-black flex items-center gap-2"
+        >
+          <Download className="w-4 h-4" />
+          Exportar CSV
+        </button>
+        <button
+          onClick={exportarExcel}
+          className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-emerald-700 flex items-center gap-2"
+        >
+          <FileSpreadsheet className="w-4 h-4" />
+          Exportar Excel
+        </button>
+        <button
+          onClick={exportarPDF}
+          className="bg-rose-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-rose-700 flex items-center gap-2"
+        >
+          <FileText className="w-4 h-4" />
+          Exportar PDF
         </button>
       </div>
 
