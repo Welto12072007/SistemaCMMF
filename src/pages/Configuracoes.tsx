@@ -508,7 +508,10 @@ function SalasTab() {
   return (
     <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
       <div className="flex items-center justify-between px-5 py-3 border-b bg-gray-50">
-        <h3 className="font-semibold text-gray-900">Salas</h3>
+        <div>
+          <h3 className="font-semibold text-gray-900">Salas</h3>
+          <p className="text-xs text-gray-500 mt-1">Padrão CMMF: 1 aula por sala em cada horário</p>
+        </div>
         <button className="flex items-center gap-2 bg-brand-500 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-brand-600">
           <Plus className="w-4 h-4" /> Nova Sala
         </button>
@@ -534,7 +537,7 @@ function SalasTab() {
                   ))}
                 </div>
               </td>
-              <td className="px-4 py-3 text-sm">{s.capacidade}</td>
+              <td className="px-4 py-3 text-sm">1 aula</td>
               <td className="px-4 py-3">
                 <span className={`text-xs px-2 py-1 rounded-full ${s.ativa ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                   {s.ativa ? 'Ativa' : 'Inativa'}
