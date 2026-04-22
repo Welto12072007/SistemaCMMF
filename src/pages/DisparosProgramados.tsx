@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
-import { MEDIA_ACCEPT, uploadDisparoMedia, listDisparoMedia } from '@/lib/disparosMedia'
+import { MEDIA_ACCEPT, uploadDisparoMedia, listDisparoMedia, deleteDisparoMedia } from '@/lib/disparosMedia'
 import type { MediaType } from '@/lib/disparosMedia'
 import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
 import {
@@ -321,6 +321,18 @@ function DisparoForm({
     }
   }
 
+  async function handleDeleteMedia(path: string) {
+    try {
+      await deleteDisparoMedia(supabase, path)
+      if (form.media_url.includes(path)) {
+        setForm({ ...form, media_url: '' })
+      }
+      await loadMediaLibrary(form.media_type as MediaType)
+    } catch {
+      setMediaError('Falha ao excluir mídia da biblioteca.')
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -392,25 +404,17 @@ function DisparoForm({
               />
             </div>
           </div>
-          <input
+          <select
             className="w-full border rounded-lg px-3 py-2 text-sm"
-            placeholder="URL da mídia (opcional)"
-            value={form.media_url}
-            onChange={(e) => setForm({ ...form, media_url: e.target.value })}
-          />
-          {form.media_url && (
-            <select
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-              value={form.media_type}
-              onChange={(e) => setForm({ ...form, media_type: e.target.value })}
-            >
-              <option value="">Tipo de mídia</option>
-              <option value="image">Imagem</option>
-              <option value="video">Vídeo</option>
-              <option value="audio">Áudio</option>
-              <option value="document">Documento</option>
-            </select>
-          )}
+            value={form.media_type}
+            onChange={(e) => setForm({ ...form, media_type: e.target.value })}
+          >
+            <option value="">Sem mídia</option>
+            <option value="image">Imagem</option>
+            <option value="video">Vídeo</option>
+            <option value="audio">Áudio</option>
+            <option value="document">Documento</option>
+          </select>
           {form.media_type && (
             <div className="space-y-2">
               <input
@@ -421,18 +425,38 @@ function DisparoForm({
               />
               {uploadingMedia && <p className="text-xs text-gray-500">Enviando arquivo...</p>}
               {mediaError && <p className="text-xs text-red-500">{mediaError}</p>}
+              {form.media_url && (
+                <div className="flex items-center justify-between bg-gray-50 border rounded-lg px-3 py-2">
+                  <span className="text-xs text-gray-700 truncate">Mídia selecionada</span>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, media_url: '' })}
+                    className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
+                  >
+                    Remover
+                  </button>
+                </div>
+              )}
               {mediaLibrary.length > 0 && (
                 <div className="max-h-24 overflow-y-auto space-y-1">
                   {mediaLibrary.slice(0, 8).map((item) => (
-                    <button
-                      key={item.path}
-                      type="button"
-                      onClick={() => setForm({ ...form, media_url: item.url })}
-                      className="w-full text-left text-xs px-2 py-1 rounded bg-gray-50 hover:bg-gray-100"
-                      title={item.url}
-                    >
-                      Usar: {item.name}
-                    </button>
+                    <div key={item.path} className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setForm({ ...form, media_url: item.url })}
+                        className="flex-1 text-left text-xs px-2 py-1 rounded bg-gray-50 hover:bg-gray-100"
+                        title={item.url}
+                      >
+                        Usar: {item.name}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMedia(item.path)}
+                        className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
+                      >
+                        Excluir
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -445,7 +469,7 @@ function DisparoForm({
           </button>
           <button
             onClick={() => {
-              if (!form.nome || !form.mensagem) return
+              if (!form.nome || (!form.mensagem && !form.media_url)) return
               onSave({
                 ...form,
                 dia_disparo: form.dia_disparo ? parseInt(form.dia_disparo) : undefined,

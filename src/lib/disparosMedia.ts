@@ -64,3 +64,14 @@ export async function listDisparoMedia(
       }
     })
 }
+
+export async function deleteDisparoMedia(
+  client: SupabaseClient,
+  path: string
+) {
+  const { error } = await client.storage
+    .from(DISPAROS_MEDIA_BUCKET)
+    .remove([path])
+
+  if (error) throw error
+}

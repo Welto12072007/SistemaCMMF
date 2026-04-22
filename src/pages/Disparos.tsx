@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
-import { MEDIA_ACCEPT, uploadDisparoMedia, listDisparoMedia } from '@/lib/disparosMedia'
+import { MEDIA_ACCEPT, uploadDisparoMedia, listDisparoMedia, deleteDisparoMedia } from '@/lib/disparosMedia'
 import type { MediaType } from '@/lib/disparosMedia'
 import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
 import {
@@ -180,6 +180,16 @@ export default function Disparos() {
     }
   }
 
+  async function handleDeleteMedia(path: string) {
+    try {
+      await deleteDisparoMedia(supabase, path)
+      if (mediaUrl.includes(path)) setMediaUrl('')
+      await loadMediaLibrary(mediaType as MediaType)
+    } catch {
+      setMediaError('Falha ao excluir mídia da biblioteca.')
+    }
+  }
+
   // Filter by group and search
   const filtrados = useMemo(() => {
     let lista = contatos
@@ -262,7 +272,9 @@ export default function Disparos() {
   }
 
   async function enviarDisparos() {
-    if (!mensagem.trim() || selecionados.length === 0) return
+    const temTexto = Boolean(mensagem.trim())
+    const temMidia = mediaType !== 'text' && Boolean(mediaUrl.trim())
+    if (selecionados.length === 0 || (!temTexto && !temMidia)) return
 
     setEnviando(true)
     setResultado(null)
@@ -533,7 +545,7 @@ export default function Disparos() {
               <div className="mb-3">
                 <div className="flex items-center gap-2 mb-1">
                   <Paperclip className="w-3.5 h-3.5 text-gray-400" />
-                  <label className="text-xs text-gray-500">Mídia (upload nativo ou URL)</label>
+                  <label className="text-xs text-gray-500">Mídia (upload nativo)</label>
                 </div>
                 <div className="flex items-center gap-2 mb-2">
                   <input
@@ -544,25 +556,39 @@ export default function Disparos() {
                   />
                   {uploadingMedia && <span className="text-xs text-gray-500">Enviando...</span>}
                 </div>
-                <input
-                  type="url"
-                  value={mediaUrl}
-                  onChange={(e) => setMediaUrl(e.target.value)}
-                  placeholder={`https://exemplo.com/arquivo.${mediaType === 'image' ? 'jpg' : mediaType === 'video' ? 'mp4' : mediaType === 'audio' ? 'mp3' : 'pdf'}`}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
-                />
+                {mediaUrl && (
+                  <div className="flex items-center justify-between bg-gray-50 border rounded-lg px-3 py-2">
+                    <span className="text-xs text-gray-700 truncate">Mídia selecionada</span>
+                    <button
+                      type="button"
+                      onClick={() => setMediaUrl('')}
+                      className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                )}
                 {mediaError && <p className="text-xs text-red-500 mt-1">{mediaError}</p>}
                 {mediaLibrary.length > 0 && (
                   <div className="mt-2 max-h-24 overflow-y-auto space-y-1">
                     {mediaLibrary.slice(0, 8).map((item) => (
-                      <button
-                        key={item.path}
-                        onClick={() => setMediaUrl(item.url)}
-                        className="w-full text-left text-xs px-2 py-1 rounded bg-gray-50 hover:bg-gray-100 text-gray-700"
-                        title={item.url}
-                      >
-                        Usar: {item.name}
-                      </button>
+                      <div key={item.path} className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setMediaUrl(item.url)}
+                          className="flex-1 text-left text-xs px-2 py-1 rounded bg-gray-50 hover:bg-gray-100 text-gray-700"
+                          title={item.url}
+                        >
+                          Usar: {item.name}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMedia(item.path)}
+                          className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
+                        >
+                          Excluir
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
