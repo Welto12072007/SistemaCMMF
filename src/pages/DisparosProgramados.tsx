@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
+import { MEDIA_ACCEPT, uploadDisparoMedia, listDisparoMedia } from '@/lib/disparosMedia'
+import type { MediaType } from '@/lib/disparosMedia'
 import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
 import {
   Calendar,
@@ -279,6 +281,45 @@ function DisparoForm({
     hora_disparo: disparo?.hora_disparo?.slice(0, 5) ?? '09:00',
     ativo: disparo?.ativo ?? true,
   })
+  const [uploadingMedia, setUploadingMedia] = useState(false)
+  const [mediaLibrary, setMediaLibrary] = useState<Array<{ name: string; path: string; url: string }>>([])
+  const [mediaError, setMediaError] = useState('')
+
+  useEffect(() => {
+    if (!form.media_type) {
+      setMediaLibrary([])
+      return
+    }
+    void loadMediaLibrary(form.media_type as MediaType)
+  }, [form.media_type])
+
+  async function loadMediaLibrary(type: MediaType) {
+    try {
+      const items = await listDisparoMedia(supabase, type)
+      setMediaLibrary(items)
+      setMediaError('')
+    } catch {
+      setMediaLibrary([])
+      setMediaError('Não foi possível carregar biblioteca de mídia.')
+    }
+  }
+
+  async function handleUploadMedia(file: File | null) {
+    if (!file || !form.media_type) return
+
+    setUploadingMedia(true)
+    setMediaError('')
+
+    try {
+      const result = await uploadDisparoMedia(supabase, form.media_type as MediaType, file)
+      setForm({ ...form, media_url: result.url })
+      await loadMediaLibrary(form.media_type as MediaType)
+    } catch {
+      setMediaError('Falha no upload. Verifique permissões do bucket.')
+    } finally {
+      setUploadingMedia(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
@@ -369,6 +410,33 @@ function DisparoForm({
               <option value="audio">Áudio</option>
               <option value="document">Documento</option>
             </select>
+          )}
+          {form.media_type && (
+            <div className="space-y-2">
+              <input
+                type="file"
+                accept={MEDIA_ACCEPT[form.media_type as MediaType]}
+                className="text-xs"
+                onChange={(e) => handleUploadMedia(e.target.files?.[0] || null)}
+              />
+              {uploadingMedia && <p className="text-xs text-gray-500">Enviando arquivo...</p>}
+              {mediaError && <p className="text-xs text-red-500">{mediaError}</p>}
+              {mediaLibrary.length > 0 && (
+                <div className="max-h-24 overflow-y-auto space-y-1">
+                  {mediaLibrary.slice(0, 8).map((item) => (
+                    <button
+                      key={item.path}
+                      type="button"
+                      onClick={() => setForm({ ...form, media_url: item.url })}
+                      className="w-full text-left text-xs px-2 py-1 rounded bg-gray-50 hover:bg-gray-100"
+                      title={item.url}
+                    >
+                      Usar: {item.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
         <div className="flex justify-end gap-3 mt-5">

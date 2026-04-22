@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
+import { MEDIA_ACCEPT, uploadDisparoMedia, listDisparoMedia } from '@/lib/disparosMedia'
+import type { MediaType } from '@/lib/disparosMedia'
 import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
 import {
   Send,
@@ -69,11 +71,24 @@ export default function Disparos() {
   const [resultado, setResultado] = useState<{ sucesso: number; erro: number; detalhes?: string[] } | null>(null)
   const [mediaUrl, setMediaUrl] = useState('')
   const [mediaType, setMediaType] = useState<'text' | 'image' | 'video' | 'audio' | 'document'>('text')
+  const [uploadingMedia, setUploadingMedia] = useState(false)
+  const [mediaLibrary, setMediaLibrary] = useState<Array<{ name: string; path: string; url: string }>>([])
+  const [mediaError, setMediaError] = useState('')
 
   useEffect(() => {
     void loadContatos()
     void loadSegmentos()
   }, [])
+
+  useEffect(() => {
+    if (mediaType === 'text') {
+      setMediaLibrary([])
+      setMediaError('')
+      return
+    }
+
+    void loadMediaLibrary(mediaType as MediaType)
+  }, [mediaType])
 
   async function loadSegmentos() {
     const { data } = await supabase
@@ -135,6 +150,34 @@ export default function Disparos() {
     }
 
     setContatos(merged)
+  }
+
+  async function loadMediaLibrary(type: MediaType) {
+    try {
+      const items = await listDisparoMedia(supabase, type)
+      setMediaLibrary(items)
+      setMediaError('')
+    } catch {
+      setMediaLibrary([])
+      setMediaError('Não foi possível carregar a biblioteca de mídia.')
+    }
+  }
+
+  async function handleUploadMedia(file: File | null) {
+    if (!file || mediaType === 'text') return
+
+    setUploadingMedia(true)
+    setMediaError('')
+
+    try {
+      const result = await uploadDisparoMedia(supabase, mediaType as MediaType, file)
+      setMediaUrl(result.url)
+      await loadMediaLibrary(mediaType as MediaType)
+    } catch {
+      setMediaError('Falha ao enviar arquivo. Verifique permissões do bucket.')
+    } finally {
+      setUploadingMedia(false)
+    }
   }
 
   // Filter by group and search
@@ -490,7 +533,16 @@ export default function Disparos() {
               <div className="mb-3">
                 <div className="flex items-center gap-2 mb-1">
                   <Paperclip className="w-3.5 h-3.5 text-gray-400" />
-                  <label className="text-xs text-gray-500">URL da mídia</label>
+                  <label className="text-xs text-gray-500">Mídia (upload nativo ou URL)</label>
+                </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="file"
+                    accept={MEDIA_ACCEPT[mediaType as MediaType]}
+                    className="text-xs"
+                    onChange={(e) => handleUploadMedia(e.target.files?.[0] || null)}
+                  />
+                  {uploadingMedia && <span className="text-xs text-gray-500">Enviando...</span>}
                 </div>
                 <input
                   type="url"
@@ -499,6 +551,21 @@ export default function Disparos() {
                   placeholder={`https://exemplo.com/arquivo.${mediaType === 'image' ? 'jpg' : mediaType === 'video' ? 'mp4' : mediaType === 'audio' ? 'mp3' : 'pdf'}`}
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
                 />
+                {mediaError && <p className="text-xs text-red-500 mt-1">{mediaError}</p>}
+                {mediaLibrary.length > 0 && (
+                  <div className="mt-2 max-h-24 overflow-y-auto space-y-1">
+                    {mediaLibrary.slice(0, 8).map((item) => (
+                      <button
+                        key={item.path}
+                        onClick={() => setMediaUrl(item.url)}
+                        className="w-full text-left text-xs px-2 py-1 rounded bg-gray-50 hover:bg-gray-100 text-gray-700"
+                        title={item.url}
+                      >
+                        Usar: {item.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
