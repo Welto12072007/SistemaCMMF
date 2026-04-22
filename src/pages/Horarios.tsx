@@ -10,6 +10,8 @@ import {
   Ban,
   Clock,
   Trash2,
+  MessageSquare,
+  Send,
 } from 'lucide-react'
 
 interface Professor {
@@ -64,7 +66,18 @@ export default function Horarios() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
   const [lastClicked, setLastClicked] = useState<string | null>(null)
+  const [disparoOpen, setDisparoOpen] = useState(false)
+  const [disparoContatos, setDisparoContatos] = useState<{
+    nome: string
+    telefone: string | null
+    selected: boolean
+    slot: string
+  }[]>([])
+  const [disparoMensagem, setDisparoMensagem] = useState('')
+  const [disparoSending, setDisparoSending] = useState(false)
+  const [disparoResultado, setDisparoResultado] = useState<{ enviados: number; erros: number } | null>(null)
   const popupRef = useRef<HTMLDivElement>(null)
+  const disparoRef = useRef<HTMLDivElement>(null)
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fetchData = useCallback(async () => {
@@ -329,6 +342,68 @@ export default function Horarios() {
 
     clearSelection()
     setBulkSaving(false)
+  }
+
+  const openDisparo = async () => {
+    const occupiedSelected = horarios.filter(
+      h => selected.has(h.id) && h.status === 'ocupado' && h.aluno_nome
+    )
+    if (occupiedSelected.length === 0) {
+      alert('Nenhum horário com aluno selecionado. Selecione horários ocupados para enviar disparo.')
+      return
+    }
+    // Aggregate alunos → their slots
+    const alunoMap = new Map<string, string[]>()
+    for (const h of occupiedSelected) {
+      const prof = professores.find(p => p.id === h.professor_id)
+      const label = `${prof?.nome.split(' ')[0] || ''} - ${h.dia_semana} ${h.hora_inicio.slice(0, 5)}`
+      if (!alunoMap.has(h.aluno_nome!)) alunoMap.set(h.aluno_nome!, [label])
+      else alunoMap.get(h.aluno_nome!)!.push(label)
+    }
+    // Lookup phones in alunos table
+    const nomes = Array.from(alunoMap.keys())
+    const { data: alunosRows } = await supabase
+      .from('alunos')
+      .select('nome, telefone')
+      .in('nome', nomes)
+    const phoneMap = new Map<string, string>()
+    for (const a of (alunosRows || [])) {
+      if (a.nome && a.telefone) phoneMap.set(a.nome, a.telefone)
+    }
+    const contatos = nomes.map(nome => ({
+      nome,
+      telefone: phoneMap.get(nome) ?? null,
+      selected: !!phoneMap.get(nome),
+      slot: alunoMap.get(nome)!.join(', ')
+    }))
+    setDisparoContatos(contatos)
+    setDisparoMensagem('')
+    setDisparoResultado(null)
+    setDisparoOpen(true)
+  }
+
+  const sendDisparo = async () => {
+    const recipients = disparoContatos.filter(c => c.selected && c.telefone)
+    if (!disparoMensagem.trim() || recipients.length === 0) return
+    setDisparoSending(true)
+    let enviados = 0
+    let erros = 0
+    for (const r of recipients) {
+      try {
+        const resp = await fetch(
+          'https://api.centrodemusicamurilofinger.com/message/sendText/CentroMusica',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': 'CentroMusica2026ApiKey' },
+            body: JSON.stringify({ number: r.telefone, text: disparoMensagem })
+          }
+        )
+        if (resp.ok) enviados++
+        else erros++
+      } catch { erros++ }
+    }
+    setDisparoSending(false)
+    setDisparoResultado({ enviados, erros })
   }
 
   const handleSave = async () => {
@@ -636,6 +711,18 @@ export default function Horarios() {
           <div className="h-6 w-px bg-gray-600" />
 
           <button
+            onClick={openDisparo}
+            disabled={bulkSaving}
+            className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            title="Enviar mensagem WhatsApp para alunos dos horários selecionados"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            Disparo
+          </button>
+
+          <div className="h-6 w-px bg-gray-600" />
+
+          <button
             onClick={clearSelection}
             className="flex items-center gap-1 text-gray-400 hover:text-white text-sm transition-colors"
           >
@@ -646,6 +733,135 @@ export default function Horarios() {
           {bulkSaving && (
             <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
           )}
+        </div>
+      )}
+
+      {/* Disparo popup */}
+      {disparoOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div ref={disparoRef} className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-3 border-b">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-violet-500" />
+                <h3 className="font-semibold text-gray-900">Enviar Disparo WhatsApp</h3>
+              </div>
+              <button onClick={() => setDisparoOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              {/* Recipients */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Destinatários ({disparoContatos.filter(c => c.selected && c.telefone).length} selecionados)
+                  </label>
+                  <div className="flex gap-2 text-xs">
+                    <button
+                      onClick={() => setDisparoContatos(prev => prev.map(c => ({ ...c, selected: !!c.telefone })))}
+                      className="text-brand-600 hover:underline"
+                    >Todos</button>
+                    <span className="text-gray-300">|</span>
+                    <button
+                      onClick={() => setDisparoContatos(prev => prev.map(c => ({ ...c, selected: false })))}
+                      className="text-gray-500 hover:underline"
+                    >Nenhum</button>
+                  </div>
+                </div>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {disparoContatos.map((c, i) => (
+                    <label
+                      key={i}
+                      className={`flex items-center gap-3 p-2 rounded-lg border transition-colors ${
+                        c.telefone ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                      } ${
+                        c.selected && c.telefone
+                          ? 'border-violet-200 bg-violet-50'
+                          : c.telefone
+                          ? 'border-gray-200 hover:bg-gray-50'
+                          : 'border-gray-100 bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={c.selected}
+                        disabled={!c.telefone}
+                        onChange={e => setDisparoContatos(prev =>
+                          prev.map((x, j) => j === i ? { ...x, selected: e.target.checked } : x)
+                        )}
+                        className="rounded accent-violet-600"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{c.nome}</p>
+                        <p className="text-xs text-gray-400 truncate">{c.slot}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        {c.telefone
+                          ? <span className="text-xs text-gray-500 font-mono">{c.telefone}</span>
+                          : <span className="text-xs text-amber-500">Sem telefone</span>
+                        }
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Message */}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide block mb-1.5">
+                  Mensagem
+                </label>
+                <textarea
+                  value={disparoMensagem}
+                  onChange={e => setDisparoMensagem(e.target.value)}
+                  placeholder="Digite a mensagem a ser enviada..."
+                  rows={4}
+                  disabled={disparoSending || !!disparoResultado}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent resize-none"
+                />
+                <p className="text-xs text-gray-400 mt-0.5 text-right">{disparoMensagem.length} caracteres</p>
+              </div>
+
+              {/* Result */}
+              {disparoResultado && (
+                <div className={`rounded-lg p-3 text-sm font-medium ${
+                  disparoResultado.erros === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                }`}>
+                  ✅ Enviados: <strong>{disparoResultado.enviados}</strong>
+                  {disparoResultado.erros > 0 && <> · ❌ Erros: <strong>{disparoResultado.erros}</strong></>}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => setDisparoOpen(false)}
+                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+              >
+                {disparoResultado ? 'Fechar' : 'Cancelar'}
+              </button>
+              {!disparoResultado && (
+                <button
+                  onClick={sendDisparo}
+                  disabled={disparoSending || !disparoMensagem.trim() || disparoContatos.filter(c => c.selected && c.telefone).length === 0}
+                  className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white px-4 py-1.5 rounded-lg font-medium text-sm transition-colors disabled:opacity-50"
+                >
+                  {disparoSending ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      Enviar para {disparoContatos.filter(c => c.selected && c.telefone).length}
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
