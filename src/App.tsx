@@ -12,6 +12,7 @@ import Disparos from './pages/Disparos'
 import Relatorios from './pages/Relatorios'
 import Horarios from './pages/Horarios'
 import Financeiro from './pages/Financeiro'
+import Mensalidades from './pages/Mensalidades'
 import Biblioteca from './pages/Biblioteca'
 import FingerTV from './pages/FingerTV'
 import MaterialApoio from './pages/MaterialApoio'
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="/disparos-programados" element={<Guard roles={['admin']}><DisparosProgramados /></Guard>} />
         <Route path="/horarios" element={<Guard roles={['admin', 'recepcao', 'professor']}><Horarios /></Guard>} />
         <Route path="/financeiro" element={<Guard roles={['admin']}><Financeiro /></Guard>} />
+        <Route path="/mensalidades" element={<Guard roles={['admin', 'recepcao']}><Mensalidades /></Guard>} />
         <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Presencas /></Guard>} />
         <Route path="/portal-aluno" element={<Guard roles={['aluno']}><PortalAluno /></Guard>} />
         <Route path="/biblioteca" element={<Biblioteca />} />
