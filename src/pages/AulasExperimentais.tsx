@@ -63,7 +63,7 @@ export default function AulasExperimentais() {
 
   async function handleSaveAula(form: { nome: string; telefone: string; instrumento: string; professor_id: string; data_aula: string; hora_inicio: string; observacoes: string }) {
     const prof = professores.find(p => p.id === form.professor_id)
-    await supabase.from('aulas_experimentais').insert({
+    const { error } = await supabase.from('aulas_experimentais').insert({
       nome: form.nome,
       telefone: form.telefone,
       instrumento: form.instrumento,
@@ -76,6 +76,11 @@ export default function AulasExperimentais() {
       status: 'agendada',
       observacoes: form.observacoes || null,
     })
+    if (error) {
+      console.error('[AulasExperimentais] save error:', error)
+      alert(`Erro ao salvar aula experimental:\n${error.message}`)
+      return
+    }
     setShowForm(false)
     loadAulas()
   }

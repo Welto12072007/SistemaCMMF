@@ -82,10 +82,13 @@ export default function Usuarios() {
   })
 
   async function handleSave(data: Partial<Aluno>) {
-    if (editando) {
-      await supabase.from('alunos').update({ ...data, updated_at: new Date().toISOString() }).eq('id', editando.id)
-    } else {
-      await supabase.from('alunos').insert({ ...data, status: 'ativo' })
+    const { error } = editando
+      ? await supabase.from('alunos').update({ ...data, updated_at: new Date().toISOString() }).eq('id', editando.id)
+      : await supabase.from('alunos').insert({ ...data, status: 'ativo' })
+    if (error) {
+      console.error('[Usuarios] save error:', error)
+      alert(`Erro ao salvar aluno:\n${error.message}`)
+      return
     }
     setShowForm(false)
     setEditando(null)

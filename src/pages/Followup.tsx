@@ -44,7 +44,7 @@ export default function Followup() {
   }
 
   async function handleSaveFollowup(form: { nome: string; telefone: string; instrumento: string; origem: string; observacoes: string }) {
-    await supabase.from('alunos').insert({
+    const { error } = await supabase.from('alunos').insert({
       nome: form.nome,
       telefone: normalizePhone(form.telefone),
       instrumento_interesse: form.instrumento || null,
@@ -52,6 +52,11 @@ export default function Followup() {
       observacoes: form.observacoes || null,
       status: 'lead',
     })
+    if (error) {
+      console.error('[Followup] save error:', error)
+      alert(`Erro ao salvar follow-up:\n${error.message}`)
+      return
+    }
     setShowForm(false)
     loadFollowups()
   }
