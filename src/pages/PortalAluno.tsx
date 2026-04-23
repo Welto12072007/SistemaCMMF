@@ -33,6 +33,7 @@ interface HorarioDisponivel {
   hora_fim: string
   instrumento: string
   vagas_disponiveis: number
+  data_concreta: string // YYYY-MM-DD da data específica deste slot
 }
 
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
@@ -99,22 +100,23 @@ export default function PortalAluno() {
 
     if (!alunoRes) return
 
-    const umMesAtras = new Date()
-    umMesAtras.setMonth(umMesAtras.getMonth() - 1)
+    const inicioMes = new Date()
+    inicioMes.setDate(1)
+    inicioMes.setHours(0, 0, 0, 0)
 
-    // Buscar aulas com observation de remarcação no último mês
-    const { data: aulasRemarcadas } = await supabase
-      .from('agendamentos')
-      .select('updated_at')
+    const { data: remarcs } = await supabase
+      .from('remarcacoes')
+      .select('created_at')
       .eq('aluno_id', alunoRes.id)
-      .ilike('observacoes', '%remarcad%')
-      .gte('updated_at', umMesAtras.toISOString())
-      .order('updated_at', { ascending: false })
+      .in('status', ['solicitada', 'aprovada', 'concluida'])
+      .gte('created_at', inicioMes.toISOString())
+      .order('created_at', { ascending: false })
       .limit(1)
 
-    const ultimaAulaRemarcada = aulasRemarcadas?.[0]
-    if (ultimaAulaRemarcada?.updated_at) {
-      setUltimaRemarcacao(ultimaAulaRemarcada.updated_at)
+    if (remarcs && remarcs[0]?.created_at) {
+      setUltimaRemarcacao(remarcs[0].created_at)
+    } else {
+      setUltimaRemarcacao(null)
     }
   }
 
@@ -168,6 +170,7 @@ export default function PortalAluno() {
               hora_fim: h.hora_fim,
               instrumento: h.instrumento,
               vagas_disponiveis: vagas,
+              data_concreta: data.toISOString().slice(0, 10),
             })
           }
         }
@@ -177,48 +180,41 @@ export default function PortalAluno() {
     setHorariosDisponiveis(proximas4semanas)
   }
 
-  async function handleRemarcar(aula: AulaAgendada, novoHorarioId: string) {
-    // Validações
-    const agora = new Date()
-    const dataAula = new Date(aula.data_aula + 'T12:00:00')
-
-    if (dataAula.getTime() - agora.getTime() < 24 * 60 * 60 * 1000) {
-      setMensagem({ tipo: 'erro', texto: 'Aula é em menos de 24h. Não posso remarcar.' })
+  async function handleRemarcar(aula: AulaAgendada, slotKey: string) {
+    // slotKey = `${horario_id}__${data_concreta}`
+    const slot = horariosDisponiveis.find((h) => `${h.id}__${h.data_concreta}` === slotKey)
+    if (!slot) {
+      setMensagem({ tipo: 'erro', texto: 'Horário inválido. Recarregue e tente novamente.' })
       return
     }
 
-    if (ultimaRemarcacao) {
-      const ultimaData = new Date(ultimaRemarcacao)
-      const agora30dias = new Date()
-      agora30dias.setDate(agora30dias.getDate() - 30)
-      if (ultimaData > agora30dias) {
-        setMensagem({ tipo: 'erro', texto: 'Você já remarcou uma aula este mês. Limite: 1/mês.' })
-        return
-      }
-    }
-
-    // Executar remarcação
-    const { error } = await supabase
-      .from('agendamentos')
-      .update({
-        horario_id: novoHorarioId,
-        observacoes: `${aula.observacoes || ''} [Remarcado em ${new Date().toLocaleDateString('pt-BR')}]`,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', aula.id)
+    const { data, error } = await supabase.rpc('remarcar_aula', {
+      p_agendamento_id: aula.id,
+      p_horario_id_novo: slot.id,
+      p_data_nova: slot.data_concreta,
+      p_solicitado_por: 'aluno',
+      p_motivo: null,
+    })
 
     if (error) {
-      setMensagem({ tipo: 'erro', texto: 'Erro ao remarcar. Tente novamente.' })
+      console.error('[PortalAluno] remarcar_aula error:', error)
+      setMensagem({ tipo: 'erro', texto: `Erro: ${error.message}` })
       return
     }
 
-    setMensagem({ tipo: 'sucesso', texto: 'Aula remarcada com sucesso!' })
+    const result = data as { ok: boolean; mensagem: string }
+    if (!result?.ok) {
+      setMensagem({ tipo: 'erro', texto: result?.mensagem || 'Não foi possível remarcar.' })
+      return
+    }
+
+    setMensagem({ tipo: 'sucesso', texto: result.mensagem })
     setRemarcandoId(null)
     setHorariosDisponiveis([])
     loadAulas()
     loadUltimaRemarcacao()
 
-    setTimeout(() => setMensagem(null), 3000)
+    setTimeout(() => setMensagem(null), 4000)
   }
 
   if (loading) {
@@ -232,7 +228,7 @@ export default function PortalAluno() {
     )
   }
 
-  const podeRemarcar = !ultimaRemarcacao || (new Date().getTime() - new Date(ultimaRemarcacao).getTime() > 30 * 24 * 60 * 60 * 1000)
+  const podeRemarcar = !ultimaRemarcacao
 
   return (
     <div className="space-y-6">
@@ -426,27 +422,31 @@ function RescheduleModal({
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-              {horariosDisponiveis.map((h) => (
-                <button
-                  key={h.id}
-                  onClick={() => setSelecionado(h.id)}
-                  className={`p-3 border rounded-lg text-left transition-colors ${
-                    selecionado === h.id
-                      ? 'bg-brand-50 border-brand-300'
-                      : 'bg-gray-50 border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <p className="font-medium text-sm text-gray-900">
-                    {DIAS_SEMANA[h.dia_semana]}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {h.hora_inicio.slice(0, 5)} - {h.hora_fim.slice(0, 5)}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {h.vagas_disponiveis > 1 ? `${h.vagas_disponiveis} vagas` : '1 vaga'}
-                  </p>
-                </button>
-              ))}
+              {horariosDisponiveis.map((h) => {
+                const [y, m, d] = h.data_concreta.split('-')
+                const slotKey = `${h.id}__${h.data_concreta}`
+                return (
+                  <button
+                    key={slotKey}
+                    onClick={() => setSelecionado(slotKey)}
+                    className={`p-3 border rounded-lg text-left transition-colors ${
+                      selecionado === slotKey
+                        ? 'bg-brand-50 border-brand-300'
+                        : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <p className="font-medium text-sm text-gray-900">
+                      {DIAS_SEMANA[h.dia_semana]} {d}/{m}/{y}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {h.hora_inicio.slice(0, 5)} - {h.hora_fim.slice(0, 5)}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {h.vagas_disponiveis > 1 ? `${h.vagas_disponiveis} vagas` : '1 vaga'}
+                    </p>
+                  </button>
+                )
+              })}
             </div>
 
             <div className="flex gap-3 justify-end pt-4 border-t">
