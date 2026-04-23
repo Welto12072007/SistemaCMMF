@@ -19,6 +19,7 @@ import {
   UserCheck,
   LogOut,
   ClipboardCheck,
+  AlertTriangle,
   CalendarCheck,
   Calendar,
 } from 'lucide-react'
@@ -44,6 +45,7 @@ const sections: NavSection[] = [
       { to: '/followup', label: 'Follow-up', icon: PhoneForwarded, roles: ['admin', 'recepcao'] },
       { to: '/horarios', label: 'Horários', icon: CalendarClock, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/presencas', label: 'Presenças', icon: ClipboardCheck, roles: ['admin', 'recepcao', 'professor'] },
+      { to: '/faltas', label: 'Controle de Faltas', icon: AlertTriangle, roles: ['admin', 'recepcao'] },
       { to: '/portal-aluno', label: 'Minhas Aulas', icon: Calendar, roles: ['aluno'] },
     ],
   },

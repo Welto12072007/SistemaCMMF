@@ -18,6 +18,7 @@ import FingerTV from './pages/FingerTV'
 import MaterialApoio from './pages/MaterialApoio'
 import Logs from './pages/Logs'
 import Presencas from './pages/Presencas'
+import Faltas from './pages/Faltas'
 import DisparosProgramados from './pages/DisparosProgramados'
 import PortalAluno from './pages/PortalAluno'
 import Configuracoes from './pages/Configuracoes'
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="/financeiro" element={<Guard roles={['admin']}><Financeiro /></Guard>} />
         <Route path="/mensalidades" element={<Guard roles={['admin', 'recepcao']}><Mensalidades /></Guard>} />
         <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Presencas /></Guard>} />
+        <Route path="/faltas" element={<Guard roles={['admin', 'recepcao']}><Faltas /></Guard>} />
         <Route path="/portal-aluno" element={<Guard roles={['aluno']}><PortalAluno /></Guard>} />
         <Route path="/biblioteca" element={<Biblioteca />} />
         <Route path="/fingertv" element={<FingerTV />} />
