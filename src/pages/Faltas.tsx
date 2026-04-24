@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { AlertTriangle, CheckCircle2, Clock, Search, Send, Eye, RefreshCw, X, Check } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, Search, Send, Eye, RefreshCw, X, Check, CalendarPlus, Repeat } from 'lucide-react'
 
 interface PainelLinha {
   aluno_id: string
@@ -60,6 +60,41 @@ const STATUS_BADGE: Record<string, string> = {
   cancelado: 'bg-gray-100 text-gray-800',
 }
 
+interface Reposicao {
+  id: string
+  aluno_id: string | null
+  aluno_nome: string
+  professor_id: string | null
+  professor_nome: string | null
+  instrumento: string | null
+  mes_referencia: string
+  data_falta: string
+  data_reposicao: string | null
+  hora_reposicao: string | null
+  status: 'pendente' | 'agendada' | 'realizada' | 'expirada' | 'cancelada'
+  motivo_falta: string | null
+  observacoes: string | null
+  created_at: string
+  aluno_telefone: string | null
+  visibilidade: string
+}
+
+const REP_STATUS_BADGE: Record<string, string> = {
+  pendente: 'bg-yellow-100 text-yellow-800',
+  agendada: 'bg-blue-100 text-blue-800',
+  realizada: 'bg-green-100 text-green-800',
+  expirada: 'bg-gray-100 text-gray-600',
+  cancelada: 'bg-red-100 text-red-700',
+}
+
+const REP_STATUS_LABEL: Record<string, string> = {
+  pendente: 'Pendente',
+  agendada: 'Agendada',
+  realizada: 'Realizada',
+  expirada: 'Expirada',
+  cancelada: 'Cancelada',
+}
+
 function formatBR(date: string | null) {
   if (!date) return '—'
   const d = new Date(date)
@@ -67,20 +102,24 @@ function formatBR(date: string | null) {
 }
 
 export default function Faltas() {
-  const [tab, setTab] = useState<'painel' | 'fila'>('painel')
+  const [tab, setTab] = useState<'painel' | 'fila' | 'reposicoes'>('painel')
   const [linhas, setLinhas] = useState<PainelLinha[]>([])
   const [fila, setFila] = useState<AlertaFila[]>([])
+  const [reposicoes, setReposicoes] = useState<Reposicao[]>([])
   const [loading, setLoading] = useState(false)
   const [busca, setBusca] = useState('')
   const [filtroRisco, setFiltroRisco] = useState<string>('todos')
   const [filtroStatus, setFiltroStatus] = useState<string>('pendente')
+  const [filtroRepStatus, setFiltroRepStatus] = useState<string>('ativos')
   const [detectando, setDetectando] = useState(false)
   const [historico, setHistorico] = useState<{ aluno: PainelLinha; itens: HistoricoPresenca[] } | null>(null)
+  const [agendarRep, setAgendarRep] = useState<Reposicao | null>(null)
 
   useEffect(() => {
     if (tab === 'painel') loadPainel()
-    else loadFila()
-  }, [tab, filtroStatus])
+    else if (tab === 'fila') loadFila()
+    else loadReposicoes()
+  }, [tab, filtroStatus, filtroRepStatus])
 
   async function loadPainel() {
     setLoading(true)
@@ -159,6 +198,43 @@ export default function Faltas() {
     loadFila()
   }
 
+  async function loadReposicoes() {
+    setLoading(true)
+    let q = supabase.from('vw_reposicoes_painel').select('*').order('mes_referencia', { ascending: false }).order('created_at', { ascending: false })
+    if (filtroRepStatus === 'ativos') q = q.in('status', ['pendente', 'agendada'])
+    else if (filtroRepStatus !== 'todos') q = q.eq('status', filtroRepStatus)
+    const { data, error } = await q
+    if (error) {
+      console.error('[Faltas] reposicoes error:', error)
+      alert(`Erro: ${error.message}`)
+    }
+    setReposicoes((data as Reposicao[]) || [])
+    setLoading(false)
+  }
+
+  async function agendarReposicao(rep: Reposicao, dataNova: string, horaNova: string) {
+    const { error } = await supabase
+      .from('reposicoes')
+      .update({ status: 'agendada', data_reposicao: dataNova, hora_reposicao: horaNova })
+      .eq('id', rep.id)
+    if (error) { alert(`Erro: ${error.message}`); return }
+    setAgendarRep(null)
+    loadReposicoes()
+  }
+
+  async function marcarRealizada(id: string) {
+    const { error } = await supabase.from('reposicoes').update({ status: 'realizada' }).eq('id', id)
+    if (error) { alert(`Erro: ${error.message}`); return }
+    loadReposicoes()
+  }
+
+  async function cancelarReposicao(id: string) {
+    if (!confirm('Cancelar esta reposição?')) return
+    const { error } = await supabase.from('reposicoes').update({ status: 'cancelada' }).eq('id', id)
+    if (error) { alert(`Erro: ${error.message}`); return }
+    loadReposicoes()
+  }
+
   async function abrirHistorico(linha: PainelLinha) {
     const { data } = await supabase
       .from('presencas')
@@ -208,7 +284,7 @@ export default function Faltas() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b">
-        {(['painel', 'fila'] as const).map((t) => (
+        {(['painel', 'fila', 'reposicoes'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -216,7 +292,7 @@ export default function Faltas() {
               tab === t ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            {t === 'painel' ? 'Painel por aluno' : 'Fila de alertas'}
+            {t === 'painel' ? 'Painel por aluno' : t === 'fila' ? 'Fila de alertas' : 'Reposições'}
           </button>
         ))}
       </div>
@@ -427,6 +503,28 @@ export default function Faltas() {
         </>
       )}
 
+      {tab === 'reposicoes' && (
+        <ReposicoesView
+          reposicoes={reposicoes}
+          loading={loading}
+          busca={busca}
+          setBusca={setBusca}
+          filtroRepStatus={filtroRepStatus}
+          setFiltroRepStatus={setFiltroRepStatus}
+          onAgendar={(r) => setAgendarRep(r)}
+          onRealizar={marcarRealizada}
+          onCancelar={cancelarReposicao}
+        />
+      )}
+
+      {agendarRep && (
+        <AgendarReposicaoModal
+          rep={agendarRep}
+          onClose={() => setAgendarRep(null)}
+          onSave={(d, h) => agendarReposicao(agendarRep, d, h)}
+        />
+      )}
+
       {historico && (
         <HistoricoModal
           aluno={historico.aluno}
@@ -494,6 +592,258 @@ function HistoricoModal({
               ))}
             </ul>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// =====================================================================
+// Reposições
+// =====================================================================
+
+function ReposicoesView({
+  reposicoes,
+  loading,
+  busca,
+  setBusca,
+  filtroRepStatus,
+  setFiltroRepStatus,
+  onAgendar,
+  onRealizar,
+  onCancelar,
+}: {
+  reposicoes: Reposicao[]
+  loading: boolean
+  busca: string
+  setBusca: (v: string) => void
+  filtroRepStatus: string
+  setFiltroRepStatus: (v: string) => void
+  onAgendar: (r: Reposicao) => void
+  onRealizar: (id: string) => void
+  onCancelar: (id: string) => void
+}) {
+  const filtradas = useMemo(() => {
+    if (!busca.trim()) return reposicoes
+    const q = busca.toLowerCase()
+    return reposicoes.filter(
+      (r) =>
+        r.aluno_nome.toLowerCase().includes(q) ||
+        (r.professor_nome || '').toLowerCase().includes(q) ||
+        (r.aluno_telefone || '').includes(q)
+    )
+  }, [reposicoes, busca])
+
+  const kpis = useMemo(() => {
+    const mesAtual = new Date().toISOString().slice(0, 7)
+    return {
+      pendentes: reposicoes.filter((r) => r.status === 'pendente').length,
+      agendadas: reposicoes.filter((r) => r.status === 'agendada').length,
+      realizadasMes: reposicoes.filter((r) => r.status === 'realizada' && r.mes_referencia.startsWith(mesAtual)).length,
+      expiradas: reposicoes.filter((r) => r.status === 'expirada').length,
+    }
+  }, [reposicoes])
+
+  return (
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard label="Pendentes" value={String(kpis.pendentes)} icon={<Clock className="w-4 h-4 text-yellow-600" />} color="text-yellow-700" />
+        <KpiCard label="Agendadas" value={String(kpis.agendadas)} icon={<CalendarPlus className="w-4 h-4 text-blue-600" />} color="text-blue-700" />
+        <KpiCard label="Realizadas (mês)" value={String(kpis.realizadasMes)} icon={<CheckCircle2 className="w-4 h-4 text-green-600" />} color="text-green-700" />
+        <KpiCard label="Expiradas" value={String(kpis.expiradas)} icon={<X className="w-4 h-4 text-gray-500" />} color="text-gray-700" />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <select
+          value={filtroRepStatus}
+          onChange={(e) => setFiltroRepStatus(e.target.value)}
+          className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm"
+        >
+          <option value="ativos">Ativos (pendente + agendada)</option>
+          <option value="pendente">Pendentes</option>
+          <option value="agendada">Agendadas</option>
+          <option value="realizada">Realizadas</option>
+          <option value="expirada">Expiradas</option>
+          <option value="cancelada">Canceladas</option>
+          <option value="todos">Todos</option>
+        </select>
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar aluno, professor ou telefone..."
+            className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-gray-200 text-sm"
+          />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-gray-500">Carregando...</div>
+        ) : filtradas.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">
+            <Repeat className="w-10 h-10 mx-auto mb-2 opacity-40" />
+            Nenhuma reposição encontrada.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
+                <tr>
+                  <th className="px-4 py-3">Aluno</th>
+                  <th className="px-4 py-3">Professor</th>
+                  <th className="px-4 py-3">Mês ref.</th>
+                  <th className="px-4 py-3">Falta em</th>
+                  <th className="px-4 py-3">Reposição</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filtradas.map((r) => (
+                  <tr key={r.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900">{r.aluno_nome}</div>
+                      {r.instrumento && <div className="text-xs text-gray-500">{r.instrumento}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">{r.professor_nome || '—'}</td>
+                    <td className="px-4 py-3 text-gray-600 text-xs">
+                      {new Date(r.mes_referencia + 'T12:00').toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 text-xs">{formatBR(r.data_falta)}</td>
+                    <td className="px-4 py-3 text-xs">
+                      {r.data_reposicao ? (
+                        <>
+                          {formatBR(r.data_reposicao)}
+                          {r.hora_reposicao && <span className="text-gray-500"> às {r.hora_reposicao.slice(0, 5)}</span>}
+                        </>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${REP_STATUS_BADGE[r.status]}`}>
+                        {REP_STATUS_LABEL[r.status]}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex gap-1 justify-end flex-wrap">
+                        {r.status === 'pendente' && (
+                          <button
+                            onClick={() => onAgendar(r)}
+                            className="text-xs px-3 py-1.5 rounded bg-blue-100 text-blue-800 hover:bg-blue-200 inline-flex items-center gap-1"
+                          >
+                            <CalendarPlus className="w-3 h-3" /> Agendar
+                          </button>
+                        )}
+                        {r.status === 'agendada' && (
+                          <>
+                            <button
+                              onClick={() => onRealizar(r.id)}
+                              className="text-xs px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200 inline-flex items-center gap-1"
+                            >
+                              <Check className="w-3 h-3" /> Realizada
+                            </button>
+                            <button
+                              onClick={() => onAgendar(r)}
+                              className="text-xs px-3 py-1.5 rounded bg-gray-100 text-gray-700 hover:bg-gray-200"
+                              title="Reagendar"
+                            >
+                              Reagendar
+                            </button>
+                          </>
+                        )}
+                        {(r.status === 'pendente' || r.status === 'agendada') && (
+                          <button
+                            onClick={() => onCancelar(r.id)}
+                            className="text-xs px-3 py-1.5 rounded bg-gray-100 text-gray-700 hover:bg-red-100 hover:text-red-700 inline-flex items-center gap-1"
+                          >
+                            <X className="w-3 h-3" /> Cancelar
+                          </button>
+                        )}
+                        {r.aluno_telefone && (
+                          <a
+                            href={`https://wa.me/${r.aluno_telefone.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-50"
+                          >
+                            WhatsApp
+                          </a>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+function AgendarReposicaoModal({
+  rep,
+  onClose,
+  onSave,
+}: {
+  rep: Reposicao
+  onClose: () => void
+  onSave: (data: string, hora: string) => void
+}) {
+  const [data, setData] = useState(rep.data_reposicao || new Date().toISOString().slice(0, 10))
+  const [hora, setHora] = useState(rep.hora_reposicao?.slice(0, 5) || '14:00')
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="px-5 py-4 border-b flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Agendar reposição</h2>
+            <p className="text-sm text-gray-500">{rep.aluno_nome}</p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="text-xs text-gray-500 bg-yellow-50 border border-yellow-200 rounded p-3">
+            Falta original: <strong>{formatBR(rep.data_falta)}</strong>
+            {rep.professor_nome && <> · Professor: <strong>{rep.professor_nome}</strong></>}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Data da reposição</label>
+            <input
+              type="date"
+              value={data}
+              onChange={(e) => setData(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Hora</label>
+            <input
+              type="time"
+              value={hora}
+              onChange={(e) => setHora(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+            />
+          </div>
+        </div>
+        <div className="px-5 py-4 border-t flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button
+            onClick={() => onSave(data, hora)}
+            disabled={!data || !hora}
+            className="px-4 py-2 text-sm rounded-lg bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-50"
+          >
+            Salvar
+          </button>
         </div>
       </div>
     </div>
