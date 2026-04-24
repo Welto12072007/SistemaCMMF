@@ -55,7 +55,7 @@ interface AlertaFila {
 
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 
-export default function Presencas() {
+export default function Presencas({ embedded = false }: { embedded?: boolean } = {}) {
   const [dataAtual, setDataAtual] = useState(new Date().toISOString().slice(0, 10))
   const [professores, setProfessores] = useState<Professor[]>([])
   const [filtroProfessor, setFiltroProfessor] = useState('todos')
@@ -369,6 +369,7 @@ export default function Presencas() {
   return (
     <div className="space-y-6">
       {/* Header */}
+      {!embedded && (
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Controle de Presenças</h1>
@@ -389,6 +390,7 @@ export default function Presencas() {
           </button>
         </div>
       </div>
+      )}
 
       {/* Alertas de Faltas */}
       {alertas.length > 0 && (

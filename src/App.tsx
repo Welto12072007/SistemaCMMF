@@ -79,8 +79,8 @@ export default function App() {
         <Route path="/financeiro" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><Financeiro /></Suspense></Guard>} />
         <Route path="/dashboard-financeiro" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><DashboardFinanceiro /></Suspense></Guard>} />
         <Route path="/mensalidades" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Mensalidades /></Suspense></Guard>} />
-        <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Presencas /></Suspense></Guard>} />
-        <Route path="/faltas" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Faltas /></Suspense></Guard>} />
+        <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Faltas /></Suspense></Guard>} />
+        <Route path="/faltas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Faltas /></Suspense></Guard>} />
         <Route path="/portal-aluno" element={<Guard roles={['aluno']}><Suspense fallback={<PageLoader />}><PortalAluno /></Suspense></Guard>} />
         <Route path="/biblioteca" element={<Suspense fallback={<PageLoader />}><Biblioteca /></Suspense>} />
         <Route path="/fingertv" element={<Suspense fallback={<PageLoader />}><FingerTV /></Suspense>} />

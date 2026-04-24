@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { AlertTriangle, CheckCircle2, Clock, Search, Send, Eye, RefreshCw, X, Check, CalendarPlus, Repeat } from 'lucide-react'
+import Presencas from './Presencas'
 
 interface PainelLinha {
   aluno_id: string
@@ -102,7 +103,7 @@ function formatBR(date: string | null) {
 }
 
 export default function Faltas() {
-  const [tab, setTab] = useState<'painel' | 'fila' | 'reposicoes'>('painel')
+  const [tab, setTab] = useState<'marcar' | 'painel' | 'fila' | 'reposicoes'>('marcar')
   const [linhas, setLinhas] = useState<PainelLinha[]>([])
   const [fila, setFila] = useState<AlertaFila[]>([])
   const [reposicoes, setReposicoes] = useState<Reposicao[]>([])
@@ -116,6 +117,7 @@ export default function Faltas() {
   const [agendarRep, setAgendarRep] = useState<Reposicao | null>(null)
 
   useEffect(() => {
+    if (tab === 'marcar') return
     if (tab === 'painel') loadPainel()
     else if (tab === 'fila') loadFila()
     else loadReposicoes()
@@ -269,8 +271,8 @@ export default function Faltas() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Controle de Faltas</h1>
-          <p className="text-gray-500">Monitoramento de faltas + fila de alertas para alunos em risco</p>
+          <h1 className="text-2xl font-bold text-gray-900">Presenças & Faltas</h1>
+          <p className="text-gray-500">Marcar presenças, painel de faltas, alertas e reposições</p>
         </div>
         <button
           onClick={detectarAgora}
@@ -284,7 +286,7 @@ export default function Faltas() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b">
-        {(['painel', 'fila', 'reposicoes'] as const).map((t) => (
+        {(['marcar', 'painel', 'fila', 'reposicoes'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -292,10 +294,12 @@ export default function Faltas() {
               tab === t ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            {t === 'painel' ? 'Painel por aluno' : t === 'fila' ? 'Fila de alertas' : 'Reposições'}
+            {t === 'marcar' ? 'Marcar presenças' : t === 'painel' ? 'Painel por aluno' : t === 'fila' ? 'Fila de alertas' : 'Reposições'}
           </button>
         ))}
       </div>
+
+      {tab === 'marcar' && <Presencas embedded />}
 
       {tab === 'painel' && (
         <>
