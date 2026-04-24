@@ -54,6 +54,7 @@ const sections: NavSection[] = [
     roles: ['admin', 'recepcao'],
     items: [
       { to: '/financeiro', label: 'Financeiro', icon: DollarSign, roles: ['admin'] },
+      { to: '/dashboard-financeiro', label: 'Dashboard $', icon: BarChart3, roles: ['admin'] },
       { to: '/mensalidades', label: 'Mensalidades', icon: DollarSign, roles: ['admin', 'recepcao'] },
     ],
   },
