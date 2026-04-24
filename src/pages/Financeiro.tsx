@@ -12,6 +12,11 @@ import {
   Users,
   CheckCircle2,
   Clock,
+  Download,
+  Receipt,
+  Printer,
+  Copy,
+  X,
 } from 'lucide-react'
 import {
   BarChart,
@@ -58,6 +63,8 @@ interface ProfPagamento {
   valor_aulas: number
   extras: number
   total: number
+  chave_pix?: string | null
+  pix_tipo?: string | null
 }
 
 interface TrabalhoExtra {
@@ -86,6 +93,7 @@ export default function Financeiro() {
   const [extras, setExtras] = useState<TrabalhoExtra[]>([])
   const [showExtraForm, setShowExtraForm] = useState(false)
   const [professores, setProfessores] = useState<{ id: string; nome: string; tipo_professor: string; valor_hora_aula: number }[]>([])
+  const [reciboProf, setReciboProf] = useState<ProfPagamento | null>(null)
 
   useEffect(() => {
     loadFluxo()
@@ -152,7 +160,7 @@ export default function Financeiro() {
     const ultimoDia = new Date(anoAtual, mesAtual, 0).toISOString().slice(0, 10)
 
     // Buscar professores
-    const { data: profs } = await supabase.from('professores').select('id, nome, tipo_professor, valor_hora_aula').eq('ativo', true)
+    const { data: profs } = await supabase.from('professores').select('id, nome, tipo_professor, valor_hora_aula, chave_pix, pix_tipo').eq('ativo', true)
     if (!profs) return
 
     // Buscar presenças do mês
@@ -191,6 +199,8 @@ export default function Financeiro() {
         valor_aulas: valorAulas,
         extras: extrasProf,
         total: valorAulas + extrasProf,
+        chave_pix: (prof as any).chave_pix ?? null,
+        pix_tipo: (prof as any).pix_tipo ?? null,
       }
     }).filter(p => p.aulas_mes > 0 || p.extras > 0)
 
@@ -235,6 +245,42 @@ export default function Financeiro() {
     await supabase.from('trabalhos_extras').delete().eq('id', id)
     loadExtras()
     loadProfPagamentos()
+  }
+
+  function exportarCSV() {
+    if (profPagamentos.length === 0) {
+      alert('Nada para exportar neste mês.')
+      return
+    }
+    const header = ['Professor','Tipo','R$/Aula','Aulas','Presenças','FJ','Aulas R$','Extras R$','Total R$','Chave PIX','Tipo PIX']
+    const rows = profPagamentos.map(p => [
+      p.professor_nome,
+      p.tipo,
+      p.valor_hora.toFixed(2).replace('.', ','),
+      String(p.aulas_mes),
+      String(p.presencas),
+      String(p.faltas_justificadas),
+      p.valor_aulas.toFixed(2).replace('.', ','),
+      p.extras.toFixed(2).replace('.', ','),
+      p.total.toFixed(2).replace('.', ','),
+      p.chave_pix || '',
+      p.pix_tipo || '',
+    ])
+    const totalRow = ['TOTAL','','','','','',
+      profPagamentos.reduce((s,p)=>s+p.valor_aulas,0).toFixed(2).replace('.',','),
+      profPagamentos.reduce((s,p)=>s+p.extras,0).toFixed(2).replace('.',','),
+      profPagamentos.reduce((s,p)=>s+p.total,0).toFixed(2).replace('.',','),
+      '','']
+    const csv = [header, ...rows, totalRow]
+      .map(r => r.map(c => `"${(c ?? '').replace(/"/g,'""')}"`).join(';'))
+      .join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `honorarios_${anoAtual}_${String(mesAtual).padStart(2,'0')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   async function handleAddFluxo(form: Partial<FluxoItem>) {
@@ -531,10 +577,16 @@ export default function Financeiro() {
 
           {/* Professor Payment Table */}
           <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-            <div className="bg-brand-600 text-white px-4 py-3">
+            <div className="bg-brand-600 text-white px-4 py-3 flex items-center justify-between">
               <h3 className="font-bold text-sm uppercase tracking-wider">
                 Honorários {MESES[mesAtual - 1]} / {anoAtual}
               </h3>
+              <button
+                onClick={exportarCSV}
+                className="flex items-center gap-1 text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" /> Exportar CSV
+              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -549,12 +601,13 @@ export default function Financeiro() {
                     <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">Aulas R$</th>
                     <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">Extras R$</th>
                     <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase">Total R$</th>
+                    <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">Recibo</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {profPagamentos.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="text-center py-8 text-gray-400 text-sm">
+                      <td colSpan={10} className="text-center py-8 text-gray-400 text-sm">
                         Nenhum pagamento registrado para este mês
                       </td>
                     </tr>
@@ -574,6 +627,15 @@ export default function Financeiro() {
                         <td className="px-3 py-3 text-sm text-right">R$ {p.valor_aulas.toFixed(2)}</td>
                         <td className="px-3 py-3 text-sm text-right">{p.extras > 0 ? `R$ ${p.extras.toFixed(2)}` : '—'}</td>
                         <td className="px-4 py-3 text-sm text-right font-bold text-brand-700">R$ {p.total.toFixed(2)}</td>
+                        <td className="px-3 py-3 text-center">
+                          <button
+                            onClick={() => setReciboProf(p)}
+                            className="inline-flex items-center gap-1 text-xs bg-brand-50 text-brand-700 hover:bg-brand-100 px-2.5 py-1 rounded-md"
+                            title="Ver recibo / PIX"
+                          >
+                            <Receipt className="w-3.5 h-3.5" /> Recibo
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -591,6 +653,7 @@ export default function Financeiro() {
                       <td className="px-4 py-3 text-sm text-right font-bold text-brand-700">
                         R$ {profPagamentos.reduce((s, p) => s + p.total, 0).toFixed(2)}
                       </td>
+                      <td></td>
                     </tr>
                   </tfoot>
                 )}
@@ -672,6 +735,17 @@ export default function Financeiro() {
               professores={professores}
               onSave={handleAddExtra}
               onClose={() => setShowExtraForm(false)}
+            />
+          )}
+
+          {/* Recibo Modal */}
+          {reciboProf && (
+            <ReciboModal
+              prof={reciboProf}
+              mes={mesAtual}
+              ano={anoAtual}
+              onClose={() => setReciboProf(null)}
+              onUpdated={() => loadProfPagamentos()}
             />
           )}
         </>
@@ -837,6 +911,173 @@ function ExtraForm({
             className="px-4 py-2 text-sm text-white rounded-lg bg-orange-600 hover:bg-orange-700"
           >
             Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ReciboModal — recibo imprimível + chave PIX
+// ---------------------------------------------------------------------------
+const MESES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+
+function ReciboModal({ prof, mes, ano, onClose, onUpdated }: {
+  prof: ProfPagamento
+  mes: number
+  ano: number
+  onClose: () => void
+  onUpdated: () => void
+}) {
+  const [chavePix, setChavePix] = useState(prof.chave_pix || '')
+  const [pixTipo, setPixTipo] = useState(prof.pix_tipo || 'cpf')
+  const [editPix, setEditPix] = useState(!prof.chave_pix)
+  const [savingPix, setSavingPix] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  async function salvarPix() {
+    setSavingPix(true)
+    const { error } = await supabase
+      .from('professores')
+      .update({ chave_pix: chavePix || null, pix_tipo: chavePix ? pixTipo : null })
+      .eq('id', prof.professor_id)
+    setSavingPix(false)
+    if (error) {
+      alert('Erro ao salvar PIX:\n' + error.message)
+      return
+    }
+    setEditPix(false)
+    onUpdated()
+  }
+
+  async function copiarPix() {
+    if (!chavePix) return
+    try {
+      await navigator.clipboard.writeText(chavePix)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      alert('Não foi possível copiar. Chave: ' + chavePix)
+    }
+  }
+
+  function imprimir() {
+    const w = window.open('', '_blank', 'width=700,height=900')
+    if (!w) { alert('Permita pop-ups para imprimir.'); return }
+    const linhas = [
+      ['Aulas dadas', String(prof.presencas)],
+      ['Faltas justificadas', String(prof.faltas_justificadas)],
+      ['Valor por aula', `R$ ${prof.valor_hora.toFixed(2)}`],
+      ['Subtotal aulas', `R$ ${prof.valor_aulas.toFixed(2)}`],
+      ['Trabalhos extras', `R$ ${prof.extras.toFixed(2)}`],
+    ].map(([k,v]) => `<tr><td>${k}</td><td style="text-align:right">${v}</td></tr>`).join('')
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Recibo - ${prof.professor_nome}</title>
+      <style>
+        body{font-family:Arial,sans-serif;max-width:600px;margin:40px auto;padding:0 20px;color:#222}
+        h1{font-size:18px;margin:0 0 4px;text-align:center}
+        h2{font-size:13px;color:#666;margin:0 0 24px;text-align:center;font-weight:normal}
+        .box{border:1px solid #ddd;border-radius:8px;padding:18px;margin-bottom:18px}
+        table{width:100%;border-collapse:collapse;font-size:13px}
+        td{padding:6px 0;border-bottom:1px solid #f0f0f0}
+        .total{font-size:18px;font-weight:bold;background:#f7f7f7;padding:14px;border-radius:8px;display:flex;justify-content:space-between;margin-bottom:18px}
+        .pix{font-family:monospace;background:#f7f7f7;padding:10px;border-radius:6px;font-size:12px;word-break:break-all}
+        .footer{margin-top:40px;border-top:1px solid #ddd;padding-top:30px;text-align:center;font-size:12px;color:#666}
+        .sign{margin-top:50px;border-top:1px solid #333;padding-top:6px;width:300px;margin-left:auto;margin-right:auto;text-align:center;font-size:12px}
+      </style></head><body>
+      <h1>RECIBO DE PAGAMENTO</h1>
+      <h2>Centro de Música Murilo Finger — CMMF</h2>
+      <div class="box">
+        <p><strong>Recebi de:</strong> Centro de Música Murilo Finger</p>
+        <p><strong>A quantia de:</strong> R$ ${prof.total.toFixed(2)}</p>
+        <p><strong>Referente a:</strong> Honorários de aulas — ${MESES_NOMES[mes-1]}/${ano}</p>
+        <p><strong>Beneficiário:</strong> ${prof.professor_nome} (Tipo ${prof.tipo})</p>
+      </div>
+      <div class="box">
+        <table>${linhas}</table>
+      </div>
+      <div class="total"><span>TOTAL</span><span>R$ ${prof.total.toFixed(2)}</span></div>
+      ${chavePix ? `<div class="box"><p style="margin:0 0 6px"><strong>Chave PIX (${pixTipo}):</strong></p><div class="pix">${chavePix}</div></div>` : ''}
+      <div class="sign">${prof.professor_nome}</div>
+      <div class="footer">Emitido em ${new Date().toLocaleDateString('pt-BR')} via Sistema CMMF</div>
+      <script>window.onload=()=>{window.print()}</script>
+      </body></html>`)
+    w.document.close()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold flex items-center gap-2"><Receipt className="w-5 h-5" /> Recibo</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-4">
+          <p className="font-semibold">{prof.professor_nome}</p>
+          <p className="text-xs text-gray-500">Tipo {prof.tipo} · {MESES_NOMES[mes-1]}/{ano}</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div className="flex justify-between"><span className="text-gray-500">Aulas</span><span>{prof.presencas}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">FJ</span><span>{prof.faltas_justificadas}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">R$/aula</span><span>R$ {prof.valor_hora.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>R$ {prof.valor_aulas.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Extras</span><span>R$ {prof.extras.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold text-brand-700"><span>TOTAL</span><span>R$ {prof.total.toFixed(2)}</span></div>
+          </div>
+        </div>
+
+        {/* PIX */}
+        <div className="border rounded-lg p-4 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-semibold">Chave PIX para pagamento</p>
+            {!editPix && chavePix && (
+              <button onClick={() => setEditPix(true)} className="text-xs text-brand-600 hover:underline">Editar</button>
+            )}
+          </div>
+
+          {editPix ? (
+            <div className="space-y-2">
+              <select className="w-full border rounded-lg px-3 py-2 text-sm" value={pixTipo} onChange={e => setPixTipo(e.target.value)}>
+                <option value="cpf">CPF</option>
+                <option value="cnpj">CNPJ</option>
+                <option value="email">E-mail</option>
+                <option value="telefone">Telefone</option>
+                <option value="aleatoria">Aleatória</option>
+              </select>
+              <input
+                className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
+                placeholder="Chave PIX"
+                value={chavePix}
+                onChange={e => setChavePix(e.target.value)}
+              />
+              <div className="flex justify-end gap-2">
+                {prof.chave_pix && (
+                  <button onClick={() => { setChavePix(prof.chave_pix || ''); setPixTipo(prof.pix_tipo || 'cpf'); setEditPix(false) }} className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+                )}
+                <button onClick={salvarPix} disabled={savingPix} className="px-3 py-1.5 text-xs bg-brand-500 text-white rounded-lg disabled:opacity-50">
+                  {savingPix ? 'Salvando...' : 'Salvar PIX'}
+                </button>
+              </div>
+            </div>
+          ) : chavePix ? (
+            <div className="flex items-center gap-2">
+              <code className="flex-1 bg-gray-50 px-3 py-2 rounded text-xs break-all">{chavePix}</code>
+              <button onClick={copiarPix} className="flex items-center gap-1 text-xs px-3 py-2 bg-brand-50 text-brand-700 hover:bg-brand-100 rounded-lg">
+                <Copy className="w-3.5 h-3.5" /> {copied ? 'Copiado!' : 'Copiar'}
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 italic">Nenhuma chave PIX cadastrada para este professor.</p>
+          )}
+          {!editPix && chavePix && (
+            <p className="text-[11px] text-gray-500 mt-1">Tipo: {pixTipo}</p>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Fechar</button>
+          <button onClick={imprimir} className="flex items-center gap-1 px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">
+            <Printer className="w-4 h-4" /> Imprimir Recibo
           </button>
         </div>
       </div>
