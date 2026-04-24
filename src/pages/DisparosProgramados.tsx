@@ -18,6 +18,15 @@ import {
   CreditCard,
   Star,
   MessageSquare,
+  AlertTriangle,
+  RefreshCw,
+  PartyPopper,
+  ClipboardList,
+  Megaphone,
+  Tag,
+  Bell,
+  Copy,
+  Zap,
 } from 'lucide-react'
 
 interface DisparoProgramado {
@@ -30,9 +39,14 @@ interface DisparoProgramado {
   grupo_alvo: string
   ativo: boolean
   dia_disparo?: number
+  dia_semana?: number | null
+  recorrencia?: string
+  data_unica?: string | null
   hora_disparo: string
   ultimo_disparo?: string
   total_enviados: number
+  disparar_agora?: boolean
+  observacoes?: string | null
 }
 
 const TIPO_ICONS: Record<string, typeof Gift> = {
@@ -41,6 +55,13 @@ const TIPO_ICONS: Record<string, typeof Gift> = {
   boas_vindas: Users,
   avaliacao_google: Star,
   personalizado: MessageSquare,
+  cobranca_atraso: AlertTriangle,
+  reativacao: RefreshCw,
+  convite_evento: PartyPopper,
+  pesquisa_satisfacao: ClipboardList,
+  comunicado: Megaphone,
+  promocao: Tag,
+  lembrete_aula: Bell,
 }
 
 const TIPO_COLORS: Record<string, string> = {
@@ -49,6 +70,13 @@ const TIPO_COLORS: Record<string, string> = {
   boas_vindas: 'bg-green-100 text-green-700',
   avaliacao_google: 'bg-yellow-100 text-yellow-700',
   personalizado: 'bg-purple-100 text-purple-700',
+  cobranca_atraso: 'bg-red-100 text-red-700',
+  reativacao: 'bg-amber-100 text-amber-700',
+  convite_evento: 'bg-indigo-100 text-indigo-700',
+  pesquisa_satisfacao: 'bg-cyan-100 text-cyan-700',
+  comunicado: 'bg-slate-100 text-slate-700',
+  promocao: 'bg-orange-100 text-orange-700',
+  lembrete_aula: 'bg-teal-100 text-teal-700',
 }
 
 const TIPO_LABELS: Record<string, string> = {
@@ -57,7 +85,16 @@ const TIPO_LABELS: Record<string, string> = {
   boas_vindas: 'Boas-vindas',
   avaliacao_google: 'Avaliação Google',
   personalizado: 'Personalizado',
+  cobranca_atraso: 'Cobrança em atraso',
+  reativacao: 'Reativação ex-aluno',
+  convite_evento: 'Convite/Evento',
+  pesquisa_satisfacao: 'Pesquisa NPS',
+  comunicado: 'Comunicado geral',
+  promocao: 'Promoção/Campanha',
+  lembrete_aula: 'Lembrete de aula',
 }
+
+const DIAS_SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
 
 const GRUPO_LABELS: Record<string, string> = {
   todos: 'Todos os contatos',
@@ -127,6 +164,45 @@ export default function DisparosProgramados() {
   async function handleDelete(id: string) {
     if (!confirm('Excluir este disparo programado?')) return
     await supabase.from('disparos_programados').delete().eq('id', id)
+    loadDisparos()
+  }
+
+  async function handleDuplicate(d: DisparoProgramado) {
+    const novo = {
+      nome: `${d.nome} (cópia)`,
+      tipo: d.tipo,
+      mensagem: d.mensagem,
+      media_url: d.media_url || null,
+      media_type: d.media_type || null,
+      grupo_alvo: d.grupo_alvo,
+      dia_disparo: d.dia_disparo ?? null,
+      dia_semana: d.dia_semana ?? null,
+      recorrencia: d.recorrencia || 'mensal',
+      data_unica: d.data_unica ?? null,
+      hora_disparo: d.hora_disparo,
+      ativo: false,
+      observacoes: d.observacoes ?? null,
+    }
+    const { error } = await supabase.from('disparos_programados').insert(novo)
+    if (error) {
+      console.error('[Disparos] duplicate error:', error)
+      alert('Erro ao duplicar:\n' + error.message)
+      return
+    }
+    loadDisparos()
+  }
+
+  async function handleDispararAgora(d: DisparoProgramado) {
+    if (!confirm(`Disparar AGORA o disparo "${d.nome}" para ${formatarGrupo(d.grupo_alvo)}?\n\nO n8n vai processar na próxima execução (em até 2 horas).`)) return
+    const { error } = await supabase
+      .from('disparos_programados')
+      .update({ disparar_agora: true, ativo: true })
+      .eq('id', d.id)
+    if (error) {
+      alert('Erro ao agendar disparo:\n' + error.message)
+      return
+    }
+    alert('Disparo agendado! Será processado na próxima execução do n8n.')
     loadDisparos()
   }
 
@@ -202,16 +278,38 @@ export default function DisparosProgramados() {
                   <Clock className="w-3 h-3" />
                   {d.hora_disparo?.slice(0, 5) || '09:00'}
                 </span>
-                {d.dia_disparo && (
+                {d.recorrencia === 'semanal' && d.dia_semana !== null && d.dia_semana !== undefined && (
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />
+                    {DIAS_SEMANA[d.dia_semana]}
+                  </span>
+                )}
+                {d.recorrencia === 'mensal' && d.dia_disparo && (
                   <span className="flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
                     Dia {d.dia_disparo}
+                  </span>
+                )}
+                {d.recorrencia === 'unico' && d.data_unica && (
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />
+                    {new Date(d.data_unica + 'T12:00').toLocaleDateString('pt-BR')}
+                  </span>
+                )}
+                {d.recorrencia === 'diario' && (
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3 h-3" /> Diário
                   </span>
                 )}
                 <span className="flex items-center gap-1">
                   <Send className="w-3 h-3" />
                   {d.total_enviados} enviados
                 </span>
+                {d.disparar_agora && (
+                  <span className="flex items-center gap-1 text-orange-600 font-medium">
+                    <Zap className="w-3 h-3" /> Aguardando disparo
+                  </span>
+                )}
               </div>
 
               {d.ultimo_disparo && (
@@ -220,7 +318,7 @@ export default function DisparosProgramados() {
                 </p>
               )}
 
-              <div className="flex items-center gap-2 pt-2 border-t">
+              <div className="flex items-center gap-2 pt-2 border-t flex-wrap">
                 <button
                   onClick={() => { setEditing(d); setShowForm(true) }}
                   className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600 px-2 py-1 rounded"
@@ -228,8 +326,22 @@ export default function DisparosProgramados() {
                   <Pencil className="w-3 h-3" /> Editar
                 </button>
                 <button
+                  onClick={() => handleDuplicate(d)}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 px-2 py-1 rounded"
+                  title="Criar cópia inativa"
+                >
+                  <Copy className="w-3 h-3" /> Duplicar
+                </button>
+                <button
+                  onClick={() => handleDispararAgora(d)}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-orange-600 px-2 py-1 rounded"
+                  title="Forçar disparo na próxima execução do n8n"
+                >
+                  <Zap className="w-3 h-3" /> Disparar agora
+                </button>
+                <button
                   onClick={() => handleDelete(d.id)}
-                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded"
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded ml-auto"
                 >
                   <Trash2 className="w-3 h-3" /> Excluir
                 </button>
@@ -277,9 +389,13 @@ function DisparoForm({
     media_url: disparo?.media_url ?? '',
     media_type: disparo?.media_type ?? '',
     grupo_alvo: disparo?.grupo_alvo ?? 'alunos_ativos',
+    recorrencia: disparo?.recorrencia ?? 'mensal',
     dia_disparo: disparo?.dia_disparo?.toString() ?? '',
+    dia_semana: disparo?.dia_semana?.toString() ?? '',
+    data_unica: disparo?.data_unica ?? '',
     hora_disparo: disparo?.hora_disparo?.slice(0, 5) ?? '09:00',
     ativo: disparo?.ativo ?? true,
+    observacoes: disparo?.observacoes ?? '',
   })
   const [uploadingMedia, setUploadingMedia] = useState(false)
   const [mediaLibrary, setMediaLibrary] = useState<Array<{ name: string; path: string; url: string }>>([])
@@ -353,8 +469,15 @@ function DisparoForm({
           >
             <option value="aniversario">Aniversário</option>
             <option value="vencimento">Lembrete de Vencimento</option>
+            <option value="cobranca_atraso">Cobrança em Atraso</option>
             <option value="boas_vindas">Boas-vindas</option>
+            <option value="reativacao">Reativação Ex-aluno</option>
+            <option value="convite_evento">Convite/Evento</option>
+            <option value="pesquisa_satisfacao">Pesquisa NPS</option>
             <option value="avaliacao_google">Avaliação Google</option>
+            <option value="comunicado">Comunicado Geral</option>
+            <option value="promocao">Promoção/Campanha</option>
+            <option value="lembrete_aula">Lembrete de Aula</option>
             <option value="personalizado">Personalizado</option>
           </select>
           <textarea
@@ -364,7 +487,7 @@ function DisparoForm({
             value={form.mensagem}
             onChange={(e) => setForm({ ...form, mensagem: e.target.value })}
           />
-          <p className="text-xs text-gray-400">Variáveis: {'{nome}'}, {'{instrumento}'}, {'{telefone}'}</p>
+          <p className="text-xs text-gray-400">Variáveis: {'{nome}'}, {'{instrumento}'}, {'{telefone}'}, {'{professor}'}, {'{referencia_mes}'}, {'{data_evento}'}</p>
           <select
             className="w-full border rounded-lg px-3 py-2 text-sm"
             value={form.grupo_alvo}
@@ -383,6 +506,19 @@ function DisparoForm({
           </select>
           <div className="grid grid-cols-2 gap-3">
             <div>
+              <label className="text-xs text-gray-500 block mb-1">Recorrência</label>
+              <select
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                value={form.recorrencia}
+                onChange={(e) => setForm({ ...form, recorrencia: e.target.value, dia_disparo: '', dia_semana: '', data_unica: '' })}
+              >
+                <option value="mensal">Mensal (dia fixo)</option>
+                <option value="semanal">Semanal (dia da semana)</option>
+                <option value="diario">Diário</option>
+                <option value="unico">Único (data específica)</option>
+              </select>
+            </div>
+            <div>
               <label className="text-xs text-gray-500 block mb-1">Horário</label>
               <input
                 type="time"
@@ -391,8 +527,11 @@ function DisparoForm({
                 onChange={(e) => setForm({ ...form, hora_disparo: e.target.value })}
               />
             </div>
+          </div>
+
+          {form.recorrencia === 'mensal' && (
             <div>
-              <label className="text-xs text-gray-500 block mb-1">Dia do mês (opcional)</label>
+              <label className="text-xs text-gray-500 block mb-1">Dia do mês (1-31)</label>
               <input
                 type="number"
                 min="1"
@@ -403,7 +542,33 @@ function DisparoForm({
                 onChange={(e) => setForm({ ...form, dia_disparo: e.target.value })}
               />
             </div>
-          </div>
+          )}
+
+          {form.recorrencia === 'semanal' && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Dia da semana</label>
+              <select
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                value={form.dia_semana}
+                onChange={(e) => setForm({ ...form, dia_semana: e.target.value })}
+              >
+                <option value="">Selecione...</option>
+                {DIAS_SEMANA.map((d, i) => <option key={i} value={i}>{d}</option>)}
+              </select>
+            </div>
+          )}
+
+          {form.recorrencia === 'unico' && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Data específica</label>
+              <input
+                type="date"
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                value={form.data_unica}
+                onChange={(e) => setForm({ ...form, data_unica: e.target.value })}
+              />
+            </div>
+          )}
           <select
             className="w-full border rounded-lg px-3 py-2 text-sm"
             value={form.media_type}
@@ -462,6 +627,13 @@ function DisparoForm({
               )}
             </div>
           )}
+          <textarea
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+            placeholder="Observações internas (não enviadas)"
+            rows={2}
+            value={form.observacoes}
+            onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
+          />
         </div>
         <div className="flex justify-end gap-3 mt-5">
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
@@ -473,8 +645,11 @@ function DisparoForm({
               onSave({
                 ...form,
                 dia_disparo: form.dia_disparo ? parseInt(form.dia_disparo) : undefined,
+                dia_semana: form.dia_semana !== '' ? parseInt(form.dia_semana) : null,
+                data_unica: form.data_unica || null,
                 media_url: form.media_url || undefined,
                 media_type: form.media_type || undefined,
+                observacoes: form.observacoes || null,
               } as any)
             }}
             className="px-4 py-2 text-sm text-white rounded-lg bg-brand-500 hover:bg-brand-600"
