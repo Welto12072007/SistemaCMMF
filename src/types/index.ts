@@ -146,6 +146,7 @@ export interface AulaExperimental {
   observacoes?: string
   professor_nome?: string
   created_at?: string
+  convertido_em?: string | null
 }
 
 

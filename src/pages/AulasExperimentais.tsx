@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Calendar, Music, User, X } from 'lucide-react'
+import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2 } from 'lucide-react'
 import type { AulaExperimental, Professor } from '@/types'
 
 const INSTRUMENTOS = ['Piano', 'Violão', 'Guitarra', 'Bateria', 'Canto', 'Ukulele', 'Baixo', 'Teclado', 'Musicalização Infantil', 'Cavaquinho', 'Contrabaixo', 'Violino', 'Percussão']
@@ -23,6 +23,7 @@ export default function AulasExperimentais() {
   const [professores, setProfessores] = useState<Professor[]>([])
   const [filtro, setFiltro] = useState('Todos os status')
   const [showForm, setShowForm] = useState(false)
+  const [converterAula, setConverterAula] = useState<AulaExperimental | null>(null)
 
   useEffect(() => {
     loadAulas()
@@ -169,6 +170,23 @@ export default function AulasExperimentais() {
                 </button>
               </div>
             )}
+
+            {['concluida', 'realizada'].includes(a.status?.toLowerCase()) && (
+              <div className="flex gap-2">
+                {a.convertido_em ? (
+                  <span className="text-xs px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Convertido em aluno
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => setConverterAula(a)}
+                    className="text-xs px-3 py-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors flex items-center gap-1"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" /> Converter em aluno
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ))}
         {filtered.length === 0 && (
@@ -183,6 +201,14 @@ export default function AulasExperimentais() {
           professores={professores}
           onSave={handleSaveAula}
           onClose={() => setShowForm(false)}
+        />
+      )}
+
+      {converterAula && (
+        <ConverterModal
+          aula={converterAula}
+          onClose={() => setConverterAula(null)}
+          onDone={() => { setConverterAula(null); loadAulas() }}
         />
       )}
     </div>
@@ -262,6 +288,187 @@ function NovaAulaForm({ professores, onSave, onClose }: {
             Salvar
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ConverterModal — converte aula experimental concluída em aluno matriculado
+// ---------------------------------------------------------------------------
+function ConverterModal({ aula, onClose, onDone }: {
+  aula: AulaExperimental
+  onClose: () => void
+  onDone: () => void
+}) {
+  const hoje = new Date().toISOString().slice(0, 10)
+  const diaHoje = new Date().getDate()
+  const [form, setForm] = useState({
+    modalidade: 'individual_mensal',
+    valor_plano: 320,
+    taxa_matricula: 0,
+    desconto_matricula: 0,
+    dia_inicio_aulas: diaHoje,
+    data_matricula: hoje,
+    observacao: '',
+  })
+  const [existente, setExistente] = useState<{ id: string; nome: string; status: string } | null>(null)
+  const [checking, setChecking] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  // Busca aluno existente pelo telefone normalizado
+  useEffect(() => {
+    (async () => {
+      const tel = (aula.telefone || '').replace(/\D/g, '')
+      if (!tel) { setChecking(false); return }
+      const { data } = await supabase
+        .from('alunos')
+        .select('id,nome,status')
+        .eq('telefone', tel)
+        .maybeSingle()
+      setExistente(data ?? null)
+      setChecking(false)
+    })()
+  }, [aula.telefone])
+
+  const presets: Record<string, number> = {
+    individual_mensal: 320,
+    individual_semestral: 280,
+    grupo: 180,
+  }
+
+  function setModalidade(m: string) {
+    setForm(f => ({ ...f, modalidade: m, valor_plano: presets[m] ?? f.valor_plano }))
+  }
+
+  const jaAtivo = existente && existente.status?.toLowerCase() === 'ativo'
+  const isReativacao = existente && !jaAtivo
+
+  async function handleConverter() {
+    if (jaAtivo) return
+    setSaving(true)
+    const { data, error } = await supabase.rpc('converter_experimental_em_aluno', {
+      p_experimental_id: aula.id,
+      p_modalidade: form.modalidade,
+      p_valor_plano: form.valor_plano,
+      p_taxa_matricula: form.taxa_matricula,
+      p_desconto_matricula: form.desconto_matricula,
+      p_dia_inicio_aulas: form.dia_inicio_aulas,
+      p_data_matricula: form.data_matricula,
+      p_observacao: form.observacao || null,
+    })
+    setSaving(false)
+
+    if (error) {
+      console.error('[ConverterModal] rpc error:', error)
+      alert(`Erro ao converter:\n${error.message}`)
+      return
+    }
+    const res = data as { ok: boolean; motivo?: string; action?: string; mensalidade_valor?: number; mensalidade_proporcional?: boolean }
+    if (!res?.ok) {
+      alert(`Não foi possível converter:\n${res?.motivo ?? 'erro desconhecido'}`)
+      return
+    }
+    const acao = res.action === 'reativado' ? 'Aluno reativado' : 'Aluno criado'
+    const prop = res.mensalidade_proporcional ? ' (proporcional)' : ''
+    alert(`${acao} com sucesso!\n1ª mensalidade: R$ ${res.mensalidade_valor}${prop}`)
+    onDone()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold">
+            {isReativacao ? 'Reativar Aluno' : 'Converter em Aluno'}
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm">
+          <p><strong>{aula.nome}</strong> — {aula.telefone}</p>
+          <p className="text-gray-600 text-xs mt-1">{aula.instrumento} · Aula em {aula.data_aula ? new Date(aula.data_aula).toLocaleDateString('pt-BR') : '—'}</p>
+        </div>
+
+        {checking ? (
+          <div className="text-sm text-gray-500 py-6 text-center">Verificando duplicidade...</div>
+        ) : jaAtivo ? (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm">
+            <p className="font-semibold text-red-800">⛔ Já existe aluno ativo com este telefone</p>
+            <p className="text-red-700 mt-1">{existente?.nome}</p>
+            <p className="text-red-600 text-xs mt-2">Não é possível converter. Verifique o cadastro existente.</p>
+            <div className="flex justify-end mt-4">
+              <button onClick={onClose} className="px-4 py-2 text-sm bg-gray-200 rounded-lg">Fechar</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {isReativacao && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-sm">
+                <p className="font-semibold text-amber-800">⚠️ Aluno inativo encontrado: {existente?.nome}</p>
+                <p className="text-amber-700 text-xs mt-1">Será reativado e os dados do plano serão atualizados.</p>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Modalidade <span className="text-red-500">*</span></label>
+                <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.modalidade} onChange={e => setModalidade(e.target.value)}>
+                  <option value="individual_mensal">Individual Mensal — R$ 320</option>
+                  <option value="individual_semestral">Individual Semestral — R$ 280</option>
+                  <option value="grupo">Grupo — R$ 180</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Valor mensal (R$) <span className="text-red-500">*</span></label>
+                  <input type="number" step="0.01" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.valor_plano} onChange={e => setForm({ ...form, valor_plano: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Taxa matrícula (R$)</label>
+                  <input type="number" step="0.01" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.taxa_matricula} onChange={e => setForm({ ...form, taxa_matricula: Number(e.target.value) })} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Desconto matrícula (R$)</label>
+                  <input type="number" step="0.01" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.desconto_matricula} onChange={e => setForm({ ...form, desconto_matricula: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Dia início aulas <span className="text-red-500">*</span></label>
+                  <input type="number" min={1} max={31} className="w-full border rounded-lg px-3 py-2 text-sm" value={form.dia_inicio_aulas} onChange={e => setForm({ ...form, dia_inicio_aulas: Number(e.target.value) })} />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Data da matrícula</label>
+                <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.data_matricula} onChange={e => setForm({ ...form, data_matricula: e.target.value })} />
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Observação (opcional)</label>
+                <textarea rows={2} className="w-full border rounded-lg px-3 py-2 text-sm" value={form.observacao} onChange={e => setForm({ ...form, observacao: e.target.value })} placeholder="Ex: aluno preferiu pacote semestral, virá com responsável..." />
+              </div>
+
+              <p className="text-xs text-gray-500 italic">
+                A 1ª mensalidade será criada automaticamente, proporcional ao dia de início.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-5">
+              <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+              <button
+                onClick={handleConverter}
+                disabled={saving || !form.modalidade || !form.valor_plano || !form.dia_inicio_aulas}
+                className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50"
+              >
+                {saving ? 'Convertendo...' : (isReativacao ? 'Reativar aluno' : 'Converter em aluno')}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
