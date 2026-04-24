@@ -27,6 +27,11 @@ import {
   Bell,
   Copy,
   Zap,
+  History,
+  Search,
+  CheckCircle2,
+  XCircle,
+  SkipForward,
 } from 'lucide-react'
 
 interface DisparoProgramado {
@@ -103,11 +108,14 @@ const GRUPO_LABELS: Record<string, string> = {
   ex_alunos: 'Ex-alunos',
 }
 
+type Tab = 'disparos' | 'historico'
+
 export default function DisparosProgramados() {
   const [disparos, setDisparos] = useState<DisparoProgramado[]>([])
   const [segmentos, setSegmentos] = useState<CRMSegmento[]>([])
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<DisparoProgramado | null>(null)
+  const [tab, setTab] = useState<Tab>('disparos')
 
   useEffect(() => {
     loadDisparos()
@@ -225,15 +233,37 @@ export default function DisparosProgramados() {
           <h1 className="text-2xl font-bold text-gray-900">Disparos Programados</h1>
           <p className="text-gray-500">Mensagens automáticas recorrentes</p>
         </div>
+        {tab === 'disparos' && (
+          <button
+            onClick={() => { setEditing(null); setShowForm(true) }}
+            className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Disparo
+          </button>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-gray-200 flex gap-2">
         <button
-          onClick={() => { setEditing(null); setShowForm(true) }}
-          className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
+          onClick={() => setTab('disparos')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === 'disparos' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
-          <Plus className="w-4 h-4" />
-          Novo Disparo
+          <span className="flex items-center gap-2"><Calendar className="w-4 h-4" /> Configuração</span>
+        </button>
+        <button
+          onClick={() => setTab('historico')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === 'historico' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          <span className="flex items-center gap-2"><History className="w-4 h-4" /> Histórico</span>
         </button>
       </div>
 
+      {tab === 'historico' ? (
+        <HistoricoView formatarGrupo={formatarGrupo} />
+      ) : (
+      <>
       {/* Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {disparos.map((d) => {
@@ -356,6 +386,9 @@ export default function DisparosProgramados() {
           <Calendar className="w-12 h-12 mx-auto mb-3 opacity-50" />
           <p>Nenhum disparo programado</p>
         </div>
+      )}
+
+      </>
       )}
 
       {/* Form Modal */}
@@ -656,6 +689,268 @@ function DisparoForm({
           >
             Salvar
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// =====================================================================
+// Histórico de Disparos
+// =====================================================================
+
+interface HistoricoAgg {
+  disparo_id: string
+  nome: string
+  tipo: string
+  enviados_30d: number
+  falhas_30d: number
+  pulados_30d: number
+  ultimo_em: string | null
+}
+
+interface LogRow {
+  id: string
+  disparo_id: string | null
+  disparo_nome: string | null
+  destinatario_id: string | null
+  destinatario_nome: string | null
+  destinatario_telefone: string | null
+  status: 'enviado' | 'falhou' | 'pulado'
+  erro: string | null
+  enviado_em: string
+}
+
+const STATUS_LABELS: Record<string, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
+  enviado: { label: 'Enviado', cls: 'bg-green-100 text-green-700', Icon: CheckCircle2 },
+  falhou: { label: 'Falhou', cls: 'bg-red-100 text-red-700', Icon: XCircle },
+  pulado: { label: 'Pulado', cls: 'bg-gray-100 text-gray-600', Icon: SkipForward },
+}
+
+function HistoricoView({ formatarGrupo: _formatarGrupo }: { formatarGrupo: (g: string) => string }) {
+  void _formatarGrupo
+  const [agg, setAgg] = useState<HistoricoAgg[]>([])
+  const [logs, setLogs] = useState<LogRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filtroDisparoId, setFiltroDisparoId] = useState<string>('')
+  const [filtroStatus, setFiltroStatus] = useState<string>('')
+  const [filtroBusca, setFiltroBusca] = useState<string>('')
+
+  useEffect(() => {
+    void loadAll()
+  }, [filtroDisparoId, filtroStatus])
+
+  async function loadAll() {
+    setLoading(true)
+    const aggResp = await supabase
+      .from('vw_disparos_historico')
+      .select('*')
+      .order('ultimo_em', { ascending: false, nullsFirst: false })
+
+    let q = supabase
+      .from('disparos_programados_log')
+      .select('*')
+      .order('enviado_em', { ascending: false })
+      .limit(500)
+
+    if (filtroDisparoId) q = q.eq('disparo_id', filtroDisparoId)
+    if (filtroStatus) q = q.eq('status', filtroStatus)
+
+    const logsResp = await q
+
+    setAgg((aggResp.data as HistoricoAgg[]) || [])
+    setLogs((logsResp.data as LogRow[]) || [])
+    setLoading(false)
+  }
+
+  const totals = agg.reduce(
+    (acc, a) => ({
+      enviados: acc.enviados + (a.enviados_30d || 0),
+      falhas: acc.falhas + (a.falhas_30d || 0),
+      pulados: acc.pulados + (a.pulados_30d || 0),
+    }),
+    { enviados: 0, falhas: 0, pulados: 0 }
+  )
+
+  const logsFiltrados = logs.filter((l) => {
+    if (!filtroBusca.trim()) return true
+    const q = filtroBusca.toLowerCase()
+    return (
+      (l.disparo_nome || '').toLowerCase().includes(q) ||
+      (l.destinatario_nome || '').toLowerCase().includes(q) ||
+      (l.destinatario_telefone || '').includes(q)
+    )
+  })
+
+  return (
+    <div className="space-y-6">
+      {/* KPIs 30d */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <p className="text-xs text-gray-500 uppercase">Enviados (30d)</p>
+          <p className="text-3xl font-bold text-green-600">{totals.enviados}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <p className="text-xs text-gray-500 uppercase">Falhas (30d)</p>
+          <p className="text-3xl font-bold text-red-600">{totals.falhas}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <p className="text-xs text-gray-500 uppercase">Pulados (30d)</p>
+          <p className="text-3xl font-bold text-gray-600">{totals.pulados}</p>
+        </div>
+      </div>
+
+      {/* Tabela agregada por disparo */}
+      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div className="px-5 py-4 border-b">
+          <h2 className="font-semibold text-gray-900">Resumo por disparo (últimos 30 dias)</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-600 text-xs uppercase">
+              <tr>
+                <th className="px-4 py-3 text-left">Nome</th>
+                <th className="px-4 py-3 text-left">Tipo</th>
+                <th className="px-4 py-3 text-right">Enviados</th>
+                <th className="px-4 py-3 text-right">Falhas</th>
+                <th className="px-4 py-3 text-right">Pulados</th>
+                <th className="px-4 py-3 text-left">Último em</th>
+                <th className="px-4 py-3 text-right">Logs</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {agg.map((a) => {
+                const Icon = TIPO_ICONS[a.tipo] || MessageSquare
+                return (
+                  <tr key={a.disparo_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-900">
+                      <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded ${TIPO_COLORS[a.tipo] || 'bg-gray-100'}`}>
+                          <Icon className="w-3.5 h-3.5" />
+                        </div>
+                        {a.nome}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">{TIPO_LABELS[a.tipo] || a.tipo}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-green-600">{a.enviados_30d}</td>
+                    <td className="px-4 py-3 text-right text-red-600">{a.falhas_30d}</td>
+                    <td className="px-4 py-3 text-right text-gray-500">{a.pulados_30d}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">
+                      {a.ultimo_em
+                        ? new Date(a.ultimo_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+                        : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => setFiltroDisparoId(a.disparo_id)}
+                        className="text-xs text-brand-600 hover:underline"
+                      >
+                        Ver logs
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+              {agg.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                    Nenhum envio registrado nos últimos 30 dias.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Filtros + Logs detalhados */}
+      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div className="px-5 py-4 border-b flex flex-wrap items-center gap-3 justify-between">
+          <h2 className="font-semibold text-gray-900">Logs detalhados (últimos 500)</h2>
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar nome/telefone…"
+                value={filtroBusca}
+                onChange={(e) => setFiltroBusca(e.target.value)}
+                className="pl-8 pr-3 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+            <select
+              value={filtroStatus}
+              onChange={(e) => setFiltroStatus(e.target.value)}
+              className="text-sm border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option value="">Todos status</option>
+              <option value="enviado">Enviado</option>
+              <option value="falhou">Falhou</option>
+              <option value="pulado">Pulado</option>
+            </select>
+            {filtroDisparoId && (
+              <button
+                onClick={() => setFiltroDisparoId('')}
+                className="text-xs text-gray-500 hover:text-red-600 px-2 py-1.5"
+                title="Remover filtro de disparo"
+              >
+                Limpar disparo
+              </button>
+            )}
+            <button
+              onClick={loadAll}
+              className="text-sm flex items-center gap-1 text-gray-500 hover:text-brand-600 px-2 py-1.5"
+              title="Recarregar"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-600 text-xs uppercase">
+              <tr>
+                <th className="px-4 py-3 text-left">Quando</th>
+                <th className="px-4 py-3 text-left">Disparo</th>
+                <th className="px-4 py-3 text-left">Destinatário</th>
+                <th className="px-4 py-3 text-left">Telefone</th>
+                <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-left">Erro</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {logsFiltrados.map((l) => {
+                const st = STATUS_LABELS[l.status] || STATUS_LABELS.enviado!
+                const Icon = st.Icon
+                return (
+                  <tr key={l.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                      {new Date(l.enviado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-900">{l.disparo_nome || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-700">{l.destinatario_nome || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{l.destinatario_telefone || '—'}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${st.cls}`}>
+                        <Icon className="w-3 h-3" />
+                        {st.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-red-600 max-w-xs truncate" title={l.erro || ''}>
+                      {l.erro || ''}
+                    </td>
+                  </tr>
+                )
+              })}
+              {logsFiltrados.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
+                    Nenhum log encontrado.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
