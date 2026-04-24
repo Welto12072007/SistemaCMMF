@@ -15,6 +15,10 @@ import {
   Funnel,
   Cell,
   LabelList,
+  Legend,
+  LineChart,
+  Line,
+  CartesianGrid,
 } from 'recharts'
 
 const COLORS = ['#2183a8', '#7ed9ed', '#10b981']
@@ -35,10 +39,25 @@ export default function Relatorios() {
   const [porCanal, setPorCanal] = useState<{ canal: string; contatos: number; matriculas: number }[]>([])
   const [porInstrumento, setPorInstrumento] = useState<{ instrumento: string; contatos: number; matriculas: number }[]>([])
   const [faturamentoCanal, setFaturamentoCanal] = useState<{ canal: string; contatos: number; matriculas: number; conversao: string; faturamento: number }[]>([])
+  const [crescimento, setCrescimento] = useState<{ mes_label: string; entradas: number; saidas: number; saldo: number }[]>([])
+  const [evasaoMotivos, setEvasaoMotivos] = useState<{ motivo: string; total: number; ult_30d: number; ult_90d: number; ult_ano: number }[]>([])
+  const [profEvolucao, setProfEvolucao] = useState<{ professor_nome: string; alunos_ativos: number; saidas_30d: number; saidas_90d: number; saidas_ano: number; saidas_motivo_professor_ano: number }[]>([])
 
   useEffect(() => {
     loadRelatorios()
+    loadCrescimento()
   }, [])
+
+  async function loadCrescimento() {
+    const [{ data: cresc }, { data: motivos }, { data: profs }] = await Promise.all([
+      supabase.from('vw_crescimento_evasao_mensal').select('*'),
+      supabase.from('vw_evasao_motivos').select('*'),
+      supabase.from('vw_professor_alunos_evolucao').select('*'),
+    ])
+    if (cresc) setCrescimento(cresc as any)
+    if (motivos) setEvasaoMotivos(motivos as any)
+    if (profs) setProfEvolucao(profs as any)
+  }
 
   function exportarCSV() {
     const linhas: string[] = []
@@ -413,6 +432,91 @@ export default function Relatorios() {
                 <td className="px-4 py-3 text-sm">{f.matriculas}</td>
                 <td className="px-4 py-3 text-sm">{f.conversao}</td>
                 <td className="px-4 py-3 text-sm font-medium">R$ {f.faturamento.toLocaleString('pt-BR')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Crescimento e Evasão (Item 1) */}
+      <div className="bg-white rounded-xl shadow-sm border p-5">
+        <h3 className="font-semibold text-gray-900 mb-4">Crescimento e Evasão (últimos 12 meses)</h3>
+        <div className="h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={crescimento}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="mes_label" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="entradas" stroke="#10b981" name="Entradas" strokeWidth={2} />
+              <Line type="monotone" dataKey="saidas" stroke="#ef4444" name="Saídas" strokeWidth={2} />
+              <Line type="monotone" dataKey="saldo" stroke="#2183a8" name="Saldo" strokeWidth={2} strokeDasharray="4 4" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Motivos de evasão */}
+      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div className="px-5 py-3 border-b bg-gray-50">
+          <h3 className="font-semibold text-gray-900">Motivos de Evasão</h3>
+        </div>
+        {evasaoMotivos.length === 0 ? (
+          <div className="p-6 text-center text-gray-500 text-sm">Sem evasões registradas ainda.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+              <tr>
+                <th className="text-left px-4 py-3">Motivo</th>
+                <th className="text-right px-4 py-3">Total</th>
+                <th className="text-right px-4 py-3">Últimos 30d</th>
+                <th className="text-right px-4 py-3">Últimos 90d</th>
+                <th className="text-right px-4 py-3">Último ano</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {evasaoMotivos.map((m) => (
+                <tr key={m.motivo} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium capitalize">{m.motivo.replace(/_/g, ' ')}</td>
+                  <td className="px-4 py-3 text-right">{m.total}</td>
+                  <td className="px-4 py-3 text-right">{m.ult_30d}</td>
+                  <td className="px-4 py-3 text-right">{m.ult_90d}</td>
+                  <td className="px-4 py-3 text-right">{m.ult_ano}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Por professor */}
+      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div className="px-5 py-3 border-b bg-gray-50">
+          <h3 className="font-semibold text-gray-900">Crescimento e Evasão por Professor</h3>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+            <tr>
+              <th className="text-left px-4 py-3">Professor</th>
+              <th className="text-right px-4 py-3">Alunos ativos</th>
+              <th className="text-right px-4 py-3">Saídas 30d</th>
+              <th className="text-right px-4 py-3">Saídas 90d</th>
+              <th className="text-right px-4 py-3">Saídas ano</th>
+              <th className="text-right px-4 py-3 text-red-600">Saídas por insat. com prof. (ano)</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {profEvolucao.map((p) => (
+              <tr key={p.professor_nome} className="hover:bg-gray-50">
+                <td className="px-4 py-3 font-medium">{p.professor_nome}</td>
+                <td className="px-4 py-3 text-right">{p.alunos_ativos}</td>
+                <td className="px-4 py-3 text-right">{p.saidas_30d}</td>
+                <td className="px-4 py-3 text-right">{p.saidas_90d}</td>
+                <td className="px-4 py-3 text-right">{p.saidas_ano}</td>
+                <td className={`px-4 py-3 text-right font-medium ${p.saidas_motivo_professor_ano > 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                  {p.saidas_motivo_professor_ano}
+                </td>
               </tr>
             ))}
           </tbody>

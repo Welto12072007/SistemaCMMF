@@ -40,7 +40,30 @@ interface Aluno {
   modalidade_preferida?: string
   origem?: string
   created_at?: string
+  data_matricula?: string
+  taxa_matricula?: number
+  valor_plano?: number
+  forma_pagamento?: string
+  dia_inicio_aulas?: number
+  desconto_matricula?: number
+  motivo_saida?: string
+  motivo_saida_detalhe?: string
+  data_saida?: string
 }
+
+const MOTIVOS_SAIDA: { value: string; label: string }[] = [
+  { value: 'mudanca_cidade', label: 'Mudança de cidade' },
+  { value: 'financeiro', label: 'Financeiro' },
+  { value: 'falta_tempo', label: 'Falta de tempo' },
+  { value: 'insatisfacao_aulas', label: 'Insatisfação com aulas' },
+  { value: 'problema_horario', label: 'Problema de horário' },
+  { value: 'problema_professor', label: 'Problema com professor' },
+  { value: 'recesso_temporario', label: 'Recesso temporário' },
+  { value: 'conflito_familiar', label: 'Conflito familiar' },
+  { value: 'concluiu_objetivo', label: 'Concluiu objetivo' },
+  { value: 'saude', label: 'Saúde' },
+  { value: 'outro', label: 'Outro' },
+]
 
 const INSTRUMENTOS = ['Piano', 'Violão', 'Guitarra', 'Bateria', 'Canto', 'Ukulele', 'Baixo', 'Teclado', 'Musicalização Infantil', 'Cavaquinho', 'Contrabaixo', 'Violino', 'Percussão']
 const SEXO_OPTIONS = ['Masculino', 'Feminino', 'Outro', 'Prefiro não informar']
@@ -54,6 +77,7 @@ export default function Usuarios() {
   const [showForm, setShowForm] = useState(false)
   const [editando, setEditando] = useState<Aluno | null>(null)
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
+  const [removendo, setRemovendo] = useState<Aluno | null>(null)
 
   useEffect(() => { loadAlunos() }, [])
 
@@ -96,8 +120,21 @@ export default function Usuarios() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Tem certeza que deseja remover este aluno?')) return
-    await supabase.from('alunos').update({ status: 'perdido' }).eq('id', id)
+    const aluno = alunos.find(a => a.id === id)
+    if (aluno) setRemovendo(aluno)
+  }
+
+  async function confirmarSaida(motivo: string, detalhe: string, data: string) {
+    if (!removendo) return
+    const { error } = await supabase.rpc('marcar_aluno_inativo', {
+      p_aluno_id: removendo.id,
+      p_motivo: motivo,
+      p_detalhe: detalhe || null,
+      p_data_saida: data,
+      p_novo_status: 'perdido',
+    })
+    if (error) { alert(`Erro: ${error.message}`); return }
+    setRemovendo(null)
     loadAlunos()
   }
 
@@ -194,6 +231,9 @@ export default function Usuarios() {
 
       {showForm && (
         <AlunoForm aluno={editando} onSave={handleSave} onClose={() => { setShowForm(false); setEditando(null) }} />
+      )}
+      {removendo && (
+        <SaidaModal aluno={removendo} onConfirm={confirmarSaida} onClose={() => setRemovendo(null)} />
       )}
     </div>
   )
@@ -325,6 +365,12 @@ function AlunoForm({ aluno, onSave, onClose }: {
     historico: aluno?.historico ?? '',
     observacoes: aluno?.observacoes ?? '',
     origem: aluno?.origem ?? 'Presencial',
+    data_matricula: aluno?.data_matricula ?? '',
+    valor_plano: aluno?.valor_plano?.toString() ?? '',
+    taxa_matricula: aluno?.taxa_matricula?.toString() ?? '',
+    desconto_matricula: aluno?.desconto_matricula?.toString() ?? '',
+    forma_pagamento: aluno?.forma_pagamento ?? '',
+    dia_inicio_aulas: aluno?.dia_inicio_aulas?.toString() ?? '',
   })
 
   const [showFull, setShowFull] = useState(false)
@@ -345,6 +391,11 @@ function AlunoForm({ aluno, onSave, onClose }: {
   function handleSubmit() {
     const payload: Record<string, unknown> = { ...form }
     payload.tags = form.tags ? form.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : []
+    payload.valor_plano = form.valor_plano ? parseFloat(form.valor_plano) : null
+    payload.taxa_matricula = form.taxa_matricula ? parseFloat(form.taxa_matricula) : null
+    payload.desconto_matricula = form.desconto_matricula ? parseFloat(form.desconto_matricula) : 0
+    payload.dia_inicio_aulas = form.dia_inicio_aulas ? parseInt(form.dia_inicio_aulas) : null
+    if (!form.data_matricula) delete payload.data_matricula
     onSave(payload as Partial<Aluno>)
   }
 
@@ -439,6 +490,18 @@ function AlunoForm({ aluno, onSave, onClose }: {
           <textarea className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
         </div>
 
+        <h3 className="text-sm font-semibold text-gray-700 mb-2 mt-4">Matrícula e Financeiro:</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <FormInput label="Data de Matrícula" type="date" value={form.data_matricula} onChange={(v) => setForm({ ...form, data_matricula: v })} />
+          <FormInput label="Dia início das aulas" type="number" value={form.dia_inicio_aulas} onChange={(v) => setForm({ ...form, dia_inicio_aulas: v })} placeholder="Ex: 15 (cobrado proporcional)" />
+          <FormSelect label="Forma de Pagamento" value={form.forma_pagamento} onChange={(v) => setForm({ ...form, forma_pagamento: v })} options={['PIX', 'Cartão de Crédito', 'Cartão de Débito', 'Boleto', 'Dinheiro', 'Transferência']} />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <FormInput label="Valor Plano (R$/mês)" type="number" value={form.valor_plano} onChange={(v) => setForm({ ...form, valor_plano: v })} placeholder="320.00" />
+          <FormInput label="Taxa Matrícula (R$)" type="number" value={form.taxa_matricula} onChange={(v) => setForm({ ...form, taxa_matricula: v })} placeholder="100.00" />
+          <FormInput label="Desconto Matrícula (R$)" type="number" value={form.desconto_matricula} onChange={(v) => setForm({ ...form, desconto_matricula: v })} placeholder="0.00" />
+        </div>
+
         <div className="flex justify-end gap-3">
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Fechar</button>
           <button onClick={handleSubmit} className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">Salvar</button>
@@ -469,6 +532,57 @@ function FormSelect({ label, value, onChange, options }: {
         <option value="">Selecione...</option>
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
+    </div>
+  )
+}
+
+function SaidaModal({ aluno, onConfirm, onClose }: {
+  aluno: Aluno
+  onConfirm: (motivo: string, detalhe: string, data: string) => void
+  onClose: () => void
+}) {
+  const [motivo, setMotivo] = useState('')
+  const [detalhe, setDetalhe] = useState('')
+  const [data, setData] = useState(new Date().toISOString().slice(0, 10))
+
+  function submit() {
+    if (!motivo) { alert('Selecione um motivo de saída.'); return }
+    onConfirm(motivo, detalhe, data)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold mb-1">Registrar saída do aluno</h2>
+        <p className="text-sm text-gray-600 mb-4">{aluno.nome}</p>
+
+        <div className="mb-3">
+          <label className="text-xs text-gray-500 block mb-1">Motivo da saída <span className="text-red-500">*</span></label>
+          <select className="w-full border rounded-lg px-3 py-2 text-sm" value={motivo} onChange={(e) => setMotivo(e.target.value)}>
+            <option value="">Selecione um motivo...</option>
+            {MOTIVOS_SAIDA.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+        </div>
+
+        <div className="mb-3">
+          <label className="text-xs text-gray-500 block mb-1">Data de saída</label>
+          <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={data} onChange={(e) => setData(e.target.value)} />
+        </div>
+
+        <div className="mb-4">
+          <label className="text-xs text-gray-500 block mb-1">Detalhes (opcional)</label>
+          <textarea className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} value={detalhe} onChange={(e) => setDetalhe(e.target.value)} placeholder="Contexto adicional..." />
+        </div>
+
+        <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800 mb-4">
+          ⚠️ Mensalidades pendentes futuras serão automaticamente canceladas.
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+          <button onClick={submit} className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">Confirmar saída</button>
+        </div>
+      </div>
     </div>
   )
 }
