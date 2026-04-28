@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Search, Plus, Phone, Mail, Filter } from 'lucide-react'
+import { Search, Plus, Phone, Mail, Filter, AlertTriangle, History, Check } from 'lucide-react'
 import type { Contato } from '@/types'
 
 const STATUS_OPTIONS = [
@@ -35,6 +35,9 @@ export default function Contatos() {
   const [filtroInstrumento, setFiltroInstrumento] = useState('Todos os instrumentos')
   const [showForm, setShowForm] = useState(false)
   const [editando, setEditando] = useState<Contato | null>(null)
+  const [auditAluno, setAuditAluno] = useState<Contato | null>(null)
+  const [auditLog, setAuditLog] = useState<any[]>([])
+  const [filtroInvalidos, setFiltroInvalidos] = useState<'todos'|'validos'|'invalidos'>('todos')
 
   useEffect(() => {
     loadContatos()
@@ -56,8 +59,33 @@ export default function Contatos() {
     if (filtroStatus !== 'Todos os status' && c.status !== filtroStatus) return false
     if (filtroCanal !== 'Todas as origens' && c.origem !== filtroCanal) return false
     if (filtroInstrumento !== 'Todos os instrumentos' && c.instrumento_interesse !== filtroInstrumento) return false
+    if (filtroInvalidos === 'invalidos' && !(c as any).contato_invalido) return false
+    if (filtroInvalidos === 'validos' && (c as any).contato_invalido) return false
     return true
   })
+
+  async function toggleInvalido(c: Contato) {
+    const novoValor = !(c as any).contato_invalido
+    const motivo = novoValor ? prompt('Motivo (telefone errado, número não existe, e-mail bounce, etc):') : null
+    if (novoValor && !motivo?.trim()) return
+    const { error } = await supabase.from('alunos').update({
+      contato_invalido: novoValor,
+      contato_invalido_motivo: motivo,
+    }).eq('id', c.id)
+    if (error) { alert('Erro: ' + error.message); return }
+    loadContatos()
+  }
+
+  async function abrirAudit(c: Contato) {
+    setAuditAluno(c)
+    const { data } = await supabase
+      .from('contatos_audit_log')
+      .select('*')
+      .eq('aluno_id', c.id)
+      .order('alterado_em', { ascending: false })
+      .limit(50)
+    setAuditLog(data || [])
+  }
 
   async function handleSave(data: Partial<Contato>) {
     if (editando) {
@@ -113,6 +141,11 @@ export default function Contatos() {
         <select value={filtroInstrumento} onChange={(e) => setFiltroInstrumento(e.target.value)} className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm">
           {INSTRUMENTO_OPTIONS.map((s) => <option key={s}>{s}</option>)}
         </select>
+        <select value={filtroInvalidos} onChange={(e) => setFiltroInvalidos(e.target.value as any)} className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm">
+          <option value="todos">Todos contatos</option>
+          <option value="validos">Só válidos</option>
+          <option value="invalidos">Só inválidos</option>
+        </select>
       </div>
 
       <p className="text-sm text-gray-500 flex items-center gap-1">
@@ -138,7 +171,15 @@ export default function Contatos() {
             {filtered.map((c) => (
               <tr key={c.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3">
-                  <p className="text-sm font-medium text-gray-900">{c.nome}</p>
+                  <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                    {c.nome}
+                    {(c as any).contato_invalido && (
+                      <span title={(c as any).contato_invalido_motivo || 'Contato inválido'}
+                        className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                        <AlertTriangle className="w-3 h-3" /> Inválido
+                      </span>
+                    )}
+                  </p>
                   {c.nome_responsavel && <p className="text-xs text-gray-500">Resp: {c.nome_responsavel}</p>}
                 </td>
                 <td className="px-4 py-3">
@@ -162,12 +203,26 @@ export default function Contatos() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <button
                       onClick={() => { setEditando(c); setShowForm(true) }}
                       className="text-xs px-3 py-1.5 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
                     >
                       Editar
+                    </button>
+                    <button
+                      onClick={() => toggleInvalido(c)}
+                      title={(c as any).contato_invalido ? 'Marcar como válido' : 'Marcar contato como inválido'}
+                      className={`text-xs px-2 py-1.5 rounded-md transition-colors ${(c as any).contato_invalido ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}
+                    >
+                      {(c as any).contato_invalido ? <Check className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                    </button>
+                    <button
+                      onClick={() => abrirAudit(c)}
+                      title="Histórico de alterações"
+                      className="text-xs px-2 py-1.5 rounded-md bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      <History className="w-3 h-3" />
                     </button>
                     <button
                       onClick={() => handleDelete(c.id)}
@@ -195,6 +250,44 @@ export default function Contatos() {
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditando(null) }}
         />
+      )}
+
+      {/* Audit Log Modal */}
+      {auditAluno && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAuditAluno(null)}>
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold flex items-center gap-2"><History className="w-5 h-5" /> Histórico — {auditAluno.nome}</h2>
+              <button onClick={() => setAuditAluno(null)} className="text-gray-500 hover:text-gray-700">✕</button>
+            </div>
+            {auditLog.length === 0 ? (
+              <p className="text-sm text-gray-500 py-8 text-center">Nenhuma alteração registrada.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="text-xs uppercase text-gray-500 border-b">
+                  <tr>
+                    <th className="text-left p-2">Data</th>
+                    <th className="text-left p-2">Campo</th>
+                    <th className="text-left p-2">De</th>
+                    <th className="text-left p-2">Para</th>
+                    <th className="text-left p-2">Por</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditLog.map((l) => (
+                    <tr key={l.id} className="border-b">
+                      <td className="p-2 text-xs text-gray-600">{new Date(l.alterado_em).toLocaleString('pt-BR')}</td>
+                      <td className="p-2 font-medium">{l.campo}</td>
+                      <td className="p-2 text-gray-500 line-through">{l.valor_antigo || '—'}</td>
+                      <td className="p-2 text-gray-900">{l.valor_novo || '—'}</td>
+                      <td className="p-2 text-xs text-gray-500">{l.alterado_por || 'system'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
