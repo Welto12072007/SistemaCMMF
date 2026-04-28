@@ -65,8 +65,10 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
   const [loading, setLoading] = useState(false)
   const [busca, setBusca] = useState('')
   const [tab, setTab] = useState<'chamada' | 'historico'>('chamada')
-  const [histData, setHistData] = useState<{ aluno_nome: string; data: string; presente: boolean; tipo_falta: string; professor_nome: string; instrumento: string }[]>([])
+  const [histData, setHistData] = useState<{ aluno_nome: string; data: string; presente: boolean; tipo_falta: string; professor_nome: string; instrumento: string; observacoes: string | null }[]>([])
   const [histFiltro, setHistFiltro] = useState({ mes: new Date().getMonth() + 1, ano: new Date().getFullYear() })
+  const [modalPresenca, setModalPresenca] = useState<{ item: AlunoPresenca; presente: boolean; tipoFalta?: string } | null>(null)
+  const [obsTexto, setObsTexto] = useState('')
 
   useEffect(() => {
     loadProfessores()
@@ -161,6 +163,7 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
       tipo_falta: p.tipo_falta || '',
       professor_nome: (p.professor as any)?.nome || '—',
       instrumento: p.instrumento || '',
+      observacoes: p.observacoes || null,
     })))
   }
 
@@ -279,24 +282,29 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
   }
 
   async function registrarPresenca(item: AlunoPresenca, presente: boolean, tipoFalta?: string) {
-    // Buscar aluno_id pelo nome
+    // Sempre abre modal pedindo observação (obrigatória pelo Documento de Orientações item 9)
+    setObsTexto(item.observacoes || '')
+    setModalPresenca({ item, presente, tipoFalta })
+  }
+
+  async function confirmarPresenca() {
+    if (!modalPresenca) return
+    const obs = obsTexto.trim()
+    if (!obs) {
+      alert('A observação pedagógica é obrigatória. Descreva o que foi trabalhado, dificuldades ou motivo da falta.')
+      return
+    }
+    const { item, presente, tipoFalta } = modalPresenca
     const { data: alunoData } = await supabase
-      .from('alunos')
-      .select('id')
-      .ilike('nome', item.aluno_nome)
-      .limit(1)
-      .single()
-
+      .from('alunos').select('id').ilike('nome', item.aluno_nome).limit(1).single()
     const alunoId = alunoData?.id || null
-
     if (item.presenca_id) {
-      // Update existing
       await supabase.from('presencas').update({
         presente,
         tipo_falta: presente ? null : (tipoFalta || 'falta_injustificada'),
+        observacoes: obs,
       }).eq('id', item.presenca_id)
     } else {
-      // Insert new
       await supabase.from('presencas').insert({
         aluno_id: alunoId,
         professor_id: item.professor_id,
@@ -308,36 +316,13 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
         presente,
         tipo_falta: presente ? null : (tipoFalta || 'falta_injustificada'),
         aluno_nome: item.aluno_nome,
+        observacoes: obs,
       })
     }
-
+    setModalPresenca(null)
+    setObsTexto('')
     loadPresencasDia()
     loadAlertas()
-  }
-
-  async function marcarTodosPresentes() {
-    const naoRegistrados = presencas.filter(p => p.presente === null)
-    for (const item of naoRegistrados) {
-      const { data: alunoData } = await supabase
-        .from('alunos')
-        .select('id')
-        .ilike('nome', item.aluno_nome)
-        .limit(1)
-        .single()
-
-      await supabase.from('presencas').insert({
-        aluno_id: alunoData?.id || null,
-        professor_id: item.professor_id,
-        horario_id: item.id,
-        data: dataAtual,
-        hora_inicio: item.hora_inicio,
-        hora_fim: item.hora_fim,
-        instrumento: item.instrumento,
-        presente: true,
-        aluno_nome: item.aluno_nome,
-      })
-    }
-    loadPresencasDia()
   }
 
   function navegarDia(delta: number) {
@@ -547,16 +532,10 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
             </div>
           </div>
 
-          {/* Action Bar */}
+          {/* Action Bar — observação obrigatória por aula (item 9 doc) */}
           {stats.pendentes > 0 && (
-            <div className="flex justify-end">
-              <button
-                onClick={marcarTodosPresentes}
-                className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors text-sm"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                Marcar todos presentes
-              </button>
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
+              ⚠️ Cada aula requer uma observação pedagógica obrigatória ao marcar presença/falta.
             </div>
           )}
 
@@ -697,7 +676,7 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
               <tbody className="divide-y divide-gray-100">
                 {histData.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-gray-400 text-sm">Nenhum registro encontrado</td>
+                    <td colSpan={7} className="text-center py-8 text-gray-400 text-sm">Nenhum registro encontrado</td>
                   </tr>
                 ) : (
                   histData.map((h, i) => (
@@ -724,6 +703,9 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
                          h.tipo_falta === 'falta_injustificada' ? 'Injustificada' :
                          h.tipo_falta === 'remarcada' ? 'Remarcada' : '—'}
                       </td>
+                      <td className="px-4 py-3 text-xs text-gray-700 max-w-xs">
+                        {h.observacoes ? <span title={h.observacoes}>{h.observacoes.length > 80 ? h.observacoes.slice(0,80) + '…' : h.observacoes}</span> : <span className="text-gray-300">—</span>}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -731,6 +713,42 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
             </table>
           </div>
         </>
+      )}
+
+      {/* Modal observação obrigatória */}
+      {modalPresenca && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setModalPresenca(null)}>
+          <div className="bg-white rounded-xl max-w-lg w-full p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold mb-1">
+              {modalPresenca.presente ? '✅ Presente' : '❌ Falta'} — {modalPresenca.item.aluno_nome}
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              {modalPresenca.item.hora_inicio?.slice(0,5)} • {modalPresenca.item.instrumento || '—'} • Prof. {modalPresenca.item.professor_nome}
+            </p>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Observação pedagógica <span className="text-red-600">*</span>
+            </label>
+            <p className="text-xs text-gray-500 mb-2">
+              {modalPresenca.presente
+                ? 'O que foi trabalhado nesta aula? Dificuldades, conquistas, próximos passos.'
+                : 'Motivo da falta (avisou? justificou?). Será exibido na timeline do aluno.'}
+            </p>
+            <textarea
+              value={obsTexto}
+              onChange={e => setObsTexto(e.target.value)}
+              rows={4}
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              placeholder="Descreva..."
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => { setModalPresenca(null); setObsTexto('') }}
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+              <button onClick={confirmarPresenca}
+                className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">Confirmar</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

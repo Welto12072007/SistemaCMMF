@@ -55,6 +55,7 @@ const sections: NavSection[] = [
       { to: '/financeiro', label: 'Financeiro', icon: DollarSign, roles: ['admin'] },
       { to: '/dashboard-financeiro', label: 'Dashboard $', icon: BarChart3, roles: ['admin'] },
       { to: '/mensalidades', label: 'Mensalidades', icon: DollarSign, roles: ['admin', 'recepcao'] },
+      { to: '/cobranca', label: 'Cobrança & Jurídico', icon: AlertTriangle, roles: ['admin', 'recepcao'] },
     ],
   },
   {
