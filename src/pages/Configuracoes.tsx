@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard, Shield, Mail, Target } from 'lucide-react'
-import { maskPhone, normalizePhone, formatPhoneDisplay } from '@/lib/utils'
+import { maskPhone, normalizePhone, formatPhoneDisplay, maskPixKey, normalizePixKey } from '@/lib/utils'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
 import type { Professor, Curso, Sala, Plano, Perfil, UserRole } from '@/types'
 import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
@@ -419,7 +419,7 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
     ativo: professor?.ativo ?? true,
     tipo_professor: (professor?.tipo_professor ?? 'B') as 'A' | 'B',
     valor_hora_aula: professor?.valor_hora_aula != null ? String(professor.valor_hora_aula) : '',
-    chave_pix: professor?.chave_pix ?? '',
+    chave_pix: professor?.chave_pix ? maskPixKey(professor.chave_pix, professor.pix_tipo ?? 'cpf') : '',
     pix_tipo: professor?.pix_tipo ?? 'cpf',
   })
 
@@ -480,7 +480,15 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
                 <select
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                   value={form.pix_tipo}
-                  onChange={(e) => setForm({ ...form, pix_tipo: e.target.value })}
+                  onChange={(e) => {
+                    const novoTipo = e.target.value
+                    // re-aplica máscara da chave atual no novo tipo
+                    const apenas = form.chave_pix.replace(/\D/g, '')
+                    const reformatado = (novoTipo === 'cpf' || novoTipo === 'cnpj' || novoTipo === 'telefone')
+                      ? maskPixKey(apenas, novoTipo)
+                      : form.chave_pix
+                    setForm({ ...form, pix_tipo: novoTipo, chave_pix: reformatado })
+                  }}
                 >
                   <option value="cpf">CPF</option>
                   <option value="cnpj">CNPJ</option>
@@ -491,7 +499,18 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
               </div>
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-gray-600 mb-1">Chave</label>
-                <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Chave PIX" value={form.chave_pix} onChange={(e) => setForm({ ...form, chave_pix: e.target.value })} />
+                <input
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  placeholder={
+                    form.pix_tipo === 'cpf' ? '000.000.000-00'
+                    : form.pix_tipo === 'cnpj' ? '00.000.000/0000-00'
+                    : form.pix_tipo === 'telefone' ? '(51) 99999-9999'
+                    : form.pix_tipo === 'email' ? 'email@exemplo.com'
+                    : 'Chave PIX'
+                  }
+                  value={form.chave_pix}
+                  onChange={(e) => setForm({ ...form, chave_pix: maskPixKey(e.target.value, form.pix_tipo) })}
+                />
               </div>
             </div>
           </div>
@@ -509,7 +528,7 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
             ativo: form.ativo,
             tipo_professor: form.tipo_professor,
             valor_hora_aula: form.valor_hora_aula ? Number(form.valor_hora_aula.replace(',', '.')) : null,
-            chave_pix: form.chave_pix || null,
+            chave_pix: form.chave_pix ? normalizePixKey(form.chave_pix, form.pix_tipo) : null,
             pix_tipo: form.chave_pix ? form.pix_tipo : null,
           })} className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600" disabled={!form.nome}>Salvar</button>
         </div>
