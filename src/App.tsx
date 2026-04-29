@@ -26,6 +26,8 @@ const Faltas = lazy(() => import('./pages/Faltas'))
 const DisparosProgramados = lazy(() => import('./pages/DisparosProgramados'))
 const PortalAluno = lazy(() => import('./pages/PortalAluno'))
 const Configuracoes = lazy(() => import('./pages/Configuracoes'))
+const FaltasProfessor = lazy(() => import('./pages/FaltasProfessor'))
+const FluxoCaixa = lazy(() => import('./pages/FluxoCaixa'))
 
 function PageLoader() {
   return (
@@ -79,10 +81,12 @@ export default function App() {
         <Route path="/horarios" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Horarios /></Suspense></Guard>} />
         <Route path="/financeiro" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><Financeiro /></Suspense></Guard>} />
         <Route path="/dashboard-financeiro" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><DashboardFinanceiro /></Suspense></Guard>} />
+        <Route path="/fluxo-caixa" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><FluxoCaixa /></Suspense></Guard>} />
         <Route path="/mensalidades" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Mensalidades /></Suspense></Guard>} />
         <Route path="/cobranca" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Cobranca /></Suspense></Guard>} />
         <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Faltas /></Suspense></Guard>} />
         <Route path="/faltas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Faltas /></Suspense></Guard>} />
+        <Route path="/faltas-professor" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><FaltasProfessor /></Suspense></Guard>} />
         <Route path="/portal-aluno" element={<Guard roles={['aluno']}><Suspense fallback={<PageLoader />}><PortalAluno /></Suspense></Guard>} />
         <Route path="/biblioteca" element={<Suspense fallback={<PageLoader />}><Biblioteca /></Suspense>} />
         <Route path="/fingertv" element={<Suspense fallback={<PageLoader />}><FingerTV /></Suspense>} />

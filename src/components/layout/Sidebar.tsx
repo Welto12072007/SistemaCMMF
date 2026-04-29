@@ -22,6 +22,8 @@ import {
   AlertTriangle,
   CalendarCheck,
   Calendar,
+  UserX,
+  Wallet,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -45,6 +47,7 @@ const sections: NavSection[] = [
       { to: '/followup', label: 'Follow-up', icon: PhoneForwarded, roles: ['admin', 'recepcao'] },
       { to: '/horarios', label: 'Horários', icon: CalendarClock, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/presencas', label: 'Presenças & Faltas', icon: ClipboardCheck, roles: ['admin', 'recepcao', 'professor'] },
+      { to: '/faltas-professor', label: 'Faltas de Professor', icon: UserX, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/portal-aluno', label: 'Minhas Aulas', icon: Calendar, roles: ['aluno'] },
     ],
   },
@@ -54,6 +57,7 @@ const sections: NavSection[] = [
     items: [
       { to: '/financeiro', label: 'Financeiro', icon: DollarSign, roles: ['admin'] },
       { to: '/dashboard-financeiro', label: 'Dashboard $', icon: BarChart3, roles: ['admin'] },
+      { to: '/fluxo-caixa', label: 'Fluxo de Caixa', icon: Wallet, roles: ['admin'] },
       { to: '/mensalidades', label: 'Mensalidades', icon: DollarSign, roles: ['admin', 'recepcao'] },
       { to: '/cobranca', label: 'Cobrança & Jurídico', icon: AlertTriangle, roles: ['admin', 'recepcao'] },
     ],
