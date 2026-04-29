@@ -354,12 +354,17 @@ function ProfessoresTab() {
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Nome</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Instrumentos</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Telefone</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Tipo</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Valor/aula</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
             <th className="px-4 py-3"></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {professores.map((p) => (
+          {professores.map((p) => {
+            const tipo = (p.tipo_professor || 'B') as 'A' | 'B'
+            const valor = Number(p.valor_hora_aula) || (tipo === 'A' ? 26.66 : 20.00)
+            return (
             <tr key={p.id} className="hover:bg-gray-50">
               <td className="px-4 py-3 text-sm font-medium">{p.nome}</td>
               <td className="px-4 py-3">
@@ -370,6 +375,12 @@ function ProfessoresTab() {
                 </div>
               </td>
               <td className="px-4 py-3 text-sm text-gray-600">{formatPhoneDisplay(p.telefone)}</td>
+              <td className="px-4 py-3">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${tipo === 'A' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
+                  Tipo {tipo}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-sm text-gray-700">R$ {valor.toFixed(2)}</td>
               <td className="px-4 py-3">
                 <span className={`text-xs px-2 py-1 rounded-full ${p.ativo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                   {p.ativo ? 'Ativo' : 'Inativo'}
@@ -382,7 +393,7 @@ function ProfessoresTab() {
                 </div>
               </td>
             </tr>
-          ))}
+          )})}
         </tbody>
       </table>
       {professores.length === 0 && (
@@ -406,17 +417,86 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
     instrumentos: professor?.instrumentos?.join(', ') ?? '',
     telefone: professor?.telefone ? formatPhoneDisplay(professor.telefone) : '',
     ativo: professor?.ativo ?? true,
+    tipo_professor: (professor?.tipo_professor ?? 'B') as 'A' | 'B',
+    valor_hora_aula: professor?.valor_hora_aula != null ? String(professor.valor_hora_aula) : '',
+    chave_pix: professor?.chave_pix ?? '',
+    pix_tipo: professor?.pix_tipo ?? 'cpf',
   })
+
+  const valorPadrao = form.tipo_professor === 'A' ? 26.66 : 20.00
+  const valorEfetivo = form.valor_hora_aula ? Number(form.valor_hora_aula.replace(',', '.')) : valorPadrao
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold mb-4">{professor ? 'Editar Professor' : 'Novo Professor'}</h2>
         <div className="space-y-3">
-          <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
-          <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Instrumentos (separados por vírgula)" value={form.instrumentos} onChange={(e) => setForm({ ...form, instrumentos: e.target.value })} />
-          <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="(51) 99999-9999" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: maskPhone(e.target.value) })} />
-          <label className="flex items-center gap-2 text-sm">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Nome *</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nome completo" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Instrumentos</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Violão, Piano, Canto (separados por vírgula)" value={form.instrumentos} onChange={(e) => setForm({ ...form, instrumentos: e.target.value })} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Telefone</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="(51) 99999-9999" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: maskPhone(e.target.value) })} />
+          </div>
+
+          <div className="border-t pt-3 mt-2">
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">Pagamento</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Tipo do professor *</label>
+                <select
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  value={form.tipo_professor}
+                  onChange={(e) => setForm({ ...form, tipo_professor: e.target.value as 'A' | 'B' })}
+                >
+                  <option value="A">Tipo A (R$ 26,66)</option>
+                  <option value="B">Tipo B (R$ 20,00)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Valor por aula (opcional)</label>
+                <input
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  placeholder={`Padrão: R$ ${valorPadrao.toFixed(2)}`}
+                  value={form.valor_hora_aula}
+                  onChange={(e) => setForm({ ...form, valor_hora_aula: e.target.value })}
+                />
+                <p className="text-[11px] text-gray-400 mt-1">Em branco = usa valor padrão do tipo</p>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">Valor que será usado: <strong className="text-gray-700">R$ {valorEfetivo.toFixed(2)}</strong> por aula</p>
+          </div>
+
+          <div className="border-t pt-3 mt-2">
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">Chave PIX (para receber pagamento)</h3>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Tipo</label>
+                <select
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  value={form.pix_tipo}
+                  onChange={(e) => setForm({ ...form, pix_tipo: e.target.value })}
+                >
+                  <option value="cpf">CPF</option>
+                  <option value="cnpj">CNPJ</option>
+                  <option value="email">E-mail</option>
+                  <option value="telefone">Telefone</option>
+                  <option value="aleatoria">Aleatória</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Chave</label>
+                <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Chave PIX" value={form.chave_pix} onChange={(e) => setForm({ ...form, chave_pix: e.target.value })} />
+              </div>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm pt-2">
             <input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} /> Ativo
           </label>
         </div>
@@ -427,6 +507,10 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
             instrumentos: form.instrumentos.split(',').map(s => s.trim()).filter(Boolean),
             telefone: form.telefone ? normalizePhone(form.telefone) : null,
             ativo: form.ativo,
+            tipo_professor: form.tipo_professor,
+            valor_hora_aula: form.valor_hora_aula ? Number(form.valor_hora_aula.replace(',', '.')) : null,
+            chave_pix: form.chave_pix || null,
+            pix_tipo: form.chave_pix ? form.pix_tipo : null,
           })} className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600" disabled={!form.nome}>Salvar</button>
         </div>
       </div>

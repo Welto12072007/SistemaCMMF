@@ -100,6 +100,10 @@ export interface Professor {
   telefone?: string
   ativo?: boolean
   observacoes?: string
+  tipo_professor?: 'A' | 'B'
+  valor_hora_aula?: number
+  chave_pix?: string
+  pix_tipo?: string
   created_at?: string
 }
 
