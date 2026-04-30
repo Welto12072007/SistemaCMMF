@@ -24,6 +24,7 @@ import {
   Calendar,
   UserX,
   Wallet,
+  Tag,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -42,6 +43,7 @@ const sections: NavSection[] = [
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/contatos', label: 'Contatos', icon: Users, roles: ['admin', 'recepcao'] },
+      { to: '/contatos-labels', label: 'Contatos & Labels', icon: Tag, roles: ['admin', 'recepcao'] },
       { to: '/aulas-experimentais', label: 'Aulas Experimentais', icon: GraduationCap, roles: ['admin', 'recepcao'] },
       { to: '/usuarios', label: 'Usuários', icon: UserCheck, roles: ['admin', 'recepcao'] },
       { to: '/followup', label: 'Follow-up', icon: PhoneForwarded, roles: ['admin', 'recepcao'] },

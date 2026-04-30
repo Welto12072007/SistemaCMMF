@@ -28,6 +28,7 @@ const PortalAluno = lazy(() => import('./pages/PortalAluno'))
 const Configuracoes = lazy(() => import('./pages/Configuracoes'))
 const FaltasProfessor = lazy(() => import('./pages/FaltasProfessor'))
 const FluxoCaixa = lazy(() => import('./pages/FluxoCaixa'))
+const ContatosLabels = lazy(() => import('./pages/ContatosLabels'))
 
 function PageLoader() {
   return (
@@ -87,6 +88,7 @@ export default function App() {
         <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Faltas /></Suspense></Guard>} />
         <Route path="/faltas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Faltas /></Suspense></Guard>} />
         <Route path="/faltas-professor" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><FaltasProfessor /></Suspense></Guard>} />
+        <Route path="/contatos-labels" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><ContatosLabels /></Suspense></Guard>} />
         <Route path="/portal-aluno" element={<Guard roles={['aluno']}><Suspense fallback={<PageLoader />}><PortalAluno /></Suspense></Guard>} />
         <Route path="/biblioteca" element={<Suspense fallback={<PageLoader />}><Biblioteca /></Suspense>} />
         <Route path="/fingertv" element={<Suspense fallback={<PageLoader />}><FingerTV /></Suspense>} />
