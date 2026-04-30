@@ -7,6 +7,7 @@ import DefinirSenha from './pages/DefinirSenha'
 import Dashboard from './pages/Dashboard'
 
 const Contatos = lazy(() => import('./pages/Contatos'))
+const ContatosHub = lazy(() => import('./pages/ContatosHub'))
 const AulasExperimentais = lazy(() => import('./pages/AulasExperimentais'))
 const Usuarios = lazy(() => import('./pages/Usuarios'))
 const Followup = lazy(() => import('./pages/Followup'))
@@ -74,10 +75,11 @@ export default function App() {
       <Route path="/definir-senha" element={<DefinirSenha />} />
       <Route element={<Layout />}>
         <Route path="/" element={defaultPage} />
-        <Route path="/contatos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Contatos /></Suspense></Guard>} />
+        <Route path="/contatos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><ContatosHub /></Suspense></Guard>} />
+        <Route path="/contatos-lista" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Contatos /></Suspense></Guard>} />
         <Route path="/aulas-experimentais" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><AulasExperimentais /></Suspense></Guard>} />
         <Route path="/usuarios" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Usuarios /></Suspense></Guard>} />
-        <Route path="/followup" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Followup /></Suspense></Guard>} />
+        <Route path="/followup" element={<Navigate to="/contatos?tab=followup" replace />} />
         <Route path="/disparos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Disparos /></Suspense></Guard>} />
         <Route path="/disparos-programados" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><DisparosProgramados /></Suspense></Guard>} />
         <Route path="/horarios" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Horarios /></Suspense></Guard>} />
@@ -89,7 +91,7 @@ export default function App() {
         <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Faltas /></Suspense></Guard>} />
         <Route path="/faltas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Faltas /></Suspense></Guard>} />
         <Route path="/faltas-professor" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><FaltasProfessor /></Suspense></Guard>} />
-        <Route path="/contatos-labels" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><ContatosLabels /></Suspense></Guard>} />
+        <Route path="/contatos-labels" element={<Navigate to="/contatos?tab=labels" replace />} />
         <Route path="/crm-funil" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><CRMFunil /></Suspense></Guard>} />
         <Route path="/portal-aluno" element={<Guard roles={['aluno']}><Suspense fallback={<PageLoader />}><PortalAluno /></Suspense></Guard>} />
         <Route path="/biblioteca" element={<Suspense fallback={<PageLoader />}><Biblioteca /></Suspense>} />
