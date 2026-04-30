@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import {
   Users,
@@ -16,6 +17,9 @@ import {
   MessageSquare,
   Building2,
   BarChart2,
+  UserPlus,
+  Send,
+  Tag,
 } from 'lucide-react'
 import {
   BarChart,
@@ -279,6 +283,30 @@ export default function Dashboard() {
         >
           Atualizar
         </button>
+      </div>
+
+      {/* Atalhos rápidos */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Link to="/contatos" className="flex items-center gap-2 bg-white border border-gray-200 hover:border-brand-400 hover:bg-brand-50 rounded-xl px-4 py-3 transition-all group">
+          <UserPlus className="w-5 h-5 text-brand-600 group-hover:scale-110 transition-transform" />
+          <span className="text-sm font-medium text-gray-700 group-hover:text-brand-700">Novo aluno</span>
+        </Link>
+        <Link to="/aulas-experimentais" className="flex items-center gap-2 bg-white border border-gray-200 hover:border-emerald-400 hover:bg-emerald-50 rounded-xl px-4 py-3 transition-all group">
+          <GraduationCap className="w-5 h-5 text-emerald-600 group-hover:scale-110 transition-transform" />
+          <span className="text-sm font-medium text-gray-700 group-hover:text-emerald-700">Nova experimental</span>
+        </Link>
+        <Link to="/followup" className="flex items-center gap-2 bg-white border border-gray-200 hover:border-amber-400 hover:bg-amber-50 rounded-xl px-4 py-3 transition-all group">
+          <PhoneForwarded className="w-5 h-5 text-amber-600 group-hover:scale-110 transition-transform" />
+          <span className="text-sm font-medium text-gray-700 group-hover:text-amber-700">Novo follow-up</span>
+        </Link>
+        <Link to="/disparos" className="flex items-center gap-2 bg-white border border-gray-200 hover:border-blue-400 hover:bg-blue-50 rounded-xl px-4 py-3 transition-all group">
+          <Send className="w-5 h-5 text-blue-600 group-hover:scale-110 transition-transform" />
+          <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">Novo disparo</span>
+        </Link>
+        <Link to="/crm-funil" className="flex items-center gap-2 bg-white border border-gray-200 hover:border-purple-400 hover:bg-purple-50 rounded-xl px-4 py-3 transition-all group">
+          <TrendingUp className="w-5 h-5 text-purple-600 group-hover:scale-110 transition-transform" />
+          <span className="text-sm font-medium text-gray-700 group-hover:text-purple-700">CRM Funil</span>
+        </Link>
       </div>
 
       {/* Top 5 KPI Cards */}
