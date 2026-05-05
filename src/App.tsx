@@ -31,6 +31,8 @@ const FaltasProfessor = lazy(() => import('./pages/FaltasProfessor'))
 const FluxoCaixa = lazy(() => import('./pages/FluxoCaixa'))
 const ContatosLabels = lazy(() => import('./pages/ContatosLabels'))
 const CRMFunil = lazy(() => import('./pages/CRMFunil'))
+const HorariosExtras = lazy(() => import('./pages/HorariosExtras'))
+const ExperimentaisSemana = lazy(() => import('./pages/ExperimentaisSemana'))
 
 function PageLoader() {
   return (
@@ -78,6 +80,8 @@ export default function App() {
         <Route path="/contatos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><ContatosHub /></Suspense></Guard>} />
         <Route path="/contatos-lista" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Contatos /></Suspense></Guard>} />
         <Route path="/aulas-experimentais" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><AulasExperimentais /></Suspense></Guard>} />
+        <Route path="/experimentais-semana" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><ExperimentaisSemana /></Suspense></Guard>} />
+        <Route path="/horarios-extras" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><HorariosExtras /></Suspense></Guard>} />
         <Route path="/usuarios" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Usuarios /></Suspense></Guard>} />
         <Route path="/followup" element={<Navigate to="/contatos?tab=followup" replace />} />
         <Route path="/disparos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Disparos /></Suspense></Guard>} />

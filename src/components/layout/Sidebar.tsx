@@ -26,6 +26,7 @@ import {
   Wallet,
   Tag,
   TrendingUp,
+  CalendarPlus2,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -46,10 +47,12 @@ const sections: NavSection[] = [
       { to: '/contatos', label: 'Contatos', icon: Users, roles: ['admin', 'recepcao'] },
       { to: '/crm-funil', label: 'CRM — Funil', icon: TrendingUp, roles: ['admin', 'recepcao'] },
       { to: '/aulas-experimentais', label: 'Aulas Experimentais', icon: GraduationCap, roles: ['admin', 'recepcao'] },
+      { to: '/experimentais-semana', label: 'Experimentais — Semana', icon: Calendar, roles: ['admin', 'recepcao'] },
       { to: '/usuarios', label: 'Usuários', icon: UserCheck, roles: ['admin', 'recepcao'] },
       { to: '/horarios', label: 'Horários', icon: CalendarClock, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/presencas', label: 'Presenças & Faltas', icon: ClipboardCheck, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/faltas-professor', label: 'Faltas de Professor', icon: UserX, roles: ['admin', 'recepcao', 'professor'] },
+      { to: '/horarios-extras', label: 'Horários Extras', icon: CalendarPlus2, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/portal-aluno', label: 'Minhas Aulas', icon: Calendar, roles: ['aluno'] },
     ],
   },

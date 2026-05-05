@@ -20,6 +20,7 @@ import {
   UserPlus,
   Send,
   Tag,
+  AlertTriangle,
 } from 'lucide-react'
 import {
   BarChart,
@@ -92,6 +93,7 @@ export default function Dashboard() {
   const [ocupacao, setOcupacao] = useState({ total: 0, ocupados: 0, disponiveis: 0, taxa: 0 })
   const [ocupacaoPorProf, setOcupacaoPorProf] = useState<{ name: string; ocupados: number; total: number; taxa: number }[]>([])
   const [totalAlunosAtivos, setTotalAlunosAtivos] = useState(0)
+  const [alunosSemContato, setAlunosSemContato] = useState<{ id: string; nome: string; instrumento_interesse?: string }[]>([])
 
   useEffect(() => {
     loadDashboard()
@@ -123,6 +125,10 @@ export default function Dashboard() {
     // Alunos ativos
     const ativos = contatos.filter(c => c.status === 'ativo').length
     setTotalAlunosAtivos(ativos)
+
+    // Alunos sem contato vinculado (telefone vazio/null OU contato_invalido=true)
+    const semContato = contatos.filter(c => c.status === 'ativo' && (!c.telefone || c.telefone.trim() === '' || (c as { contato_invalido?: boolean }).contato_invalido === true))
+    setAlunosSemContato(semContato.map(c => ({ id: c.id, nome: c.nome, instrumento_interesse: c.instrumento_interesse })))
 
     // Taxa de ocupação
     if (horarios) {
@@ -308,6 +314,26 @@ export default function Dashboard() {
           <span className="text-sm font-medium text-gray-700 group-hover:text-purple-700">CRM Funil</span>
         </Link>
       </div>
+
+      {/* Alerta: alunos sem contato vinculado */}
+      {alunosSemContato.length > 0 && (
+        <Link to="/contatos" className="block bg-amber-50 border border-amber-200 rounded-xl p-4 hover:bg-amber-100 transition-colors">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-900">
+                {alunosSemContato.length} aluno{alunosSemContato.length > 1 ? 's' : ''} sem contato vinculado
+              </p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                {alunosSemContato.slice(0, 3).map(a => a.nome).join(', ')}
+                {alunosSemContato.length > 3 ? ` e mais ${alunosSemContato.length - 3}` : ''}.
+                Estes alunos não recebem disparos automáticos. Clique para corrigir.
+              </p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          </div>
+        </Link>
+      )}
 
       {/* Top 5 KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
