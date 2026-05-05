@@ -47,7 +47,6 @@ const sections: NavSection[] = [
       { to: '/contatos', label: 'Contatos', icon: Users, roles: ['admin', 'recepcao'] },
       { to: '/crm-funil', label: 'CRM — Funil', icon: TrendingUp, roles: ['admin', 'recepcao'] },
       { to: '/aulas-experimentais', label: 'Aulas Experimentais', icon: GraduationCap, roles: ['admin', 'recepcao'] },
-      { to: '/experimentais-semana', label: 'Experimentais — Semana', icon: Calendar, roles: ['admin', 'recepcao'] },
       { to: '/usuarios', label: 'Usuários', icon: UserCheck, roles: ['admin', 'recepcao'] },
       { to: '/horarios', label: 'Horários', icon: CalendarClock, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/presencas', label: 'Presenças & Faltas', icon: ClipboardCheck, roles: ['admin', 'recepcao', 'professor'] },

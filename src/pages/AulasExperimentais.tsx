@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2 } from 'lucide-react'
+import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List } from 'lucide-react'
 import type { AulaExperimental, Professor } from '@/types'
+import ExperimentaisSemana from './ExperimentaisSemana'
 
 const INSTRUMENTOS = ['Piano', 'Violão', 'Guitarra', 'Bateria', 'Canto', 'Ukulele', 'Baixo', 'Teclado', 'Musicalização Infantil', 'Cavaquinho', 'Contrabaixo', 'Violino', 'Percussão']
 
@@ -24,6 +25,7 @@ export default function AulasExperimentais() {
   const [filtro, setFiltro] = useState('Todos os status')
   const [showForm, setShowForm] = useState(false)
   const [converterAula, setConverterAula] = useState<AulaExperimental | null>(null)
+  const [aba, setAba] = useState<'lista' | 'semana'>('lista')
 
   useEffect(() => {
     loadAulas()
@@ -101,6 +103,27 @@ export default function AulasExperimentais() {
           Nova Aula Experimental
         </button>
       </div>
+
+      {/* Abas */}
+      <div className="flex gap-1 border-b border-gray-200">
+        <button
+          onClick={() => setAba('lista')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${aba === 'lista' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          <List className="w-4 h-4" /> Lista
+        </button>
+        <button
+          onClick={() => setAba('semana')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${aba === 'semana' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          <Calendar className="w-4 h-4" /> Semana
+        </button>
+      </div>
+
+      {aba === 'semana' ? (
+        <ExperimentaisSemana />
+      ) : (
+        <>
 
       {/* Filters */}
       <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm">
@@ -195,6 +218,8 @@ export default function AulasExperimentais() {
           </div>
         )}
       </div>
+        </>
+      )}
 
       {showForm && (
         <NovaAulaForm
