@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, Fragment } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -266,11 +266,10 @@ export default function FaltasProfessor() {
         .neq('status_aula', 'remarcada')
     }
     setSaving(false)
-    if (!error) {
-      setShowModalAusencia(false)
-      setFormAusencia({ professor_id: '', data_ausencia: '', periodo: 'dia', motivo: '', observacoes: '' })
-      load()
-    }
+    if (error) { alert(`Erro ao registrar ausência:\n${error.message}`); return }
+    setShowModalAusencia(false)
+    setFormAusencia({ professor_id: '', data_ausencia: '', periodo: 'dia', motivo: '', observacoes: '' })
+    load()
   }
 
   // ─── salvar horário extra ─────────────────────────────────────────────────
@@ -294,11 +293,10 @@ export default function FaltasProfessor() {
       status: 'pendente',
     })
     setSaving(false)
-    if (!error) {
-      setShowModalExtra(false)
-      setFormExtra({ professor_id: '', data_proposta: '', hora_inicio: '', hora_fim: '', aluno_nome: '', motivo: 'reposicao', observacoes: '' })
-      load()
-    }
+    if (error) { alert(`Erro ao propor horário extra:\n${error.message}`); return }
+    setShowModalExtra(false)
+    setFormExtra({ professor_id: '', data_proposta: '', hora_inicio: '', hora_fim: '', aluno_nome: '', motivo: 'reposicao', observacoes: '' })
+    load()
   }
 
   // ─── aprovar / recusar horário extra ─────────────────────────────────────
@@ -317,7 +315,8 @@ export default function FaltasProfessor() {
 
   async function excluirAusencia(id: string) {
     if (!confirm('Excluir esta ausência?')) return
-    await supabase.from('ausencias_professor').delete().eq('id', id)
+    const { error } = await supabase.from('ausencias_professor').delete().eq('id', id)
+    if (error) { alert(`Erro ao excluir:\n${error.message}`); return }
     load()
   }
 
@@ -371,30 +370,34 @@ export default function FaltasProfessor() {
   }
 
   async function confirmarReposicao(id: string) {
-    await supabase.from('reposicoes').update({ professor_confirmou_at: new Date().toISOString() }).eq('id', id)
+    const { error } = await supabase.from('reposicoes').update({ professor_confirmou_at: new Date().toISOString() }).eq('id', id)
+    if (error) { alert(`Erro ao confirmar:\n${error.message}`); return }
     load()
   }
 
   async function marcarRealizada(id: string) {
-    await supabase.from('reposicoes').update({ status: 'realizada' }).eq('id', id)
+    const { error } = await supabase.from('reposicoes').update({ status: 'realizada' }).eq('id', id)
+    if (error) { alert(`Erro ao marcar realizada:\n${error.message}`); return }
     load()
   }
 
   async function cancelarReposicao(id: string) {
     if (!confirm('Cancelar esta reposição?')) return
-    await supabase.from('reposicoes').update({ status: 'cancelada' }).eq('id', id)
+    const { error } = await supabase.from('reposicoes').update({ status: 'cancelada' }).eq('id', id)
+    if (error) { alert(`Erro ao cancelar:\n${error.message}`); return }
     load()
   }
 
   async function salvarAgendamento() {
     if (!agendandoReposicao || !formAgendar.data_reposicao || !formAgendar.hora_reposicao) return
     setSaving(true)
-    await supabase.from('reposicoes').update({
+    const { error } = await supabase.from('reposicoes').update({
       data_reposicao: formAgendar.data_reposicao,
       hora_reposicao: formAgendar.hora_reposicao,
       status: 'agendada',
     }).eq('id', agendandoReposicao.id)
     setSaving(false)
+    if (error) { alert(`Erro ao agendar:\n${error.message}`); return }
     setAgendandoReposicao(null)
     load()
   }
@@ -555,8 +558,8 @@ export default function FaltasProfessor() {
                 {ausenciasFiltradas().map(a => {
                   const isOpen = ausenciaAberta === a.id
                   return (
-                    <>
-                      <tr key={a.id} className="hover:bg-gray-50">
+                    <Fragment key={a.id}>
+                      <tr className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">{a.professor_nome}</td>
                         <td className="px-4 py-3 text-sm text-gray-700">
                           {fmtDate(a.data_ausencia)}
@@ -602,7 +605,7 @@ export default function FaltasProfessor() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   )
                 })}
               </tbody>

@@ -389,6 +389,8 @@ function AlunoForm({ aluno, onSave, onClose }: {
   }, [isMinor])
 
   function handleSubmit() {
+    if (!form.nome.trim()) { alert('Nome é obrigatório.'); return }
+    if (!form.telefone.trim()) { alert('Telefone é obrigatório.'); return }
     const payload: Record<string, unknown> = { ...form }
     payload.tags = form.tags ? form.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : []
     payload.valor_plano = form.valor_plano ? parseFloat(form.valor_plano) : null

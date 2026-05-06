@@ -271,7 +271,7 @@ export default function AulasExperimentais() {
               <div className="flex flex-wrap gap-4 text-sm text-gray-600">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5" />
-                  {a.data_aula ? new Date(a.data_aula).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : '—'} — {a.hora_inicio}
+                  {a.data_aula ? new Date(a.data_aula + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : '—'} — {a.hora_inicio}
                 </span>
                 <span className="flex items-center gap-1">
                   <Music className="w-3.5 h-3.5" />

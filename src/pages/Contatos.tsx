@@ -97,11 +97,10 @@ export default function Contatos() {
   }
 
   async function handleSave(data: Partial<Contato>) {
-    if (editando) {
-      await supabase.from('alunos').update(data).eq('id', editando.id)
-    } else {
-      await supabase.from('alunos').insert(data)
-    }
+    const { error } = editando
+      ? await supabase.from('alunos').update(data).eq('id', editando.id)
+      : await supabase.from('alunos').insert(data)
+    if (error) { alert(`Erro ao salvar contato:\n${error.message}`); return }
     setShowForm(false)
     setEditando(null)
     loadContatos()
@@ -109,7 +108,8 @@ export default function Contatos() {
 
   async function handleDelete(id: string) {
     if (!confirm('Tem certeza que deseja excluir este contato?')) return
-    await supabase.from('alunos').delete().eq('id', id)
+    const { error } = await supabase.from('alunos').delete().eq('id', id)
+    if (error) { alert(`Erro ao excluir:\n${error.message}`); return }
     loadContatos()
   }
 
