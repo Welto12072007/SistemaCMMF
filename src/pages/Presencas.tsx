@@ -65,7 +65,7 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
   const [loading, setLoading] = useState(false)
   const [busca, setBusca] = useState('')
   const [tab, setTab] = useState<'chamada' | 'historico'>('chamada')
-  const [histData, setHistData] = useState<{ aluno_nome: string; data: string; presente: boolean; tipo_falta: string; professor_nome: string; instrumento: string; observacoes: string | null }[]>([])
+  const [histData, setHistData] = useState<{ aluno_nome: string; data: string; presente: boolean; tipo_falta: string; professor_nome: string; instrumento: string; observacoes: string | null; status_aula: string | null }[]>([])
   const [histFiltro, setHistFiltro] = useState({ mes: new Date().getMonth() + 1, ano: new Date().getFullYear() })
   const [modalPresenca, setModalPresenca] = useState<{ item: AlunoPresenca; presente: boolean; tipoFalta?: string } | null>(null)
   const [obsTexto, setObsTexto] = useState('')
@@ -164,6 +164,7 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
       professor_nome: (p.professor as any)?.nome || '—',
       instrumento: p.instrumento || '',
       observacoes: p.observacoes || null,
+      status_aula: p.status_aula || null,
     })))
   }
 
@@ -699,7 +700,11 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
                         )}
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">
-                        {h.tipo_falta === 'falta_justificada' ? 'Justificada' :
+                        {h.status_aula === 'a_remarcar' ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">⚠️ A remarcar</span>
+                        ) : h.status_aula === 'remarcada' ? (
+                          <span className="inline-flex text-xs font-medium text-teal-700 bg-teal-100 px-2 py-0.5 rounded-full">Remarcada</span>
+                        ) : h.tipo_falta === 'falta_justificada' ? 'Justificada' :
                          h.tipo_falta === 'falta_injustificada' ? 'Injustificada' :
                          h.tipo_falta === 'remarcada' ? 'Remarcada' : '—'}
                       </td>
