@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import {
   TrendingUp, RefreshCw, Search, Filter, Phone, Flame,
   CheckCircle2, Clock, AlertCircle, X, ExternalLink,
-  ChevronRight, BarChart3, Trophy,
+  ChevronRight, BarChart3, Trophy, ChevronLeft,
 } from 'lucide-react'
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
@@ -75,11 +75,14 @@ export default function CRMFunil() {
   const [listas, setListas] = useState<ListaQuente[]>([])
   const [conversao, setConversao] = useState<ConversaoProf[]>([])
 
-  const [tab, setTab] = useState<'funil' | 'gargalos' | 'instrumento' | 'conversao'>('funil')
+  const [tab, setTab] = useState<'funil' | 'gargalos' | 'instrumento' | 'conversao' | 'semanal'>('funil')
   const [busca, setBusca] = useState('')
   const [filtroInstr, setFiltroInstr] = useState('')
   const [filtroEtapa, setFiltroEtapa] = useState<string>('')
   const [apenasFollowup, setApenasFollowup] = useState(false)
+
+  // Semana offset (0 = semana atual, -1 = semana passada, etc.)
+  const [semanaOffset, setSemanaOffset] = useState(0)
 
   // Modal lead perdido
   const [modalPerdido, setModalPerdido] = useState<FunilContato | null>(null)
@@ -144,9 +147,44 @@ export default function CRMFunil() {
   // Listas quentes ordenadas
   const listasOrdenadas = useMemo(() => {
     return [...listas]
-      .filter(l => l.tipo !== 'aluno' || l.total >= 5) // alunos só se relevante
+      .filter(l => l.tipo !== 'aluno' || l.total >= 5)
       .sort((a, b) => (b.em_negociacao - a.em_negociacao) || (b.score_medio - a.score_medio))
   }, [listas])
+
+  // ─── dados semanais ───────────────────────────────────────────────────────
+  const { semanaInicio, semanaFim, contatosSemana, entradosSemana, porEtapaSemana } = useMemo(() => {
+    const hoje = new Date()
+    const diaSemana = hoje.getDay() // 0=dom
+    const inicioSemanaAtual = new Date(hoje)
+    inicioSemanaAtual.setDate(hoje.getDate() - diaSemana + (diaSemana === 0 ? -6 : 1)) // segunda
+    inicioSemanaAtual.setHours(0, 0, 0, 0)
+    const semanaInicio = new Date(inicioSemanaAtual)
+    semanaInicio.setDate(inicioSemanaAtual.getDate() + semanaOffset * 7)
+    const semanaFim = new Date(semanaInicio)
+    semanaFim.setDate(semanaInicio.getDate() + 6)
+    semanaFim.setHours(23, 59, 59, 999)
+
+    const contatosSemana = contatos.filter(c => {
+      if (!c.data_ultima_interacao) return false
+      const d = new Date(c.data_ultima_interacao)
+      return d >= semanaInicio && d <= semanaFim
+    })
+
+    const entradosSemana = contatos.filter(c => {
+      if (!c.data_primeiro_contato) return false
+      const d = new Date(c.data_primeiro_contato)
+      return d >= semanaInicio && d <= semanaFim
+    })
+
+    const porEtapaSemana: Record<string, number> = {}
+    ETAPAS.forEach(e => { porEtapaSemana[e.key] = 0 })
+    contatosSemana.forEach(c => {
+      if (c.etapa_funil in porEtapaSemana) porEtapaSemana[c.etapa_funil] = (porEtapaSemana[c.etapa_funil] ?? 0) + 1
+      else porEtapaSemana[c.etapa_funil] = 1
+    })
+
+    return { semanaInicio, semanaFim, contatosSemana, entradosSemana, porEtapaSemana }
+  }, [contatos, semanaOffset])
 
   // ─── ações ────────────────────────────────────────────────────────────────
 
@@ -205,6 +243,7 @@ export default function CRMFunil() {
           { k: 'gargalos', l: 'Gargalos', i: AlertCircle },
           { k: 'instrumento', l: 'Listas Quentes', i: Flame },
           { k: 'conversao', l: 'Conversão Professor', i: Trophy },
+          { k: 'semanal', l: 'Relatório Semanal', i: BarChart3 },
         ] as const).map(t => {
           const Icon = t.i
           return (
@@ -513,6 +552,160 @@ export default function CRMFunil() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ── aba: Relatório Semanal ─────────────────────────────────────── */}
+      {tab === 'semanal' && (
+        <div className="space-y-5">
+          {/* Navegação de semana */}
+          <div className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3">
+            <button
+              onClick={() => setSemanaOffset(o => o - 1)}
+              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <div className="text-center">
+              <div className="font-semibold text-gray-900 text-sm">
+                {semanaInicio.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                {' — '}
+                {semanaFim.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                {semanaOffset === 0 ? 'Semana atual' : semanaOffset === -1 ? 'Semana passada' : `${Math.abs(semanaOffset)} semanas atrás`}
+              </div>
+            </div>
+            <button
+              onClick={() => setSemanaOffset(o => Math.min(0, o + 1))}
+              disabled={semanaOffset >= 0}
+              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-30"
+            >
+              <ChevronRight className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
+
+          {/* KPIs da semana */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
+              <div className="text-2xl font-bold text-brand-600">{entradosSemana.length}</div>
+              <div className="text-xs text-gray-500 mt-1">Novos leads</div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
+              <div className="text-2xl font-bold text-blue-600">{contatosSemana.length}</div>
+              <div className="text-xs text-gray-500 mt-1">Com interação</div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
+              <div className="text-2xl font-bold text-emerald-600">
+                {contatosSemana.filter(c => c.etapa_funil === '7_matriculado').length}
+              </div>
+              <div className="text-xs text-gray-500 mt-1">Matriculados</div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
+              <div className="text-2xl font-bold text-red-500">
+                {contatosSemana.filter(c => c.etapa_funil === '9_perdido').length}
+              </div>
+              <div className="text-xs text-gray-500 mt-1">Perdidos</div>
+            </div>
+          </div>
+
+          {/* Tabela por etapa */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-800 text-sm">Distribuição por etapa</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Contatos com última interação nesta semana</p>
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs text-gray-500 border-b border-gray-100">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium">Etapa</th>
+                  <th className="px-4 py-2 text-right font-medium">Contatos</th>
+                  <th className="px-4 py-2 text-right font-medium">% do total da semana</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {ETAPAS.map(e => {
+                  const count = porEtapaSemana[e.key] ?? 0
+                  const pct = contatosSemana.length > 0 ? Math.round((count / contatosSemana.length) * 100) : 0
+                  return (
+                    <tr key={e.key} className={count === 0 ? 'opacity-40' : ''}>
+                      <td className="px-4 py-2">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${e.cor}`}>{e.label}</span>
+                      </td>
+                      <td className="px-4 py-2 text-right font-semibold text-gray-800">{count}</td>
+                      <td className="px-4 py-2 text-right text-gray-500">
+                        {pct > 0 && (
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="w-20 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                              <div className={`h-full ${e.pill} rounded-full`} style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-xs w-8 text-right">{pct}%</span>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Lista de contatos da semana */}
+          {contatosSemana.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h3 className="font-semibold text-gray-800 text-sm">Contatos ativos nesta semana</h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-500 border-b border-gray-100">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Nome</th>
+                    <th className="px-3 py-2 text-left font-medium">Etapa</th>
+                    <th className="px-3 py-2 text-left font-medium">Instrumento</th>
+                    <th className="px-3 py-2 text-center font-medium">🔥</th>
+                    <th className="px-3 py-2 text-center font-medium">WhatsApp</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {contatosSemana.slice(0, 100).map(c => {
+                    const etapa = ETAPAS.find(e => e.key === c.etapa_funil)
+                    return (
+                      <tr key={c.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2">
+                          <div className="font-medium text-gray-800">{c.nome}</div>
+                          {c.telefone && <div className="text-xs text-gray-400">{c.telefone}</div>}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${etapa?.cor ?? 'bg-gray-100'}`}>
+                            {etapa?.label ?? c.etapa_funil}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-gray-600">{c.instrumento_interesse ?? '—'}</td>
+                        <td className="px-3 py-2 text-center">
+                          <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${corScore(c.score_temperatura)}`}>
+                            {c.score_temperatura}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {c.telefone && (
+                            <button onClick={() => abrirWhats(c.telefone)} className="p-1 hover:bg-green-50 rounded text-gray-400 hover:text-green-600">
+                              <Phone className="w-4 h-4" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {contatosSemana.length === 0 && (
+            <div className="text-center py-10 text-gray-400 bg-white rounded-xl border">
+              Nenhuma interação registrada nesta semana.
+            </div>
+          )}
         </div>
       )}
 
