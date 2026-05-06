@@ -38,6 +38,7 @@ export default function Contatos() {
   const [auditAluno, setAuditAluno] = useState<Contato | null>(null)
   const [auditLog, setAuditLog] = useState<any[]>([])
   const [filtroInvalidos, setFiltroInvalidos] = useState<'todos'|'validos'|'invalidos'>('todos')
+  const [abaContatos, setAbaContatos] = useState<'todos' | 'leads' | 'alunos' | 'ex_alunos'>('todos')
 
   useEffect(() => {
     loadContatos()
@@ -51,10 +52,18 @@ export default function Contatos() {
     if (data) setContatos(data)
   }
 
-  // Filtrar apenas leads — exclui alunos ativos (estes aparecem em Usuários)
-  const leads = contatos.filter(c => !['ativo', 'matriculado'].includes(c.status || ''))
+  // Segmentação por tipo
+  const todosContatos = contatos
+  const somenteLeads = contatos.filter(c => !['ativo', 'matriculado', 'inativo', 'cancelado', 'ex_aluno'].includes(c.status || ''))
+  const somenteAlunos = contatos.filter(c => ['ativo', 'matriculado'].includes(c.status || ''))
+  const somenteExAlunos = contatos.filter(c => ['inativo', 'cancelado', 'ex_aluno'].includes(c.status || ''))
 
-  const filtered = leads.filter((c) => {
+  const baseAba = abaContatos === 'leads' ? somenteLeads
+    : abaContatos === 'alunos' ? somenteAlunos
+    : abaContatos === 'ex_alunos' ? somenteExAlunos
+    : todosContatos
+
+  const filtered = baseAba.filter((c) => {
     if (busca && !c.nome?.toLowerCase().includes(busca.toLowerCase()) && !c.telefone?.includes(busca) && !(c.email?.toLowerCase().includes(busca.toLowerCase()))) return false
     if (filtroStatus !== 'Todos os status' && c.status !== filtroStatus) return false
     if (filtroCanal !== 'Todas as origens' && c.origem !== filtroCanal) return false
@@ -118,6 +127,24 @@ export default function Contatos() {
           <Plus className="w-4 h-4" />
           Novo Contato
         </button>
+      </div>
+
+      {/* Abas de segmentação */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {([
+          { k: 'todos', l: `Todos (${todosContatos.length})` },
+          { k: 'leads', l: `Leads (${somenteLeads.length})` },
+          { k: 'alunos', l: `Alunos (${somenteAlunos.length})` },
+          { k: 'ex_alunos', l: `Ex-alunos (${somenteExAlunos.length})` },
+        ] as const).map(t => (
+          <button
+            key={t.k}
+            onClick={() => setAbaContatos(t.k)}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${abaContatos === t.k ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            {t.l}
+          </button>
+        ))}
       </div>
 
       {/* Filters */}
