@@ -32,6 +32,7 @@ const FluxoCaixa = lazy(() => import('./pages/FluxoCaixa'))
 const ContatosLabels = lazy(() => import('./pages/ContatosLabels'))
 const CRMFunil = lazy(() => import('./pages/CRMFunil'))
 const HorariosExtras = lazy(() => import('./pages/HorariosExtras'))
+const MensagemManual = lazy(() => import('./pages/MensagemManual'))
 
 function PageLoader() {
   return (
@@ -95,6 +96,7 @@ export default function App() {
         <Route path="/faltas-professor" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><FaltasProfessor /></Suspense></Guard>} />
         <Route path="/contatos-labels" element={<Navigate to="/contatos?tab=labels" replace />} />
         <Route path="/crm-funil" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><CRMFunil /></Suspense></Guard>} />
+        <Route path="/mensagem-manual" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><MensagemManual /></Suspense></Guard>} />
         <Route path="/portal-aluno" element={<Guard roles={['aluno']}><Suspense fallback={<PageLoader />}><PortalAluno /></Suspense></Guard>} />
         <Route path="/biblioteca" element={<Suspense fallback={<PageLoader />}><Biblioteca /></Suspense>} />
         <Route path="/fingertv" element={<Suspense fallback={<PageLoader />}><FingerTV /></Suspense>} />
