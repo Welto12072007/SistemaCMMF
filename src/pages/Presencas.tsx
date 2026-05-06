@@ -550,6 +550,7 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Instrumento</th>
                   <th className="text-center px-4 py-3 text-xs font-medium text-gray-500 uppercase">Presença</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Tipo</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Observação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -617,6 +618,13 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
                           <span className="text-xs text-gray-400">—</span>
                         )}
                       </td>
+                      <td className="px-4 py-3 text-xs text-gray-500 max-w-[160px]">
+                        {item.observacoes
+                          ? <span title={item.observacoes}>{item.observacoes.length > 60 ? item.observacoes.slice(0, 60) + '…' : item.observacoes}</span>
+                          : item.presente !== null
+                            ? <button onClick={() => { setObsTexto(''); setModalPresenca({ item, presente: item.presente!, tipoFalta: item.tipo_falta }) }} className="text-xs text-amber-500 hover:underline">+ obs</button>
+                            : <span className="text-gray-300">—</span>}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -671,6 +679,7 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Instrumento</th>
                   <th className="text-center px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Tipo</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Observação Pedagógica</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
