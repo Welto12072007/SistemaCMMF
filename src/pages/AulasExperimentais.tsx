@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List, RefreshCw, Download } from 'lucide-react'
+import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List, RefreshCw, Download, Pencil } from 'lucide-react'
 import type { AulaExperimental, Professor } from '@/types'
 import ExperimentaisSemana from './ExperimentaisSemana'
 
@@ -29,6 +29,7 @@ export default function AulasExperimentais() {
   const [trocarProfModal, setTrocarProfModal] = useState<AulaExperimental | null>(null)
   const [novoProfId, setNovoProfId] = useState('')
   const [salvandoProf, setSalvandoProf] = useState(false)
+  const [editarAula, setEditarAula] = useState<AulaExperimental | null>(null)
 
   useEffect(() => {
     loadAulas()
@@ -130,6 +131,30 @@ export default function AulasExperimentais() {
     link.download = `experimentais-cmmf-${new Date().toISOString().slice(0, 10)}.ics`
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  async function handleUpdateAula(form: { nome: string; telefone: string; instrumento: string; professor_id: string; data_aula: string; hora_inicio: string; observacoes: string; status: string }) {
+    if (!editarAula) return
+    const prof = professores.find(p => p.id === form.professor_id)
+    const horaFim = form.hora_inicio
+      ? (() => { const parts = form.hora_inicio.split(':').map(Number); const d = new Date(2000, 0, 1, parts[0] ?? 0, (parts[1] ?? 0) + 45); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` })()
+      : null
+    const { error } = await supabase.from('aulas_experimentais').update({
+      nome: form.nome,
+      telefone: form.telefone,
+      instrumento: form.instrumento,
+      professor_id: form.professor_id || null,
+      professor_nome: prof?.nome || null,
+      professor_telefone: prof?.telefone || null,
+      data_aula: form.data_aula,
+      hora_inicio: form.hora_inicio,
+      hora_fim: horaFim,
+      status: form.status,
+      observacoes: form.observacoes || null,
+    }).eq('id', editarAula.id)
+    if (error) { alert(`Erro ao atualizar:\n${error.message}`); return }
+    setEditarAula(null)
+    loadAulas()
   }
 
   async function handleSaveAula(form: { nome: string; telefone: string; instrumento: string; professor_id: string; data_aula: string; hora_inicio: string; observacoes: string }) {
@@ -260,22 +285,30 @@ export default function AulasExperimentais() {
               {a.observacoes && <p className="text-xs text-gray-500 mt-2 italic">{a.observacoes}</p>}
             </div>
 
-            {['agendada', 'confirmada'].includes(a.status?.toLowerCase()) && (
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  onClick={() => { setTrocarProfModal(a); setNovoProfId(a.professor_id ?? '') }}
-                  className="text-xs px-3 py-1.5 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-1"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" /> Trocar professor
-                </button>
-                <button onClick={() => remarcar(a.id)} className="text-xs px-3 py-1.5 border rounded-lg hover:bg-gray-50 transition-colors">
-                  Remarcar
-                </button>
-                <button onClick={() => marcarRealizada(a.id)} className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
-                  Marcar como Realizada
-                </button>
-              </div>
-            )}
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => setEditarAula(a)}
+                className="text-xs px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1"
+              >
+                <Pencil className="w-3.5 h-3.5" /> Editar
+              </button>
+              {['agendada', 'confirmada'].includes(a.status?.toLowerCase()) && (
+                <>
+                  <button
+                    onClick={() => { setTrocarProfModal(a); setNovoProfId(a.professor_id ?? '') }}
+                    className="text-xs px-3 py-1.5 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Trocar professor
+                  </button>
+                  <button onClick={() => remarcar(a.id)} className="text-xs px-3 py-1.5 border rounded-lg hover:bg-gray-50 transition-colors">
+                    Remarcar
+                  </button>
+                  <button onClick={() => marcarRealizada(a.id)} className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                    Marcar como Realizada
+                  </button>
+                </>
+              )}
+            </div>
 
             {['concluida', 'realizada'].includes(a.status?.toLowerCase()) && (
               <div className="flex gap-2">
@@ -309,6 +342,15 @@ export default function AulasExperimentais() {
           professores={professores}
           onSave={handleSaveAula}
           onClose={() => setShowForm(false)}
+        />
+      )}
+
+      {editarAula && (
+        <EditarAulaForm
+          aula={editarAula}
+          professores={professores}
+          onSave={handleUpdateAula}
+          onClose={() => setEditarAula(null)}
         />
       )}
 
@@ -447,6 +489,102 @@ function NovaAulaForm({ professores, onSave, onClose }: {
             className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50"
           >
             Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// EditarAulaForm — edita qualquer aula experimental (manual ou gerada pela IA)
+// ---------------------------------------------------------------------------
+const STATUS_OPTIONS = ['agendada', 'confirmada', 'aguardando_professor', 'confirmado_professor', 'aguardando_pagamento', 'realizada', 'concluida', 'remarcada', 'cancelada']
+
+function EditarAulaForm({ aula, professores, onSave, onClose }: {
+  aula: AulaExperimental
+  professores: Professor[]
+  onSave: (form: { nome: string; telefone: string; instrumento: string; professor_id: string; data_aula: string; hora_inicio: string; observacoes: string; status: string }) => void
+  onClose: () => void
+}) {
+  const [form, setForm] = useState({
+    nome: aula.nome ?? '',
+    telefone: aula.telefone ?? '',
+    instrumento: aula.instrumento ?? '',
+    professor_id: aula.professor_id ?? '',
+    data_aula: aula.data_aula ?? '',
+    hora_inicio: aula.hora_inicio ?? '',
+    observacoes: aula.observacoes ?? '',
+    status: aula.status ?? 'agendada',
+  })
+
+  const profsFiltrados = form.instrumento
+    ? professores.filter(p => p.instrumentos?.some(i => i.toLowerCase() === form.instrumento.toLowerCase()))
+    : professores
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold">Editar Aula Experimental</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Nome do Aluno <span className="text-red-500">*</span></label>
+              <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Telefone <span className="text-red-500">*</span></label>
+              <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.telefone} onChange={e => setForm({...form, telefone: e.target.value})} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Instrumento <span className="text-red-500">*</span></label>
+              <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.instrumento} onChange={e => setForm({...form, instrumento: e.target.value, professor_id: ''})}>
+                <option value="">Selecione...</option>
+                {INSTRUMENTOS.map(i => <option key={i} value={i}>{i}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Status</label>
+              <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.status} onChange={e => setForm({...form, status: e.target.value})}>
+                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Professor</label>
+            <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.professor_id} onChange={e => setForm({...form, professor_id: e.target.value})}>
+              <option value="">Sem professor</option>
+              {profsFiltrados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Data <span className="text-red-500">*</span></label>
+              <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.data_aula} onChange={e => setForm({...form, data_aula: e.target.value})} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Horário <span className="text-red-500">*</span></label>
+              <input type="time" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.hora_inicio} onChange={e => setForm({...form, hora_inicio: e.target.value})} />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Observações</label>
+            <textarea className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} value={form.observacoes} onChange={e => setForm({...form, observacoes: e.target.value})} />
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 mt-5">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+          <button
+            onClick={() => onSave(form)}
+            disabled={!form.nome || !form.telefone || !form.instrumento || !form.data_aula || !form.hora_inicio}
+            className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50"
+          >
+            Salvar alterações
           </button>
         </div>
       </div>
