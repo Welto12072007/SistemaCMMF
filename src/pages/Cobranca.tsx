@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Scale, AlertTriangle, FileText, Send, Search, RefreshCw, CheckCircle2, Clock, Download, Settings } from 'lucide-react'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 interface MensalidadeAtualizada {
   id: string
@@ -151,55 +153,140 @@ export default function Cobranca() {
 
   function exportarDossiePDF(e: Encaminhamento) {
     const d = e.dossie
-    const html = `
-<!DOCTYPE html><html><head><meta charset="utf-8"><title>Dossiê - ${d.aluno?.nome}</title>
-<style>body{font-family:Arial,sans-serif;max-width:800px;margin:24px auto;padding:0 16px;color:#222}
-h1{color:#1e40af;border-bottom:2px solid #1e40af;padding-bottom:8px}
-h2{color:#374151;margin-top:24px}
-.row{display:flex;gap:16px;margin:8px 0}
-.label{font-weight:600;min-width:160px;color:#6b7280}
-table{width:100%;border-collapse:collapse;margin-top:8px}
-th,td{border:1px solid #d1d5db;padding:8px;text-align:left;font-size:13px}
-th{background:#f3f4f6}
-.total{font-size:18px;font-weight:700;color:#dc2626;text-align:right;margin-top:12px}
-</style></head><body>
-<h1>Dossiê de Cobrança Jurídica</h1>
-<p><strong>Encaminhado em:</strong> ${new Date(e.encaminhado_em).toLocaleString('pt-BR')}</p>
-<p><strong>Advogada:</strong> Ana Clara Pinheiro Silva — +55 51 99850-0205</p>
+    const aluno = d.aluno || {}
+    const plano = d.plano || {}
+    const mensalidades: any[] = d.mensalidades_pendentes || []
+    const aulas: any[] = d.aulas_regulares || []
 
-<h2>Dados do Aluno</h2>
-<div class="row"><span class="label">Nome:</span><span>${d.aluno?.nome || '—'}</span></div>
-<div class="row"><span class="label">CPF:</span><span>${d.aluno?.cpf || '—'}</span></div>
-<div class="row"><span class="label">Telefone/WhatsApp:</span><span>${d.aluno?.telefone || '—'}</span></div>
-<div class="row"><span class="label">E-mail:</span><span>${d.aluno?.email || '—'}</span></div>
-<div class="row"><span class="label">Endereço:</span><span>${d.aluno?.endereco || '—'}</span></div>
-<div class="row"><span class="label">Data de matrícula:</span><span>${d.aluno?.data_matricula ? formatBR(d.aluno.data_matricula) : '—'}</span></div>
+    const doc = new jsPDF()
+    const pageWidth = doc.internal.pageSize.getWidth()
+    let y = 16
 
-<h2>Plano Contratado</h2>
-<div class="row"><span class="label">Instrumento:</span><span>${d.plano?.instrumento || '—'}</span></div>
-<div class="row"><span class="label">Valor mensalidade:</span><span>${brl(d.plano?.valor_mensalidade || 0)}</span></div>
-<div class="row"><span class="label">Forma de pagamento:</span><span>${d.plano?.forma_pagamento || '—'}</span></div>
+    // Cabeçalho
+    doc.setFillColor(30, 64, 175)
+    doc.rect(0, 0, pageWidth, 28, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text('DOSSIÊ DE COBRANÇA JURÍDICA', 14, 12)
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Centro de Música Murilo Finger  |  Gerado em ${new Date().toLocaleDateString('pt-BR')}`, 14, 20)
+    doc.text(`Encaminhado em: ${new Date(e.encaminhado_em).toLocaleString('pt-BR')}`, 14, 26)
 
-<h2>Aulas Regulares</h2>
-${(d.aulas_regulares || []).length > 0 ? `<table><tr><th>Dia</th><th>Horário</th><th>Instrumento</th><th>Professor</th></tr>
-${(d.aulas_regulares || []).map((a: any) => `<tr><td>${a.dia_semana}</td><td>${a.hora_inicio}</td><td>${a.instrumento || '—'}</td><td>${a.professor}</td></tr>`).join('')}
-</table>` : '<p>Sem aulas regulares cadastradas.</p>'}
+    doc.setTextColor(30, 30, 30)
+    y = 36
 
-<h2>Mensalidades em Aberto (${d.qtd_mensalidades})</h2>
-<table><tr><th>Referência</th><th>Vencimento</th><th>Dias atraso</th><th>Valor original</th><th>Multa</th><th>Juros</th><th>Total</th></tr>
-${(d.mensalidades_pendentes || []).map((m: any) => `<tr>
-<td>${m.referencia ? formatBR(m.referencia) : '—'}</td>
-<td>${m.data_vencimento ? formatBR(m.data_vencimento) : '—'}</td>
-<td>${m.dias_atraso}</td>
-<td>${brl(m.valor_original)}</td>
-<td>${brl(m.multa)}</td>
-<td>${brl(m.juros)}</td>
-<td><strong>${brl(m.total)}</strong></td>
-</tr>`).join('')}</table>
-<p class="total">VALOR TOTAL DEVIDO: ${brl(d.valor_devido_total)}</p>
-</body></html>`
-    const w = window.open('', '_blank')
-    if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 300) }
+    // Advogada
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Advogada responsável:', 14, y)
+    doc.setFont('helvetica', 'normal')
+    doc.text('Ana Clara Pinheiro Silva  |  +55 51 99850-0205', 60, y)
+    y += 10
+
+    // Dados do aluno
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.text('1. Dados do Aluno', 14, y)
+    y += 2
+    doc.setDrawColor(30, 64, 175)
+    doc.line(14, y, pageWidth - 14, y)
+    y += 5
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+
+    const dadosAluno: [string, string][] = [
+      ['Nome completo', aluno.nome || '—'],
+      ['CPF', aluno.cpf || '—'],
+      ['Telefone / WhatsApp', aluno.telefone || '—'],
+      ['E-mail', aluno.email || '—'],
+      ['Endereço', aluno.endereco || '—'],
+      ['Data de matrícula', aluno.data_matricula ? formatBR(aluno.data_matricula) : '—'],
+    ]
+    dadosAluno.forEach(([label, val]) => {
+      doc.setFont('helvetica', 'bold')
+      doc.text(label + ':', 14, y)
+      doc.setFont('helvetica', 'normal')
+      doc.text(val, 60, y)
+      y += 5.5
+    })
+    y += 2
+
+    // Plano / aulas
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.text('2. Plano Contratado & Horários', 14, y)
+    y += 2
+    doc.setDrawColor(30, 64, 175)
+    doc.line(14, y, pageWidth - 14, y)
+    y += 5
+
+    doc.setFontSize(9)
+    const dadosPlano: [string, string][] = [
+      ['Instrumento', plano.instrumento || aluno.instrumento_interesse || '—'],
+      ['Valor mensalidade', brl(plano.valor_mensalidade || 0)],
+      ['Forma de pagamento', plano.forma_pagamento || '—'],
+    ]
+    dadosPlano.forEach(([label, val]) => {
+      doc.setFont('helvetica', 'bold')
+      doc.text(label + ':', 14, y)
+      doc.setFont('helvetica', 'normal')
+      doc.text(val, 60, y)
+      y += 5.5
+    })
+    y += 2
+
+    if (aulas.length > 0) {
+      autoTable(doc, {
+        startY: y,
+        head: [['Dia', 'Horário', 'Instrumento', 'Professor']],
+        body: aulas.map((a: any) => [a.dia_semana || '—', a.hora_inicio || '—', a.instrumento || '—', a.professor || '—']),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [55, 65, 81] },
+        margin: { left: 14, right: 14 },
+      })
+      y = (doc as any).lastAutoTable.finalY + 6
+    }
+
+    // Mensalidades pendentes
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.text(`3. Mensalidades em Aberto (${mensalidades.length})`, 14, y)
+    y += 2
+    doc.setDrawColor(30, 64, 175)
+    doc.line(14, y, pageWidth - 14, y)
+    y += 4
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Referência', 'Vencimento', 'Dias atraso', 'Valor original', 'Multa (2%)', 'Juros', 'Total']],
+      body: mensalidades.map((m: any) => [
+        m.referencia ? formatBR(m.referencia) : '—',
+        m.data_vencimento ? formatBR(m.data_vencimento) : '—',
+        String(m.dias_atraso || 0),
+        brl(m.valor_original || 0),
+        brl(m.multa || 0),
+        brl(m.juros || 0),
+        brl(m.total || 0),
+      ]),
+      foot: [['', '', '', '', '', 'TOTAL DEVIDO', brl(d.valor_devido_total || 0)]],
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [220, 38, 38] },
+      footStyles: { fontStyle: 'bold', fillColor: [254, 226, 226], textColor: [153, 27, 27] },
+      margin: { left: 14, right: 14 },
+    })
+
+    y = (doc as any).lastAutoTable.finalY + 10
+
+    // Rodapé
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'italic')
+    doc.setTextColor(100)
+    doc.text('Este documento é confidencial e destinado exclusivamente para fins de cobrança judicial.', 14, y)
+
+    const safeName = (aluno.nome || 'desconhecido').replace(/\s+/g, '-').toLowerCase()
+    doc.save(`dossie-juridico-${safeName}-${new Date().toISOString().slice(0, 10)}.pdf`)
   }
 
   const filtered = useMemo(() => {
