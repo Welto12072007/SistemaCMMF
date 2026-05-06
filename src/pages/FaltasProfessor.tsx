@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   UserX, CalendarPlus, Clock, CheckCircle2, XCircle, AlertCircle,
   RefreshCw, Plus, Trash2, ChevronDown, ChevronUp, Check, X, User,
+  BookOpen, Search,
 } from 'lucide-react'
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -50,6 +51,25 @@ interface HorarioGrid {
   status: string
 }
 
+interface Reposicao {
+  id: string
+  aluno_id?: string
+  aluno_nome: string
+  professor_id?: string
+  professor_nome?: string
+  instrumento?: string
+  mes_referencia: string
+  data_falta?: string
+  data_reposicao?: string
+  hora_reposicao?: string
+  status: string
+  motivo_falta?: string
+  observacoes?: string
+  criado_por?: string
+  professor_confirmou_at?: string
+  created_at?: string
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 const PERIODO_LABEL: Record<string, string> = {
@@ -89,7 +109,7 @@ function fmtTime(t: string) { return t?.slice(0, 5) ?? '' }
 
 // ─── component ────────────────────────────────────────────────────────────────
 
-type Tab = 'ausencias' | 'futuras' | 'horarios_extras'
+type Tab = 'ausencias' | 'futuras' | 'horarios_extras' | 'reposicoes'
 
 export default function FaltasProfessor() {
   const { hasRole, perfil } = useAuth()
@@ -137,6 +157,19 @@ export default function FaltasProfessor() {
   const [ausenciaAberta, setAusenciaAberta] = useState<string | null>(null)
   const [impactados, setImpactados] = useState<HorarioGrid[]>([])
 
+  // Reposições
+  const [reposicoes, setReposicoes] = useState<Reposicao[]>([])
+  const [filtroStatusReposicao, setFiltroStatusReposicao] = useState('')
+  const [showModalReposicao, setShowModalReposicao] = useState(false)
+  const [formReposicao, setFormReposicao] = useState({
+    aluno_id: '', aluno_nome: '', professor_id: '', instrumento: '',
+    data_reposicao: '', hora_reposicao: '', data_falta: '', motivo_falta: '', observacoes: '',
+  })
+  const [alunoQuery, setAlunoQuery] = useState('')
+  const [alunoResultados, setAlunoResultados] = useState<{ id: string; nome: string; instrumento_interesse: string }[]>([])
+  const [agendandoReposicao, setAgendandoReposicao] = useState<Reposicao | null>(null)
+  const [formAgendar, setFormAgendar] = useState({ data_reposicao: '', hora_reposicao: '' })
+
   const [saving, setSaving] = useState(false)
 
   // ─── load ────────────────────────────────────────────────────────────────
@@ -144,11 +177,12 @@ export default function FaltasProfessor() {
   async function load() {
     setLoading(true)
 
-    const [profRes, ausRes, extRes, gridRes] = await Promise.all([
+    const [profRes, ausRes, extRes, gridRes, reposRes] = await Promise.all([
       supabase.from('professores').select('id, nome, instrumentos, ativo').eq('ativo', true).order('nome'),
       supabase.from('ausencias_professor').select('*').order('data_ausencia', { ascending: false }),
       supabase.from('horarios_extras').select('*').order('data_proposta', { ascending: false }),
       supabase.from('horarios').select('id, professor_id, dia_semana, hora_inicio, aluno_nome, status').eq('status', 'ocupado'),
+      supabase.from('reposicoes').select('*').order('created_at', { ascending: false }),
     ])
 
     if (profRes.data) setProfessores(profRes.data)
@@ -163,6 +197,12 @@ export default function FaltasProfessor() {
     }
     if (extRes.data) {
       setExtras(extRes.data.map(e => ({ ...e, professor_nome: profMap[e.professor_id] ?? '-' })))
+    }
+    if (reposRes.data) {
+      setReposicoes(reposRes.data.map(r => ({
+        ...r,
+        professor_nome: r.professor_id ? (profMap[r.professor_id] ?? r.professor_nome ?? '-') : (r.professor_nome ?? '-'),
+      })))
     }
 
     setLoading(false)
@@ -281,11 +321,90 @@ export default function FaltasProfessor() {
     load()
   }
 
+  // ─── reposições ──────────────────────────────────────────────────────────
+
+  const reposicoesFiltradas = reposicoes.filter(r => {
+    const mesMatch = r.mes_referencia?.startsWith(filtroMes)
+    const profMatch = !filtroProfessor || r.professor_id === filtroProfessor
+    const statusMatch = !filtroStatusReposicao || r.status === filtroStatusReposicao
+    if (isProfessor && perfil?.professor_id) return r.professor_id === perfil.professor_id && mesMatch && statusMatch
+    return mesMatch && profMatch && statusMatch
+  })
+
+  async function buscarAlunos(q: string) {
+    if (q.length < 2) { setAlunoResultados([]); return }
+    const { data } = await supabase
+      .from('alunos')
+      .select('id, nome, instrumento_interesse')
+      .ilike('nome', `%${q}%`)
+      .in('status', ['ativo', 'matriculado'])
+      .limit(8)
+    setAlunoResultados(data ?? [])
+  }
+
+  async function salvarReposicao() {
+    if (!formReposicao.aluno_nome || !formReposicao.data_reposicao || !formReposicao.hora_reposicao) return
+    setSaving(true)
+    const mesRef = formReposicao.data_reposicao.slice(0, 7) + '-01'
+    const prof = professores.find(p => p.id === formReposicao.professor_id)
+    const { error } = await supabase.from('reposicoes').insert({
+      aluno_id: formReposicao.aluno_id || null,
+      aluno_nome: formReposicao.aluno_nome,
+      professor_id: formReposicao.professor_id || null,
+      professor_nome: prof?.nome ?? null,
+      instrumento: formReposicao.instrumento || null,
+      mes_referencia: mesRef,
+      data_falta: formReposicao.data_falta || null,
+      data_reposicao: formReposicao.data_reposicao,
+      hora_reposicao: formReposicao.hora_reposicao,
+      motivo_falta: formReposicao.motivo_falta || null,
+      observacoes: formReposicao.observacoes || null,
+      criado_por: isAdmin ? 'admin' : 'professor',
+      status: 'agendada',
+    })
+    setSaving(false)
+    if (error) { alert(`Erro: ${error.message}`); return }
+    setShowModalReposicao(false)
+    setFormReposicao({ aluno_id: '', aluno_nome: '', professor_id: '', instrumento: '', data_reposicao: '', hora_reposicao: '', data_falta: '', motivo_falta: '', observacoes: '' })
+    setAlunoQuery('')
+    load()
+  }
+
+  async function confirmarReposicao(id: string) {
+    await supabase.from('reposicoes').update({ professor_confirmou_at: new Date().toISOString() }).eq('id', id)
+    load()
+  }
+
+  async function marcarRealizada(id: string) {
+    await supabase.from('reposicoes').update({ status: 'realizada' }).eq('id', id)
+    load()
+  }
+
+  async function cancelarReposicao(id: string) {
+    if (!confirm('Cancelar esta reposição?')) return
+    await supabase.from('reposicoes').update({ status: 'cancelada' }).eq('id', id)
+    load()
+  }
+
+  async function salvarAgendamento() {
+    if (!agendandoReposicao || !formAgendar.data_reposicao || !formAgendar.hora_reposicao) return
+    setSaving(true)
+    await supabase.from('reposicoes').update({
+      data_reposicao: formAgendar.data_reposicao,
+      hora_reposicao: formAgendar.hora_reposicao,
+      status: 'agendada',
+    }).eq('id', agendandoReposicao.id)
+    setSaving(false)
+    setAgendandoReposicao(null)
+    load()
+  }
+
   // ─── contadores ──────────────────────────────────────────────────────────
 
   const totalAusencias = ausenciasFiltradas().length
   const pendentesExtra = extras.filter(e => e.status === 'pendente').length
   const aprovadosExtra = extras.filter(e => e.status === 'aprovado' && e.data_proposta.startsWith(filtroMes)).length
+  const pendentesReposicao = reposicoes.filter(r => r.status === 'pendente' || (r.status === 'agendada' && !r.professor_confirmou_at)).length
 
   // ─── render ───────────────────────────────────────────────────────────────
 
@@ -312,6 +431,14 @@ export default function FaltasProfessor() {
               className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
             >
               <Plus className="w-4 h-4" /> Registrar Ausência
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => setShowModalReposicao(true)}
+              className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+            >
+              <BookOpen className="w-4 h-4" /> Nova Reposição
             </button>
           )}
           <button
@@ -379,7 +506,7 @@ export default function FaltasProfessor() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
-        {(['ausencias', 'futuras', 'horarios_extras'] as Tab[]).map(t => (
+        {(['ausencias', 'futuras', 'horarios_extras', 'reposicoes'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -389,10 +516,15 @@ export default function FaltasProfessor() {
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            {t === 'ausencias' ? 'Ausências' : t === 'futuras' ? 'Próximas Ausências' : 'Horários Extras'}
+            {t === 'ausencias' ? 'Ausências' : t === 'futuras' ? 'Próximas Ausências' : t === 'horarios_extras' ? 'Horários Extras' : 'Reposições'}
             {t === 'horarios_extras' && pendentesExtra > 0 && (
               <span className="ml-2 bg-yellow-500 text-white text-xs px-1.5 py-0.5 rounded-full">
                 {pendentesExtra}
+              </span>
+            )}
+            {t === 'reposicoes' && pendentesReposicao > 0 && (
+              <span className="ml-2 bg-teal-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                {pendentesReposicao}
               </span>
             )}
           </button>
@@ -624,6 +756,276 @@ export default function FaltasProfessor() {
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Tab Reposições */}
+      {tab === 'reposicoes' && (
+        <div className="space-y-4">
+          {/* Filtro status */}
+          <div className="flex items-center gap-3">
+            <select
+              value={filtroStatusReposicao}
+              onChange={e => setFiltroStatusReposicao(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Todos os status</option>
+              <option value="pendente">Pendente</option>
+              <option value="agendada">Agendada</option>
+              <option value="realizada">Realizada</option>
+              <option value="cancelada">Cancelada</option>
+              <option value="expirada">Expirada</option>
+            </select>
+            <span className="text-sm text-gray-500">{reposicoesFiltradas.length} reposição(ões)</span>
+          </div>
+
+          {reposicoesFiltradas.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col items-center justify-center py-16 text-gray-400">
+              <BookOpen className="w-10 h-10 mb-3" />
+              <p className="text-sm">Nenhuma reposição neste período.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {reposicoesFiltradas.map(r => (
+                <div key={r.id} className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-gray-900">{r.aluno_nome}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                          r.status === 'realizada' ? 'bg-green-100 text-green-800 border-green-200' :
+                          r.status === 'agendada' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                          r.status === 'pendente' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                          r.status === 'cancelada' ? 'bg-red-100 text-red-800 border-red-200' :
+                          'bg-gray-100 text-gray-600 border-gray-200'
+                        }`}>
+                          {r.status}
+                        </span>
+                        {r.professor_confirmou_at && r.status === 'agendada' && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
+                            ✓ Professor confirmou
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-3 text-sm text-gray-600">
+                        {r.instrumento && <span className="flex items-center gap-1"><BookOpen className="w-3.5 h-3.5" />{r.instrumento}</span>}
+                        {r.professor_nome && r.professor_nome !== '-' && <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />{r.professor_nome}</span>}
+                        {r.data_falta && <span className="text-gray-500">Falta: {fmtDate(r.data_falta)}</span>}
+                        {r.data_reposicao && (
+                          <span className="flex items-center gap-1 font-medium text-teal-700">
+                            <CalendarPlus className="w-3.5 h-3.5" />
+                            Reposição: {fmtDate(r.data_reposicao)} às {fmtTime(r.hora_reposicao ?? '')}
+                          </span>
+                        )}
+                      </div>
+                      {r.observacoes && <p className="text-xs text-gray-400 italic">{r.observacoes}</p>}
+                    </div>
+
+                    <div className="flex gap-2 flex-wrap justify-end">
+                      {/* Professor confirma horário proposto */}
+                      {isProfessor && r.status === 'agendada' && !r.professor_confirmou_at && (
+                        <button
+                          onClick={() => confirmarReposicao(r.id)}
+                          className="text-xs px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-1"
+                        >
+                          <Check className="w-3.5 h-3.5" /> Confirmar horário
+                        </button>
+                      )}
+                      {/* Admin agenda reposição pendente */}
+                      {isAdmin && r.status === 'pendente' && (
+                        <button
+                          onClick={() => { setAgendandoReposicao(r); setFormAgendar({ data_reposicao: '', hora_reposicao: '' }) }}
+                          className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
+                        >
+                          <CalendarPlus className="w-3.5 h-3.5" /> Agendar
+                        </button>
+                      )}
+                      {/* Marcar realizada */}
+                      {(isAdmin || isProfessor) && r.status === 'agendada' && (
+                        <button
+                          onClick={() => marcarRealizada(r.id)}
+                          className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Realizada
+                        </button>
+                      )}
+                      {/* Cancelar */}
+                      {isAdmin && ['pendente', 'agendada'].includes(r.status) && (
+                        <button
+                          onClick={() => cancelarReposicao(r.id)}
+                          className="text-xs px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50"
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal Nova Reposição */}
+      {showModalReposicao && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-teal-600" /> Nova Reposição
+              </h2>
+              <button onClick={() => { setShowModalReposicao(false); setAlunoQuery(''); setAlunoResultados([]) }} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              {/* Busca aluno */}
+              <div className="relative">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Aluno <span className="text-red-500">*</span></label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={alunoQuery}
+                    onChange={e => { setAlunoQuery(e.target.value); buscarAlunos(e.target.value) }}
+                    placeholder="Buscar aluno ativo..."
+                    className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm"
+                  />
+                </div>
+                {formReposicao.aluno_nome && !alunoQuery.length && (
+                  <p className="text-xs text-teal-700 mt-1 font-medium">✓ {formReposicao.aluno_nome}</p>
+                )}
+                {alunoResultados.length > 0 && (
+                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                    {alunoResultados.map(a => (
+                      <button
+                        key={a.id}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b last:border-0"
+                        onClick={() => {
+                          setFormReposicao(f => ({ ...f, aluno_id: a.id, aluno_nome: a.nome, instrumento: a.instrumento_interesse || f.instrumento }))
+                          setAlunoQuery('')
+                          setAlunoResultados([])
+                        }}
+                      >
+                        <span className="font-medium">{a.nome}</span>
+                        {a.instrumento_interesse && <span className="text-gray-400 ml-2 text-xs">{a.instrumento_interesse}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Professor */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Professor</label>
+                <select
+                  value={formReposicao.professor_id}
+                  onChange={e => setFormReposicao(f => ({ ...f, professor_id: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">Selecione...</option>
+                  {professores.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                </select>
+              </div>
+              {/* Instrumento */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Instrumento</label>
+                <input
+                  type="text"
+                  value={formReposicao.instrumento}
+                  onChange={e => setFormReposicao(f => ({ ...f, instrumento: e.target.value }))}
+                  placeholder="Ex: Violão"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              {/* Data e hora reposição */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Data da Reposição <span className="text-red-500">*</span></label>
+                  <input
+                    type="date"
+                    value={formReposicao.data_reposicao}
+                    onChange={e => setFormReposicao(f => ({ ...f, data_reposicao: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Horário <span className="text-red-500">*</span></label>
+                  <input
+                    type="time"
+                    value={formReposicao.hora_reposicao}
+                    onChange={e => setFormReposicao(f => ({ ...f, hora_reposicao: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              {/* Data falta (opcional) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Data da falta (opcional)</label>
+                <input
+                  type="date"
+                  value={formReposicao.data_falta}
+                  onChange={e => setFormReposicao(f => ({ ...f, data_falta: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              {/* Observações */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
+                <textarea
+                  value={formReposicao.observacoes}
+                  onChange={e => setFormReposicao(f => ({ ...f, observacoes: e.target.value }))}
+                  rows={2}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={() => { setShowModalReposicao(false); setAlunoQuery(''); setAlunoResultados([]) }} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button
+                onClick={salvarReposicao}
+                disabled={saving || !formReposicao.aluno_nome || !formReposicao.data_reposicao || !formReposicao.hora_reposicao}
+                className="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg disabled:opacity-50"
+              >
+                {saving ? 'Salvando...' : 'Criar Reposição'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Agendar Reposição Pendente */}
+      {agendandoReposicao && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">Agendar Reposição</h2>
+              <button onClick={() => setAgendandoReposicao(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-sm text-gray-600">Aluno: <strong>{agendandoReposicao.aluno_nome}</strong></p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Data <span className="text-red-500">*</span></label>
+                <input type="date" value={formAgendar.data_reposicao} onChange={e => setFormAgendar(f => ({...f, data_reposicao: e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Horário <span className="text-red-500">*</span></label>
+                <input type="time" value={formAgendar.hora_reposicao} onChange={e => setFormAgendar(f => ({...f, hora_reposicao: e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setAgendandoReposicao(null)} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Cancelar</button>
+              <button
+                onClick={salvarAgendamento}
+                disabled={saving || !formAgendar.data_reposicao || !formAgendar.hora_reposicao}
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
+              >
+                {saving ? 'Salvando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
