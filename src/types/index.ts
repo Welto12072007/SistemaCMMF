@@ -149,6 +149,8 @@ export interface AulaExperimental {
   status: string
   observacoes?: string
   professor_nome?: string
+  professor_telefone?: string | null
+  notificacao_professor_enviada?: boolean
   created_at?: string
   convertido_em?: string | null
 }

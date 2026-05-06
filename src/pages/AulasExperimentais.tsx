@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List } from 'lucide-react'
+import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List, RefreshCw } from 'lucide-react'
 import type { AulaExperimental, Professor } from '@/types'
 import ExperimentaisSemana from './ExperimentaisSemana'
 
@@ -26,6 +26,9 @@ export default function AulasExperimentais() {
   const [showForm, setShowForm] = useState(false)
   const [converterAula, setConverterAula] = useState<AulaExperimental | null>(null)
   const [aba, setAba] = useState<'lista' | 'semana'>('lista')
+  const [trocarProfModal, setTrocarProfModal] = useState<AulaExperimental | null>(null)
+  const [novoProfId, setNovoProfId] = useState('')
+  const [salvandoProf, setSalvandoProf] = useState(false)
 
   useEffect(() => {
     loadAulas()
@@ -61,6 +64,22 @@ export default function AulasExperimentais() {
 
   async function remarcar(id: string) {
     await supabase.from('aulas_experimentais').update({ status: 'remarcada' }).eq('id', id)
+    loadAulas()
+  }
+
+  async function salvarTrocaProfessor() {
+    if (!trocarProfModal || !novoProfId) return
+    setSalvandoProf(true)
+    const prof = professores.find(p => p.id === novoProfId)
+    await supabase.from('aulas_experimentais').update({
+      professor_id: novoProfId,
+      professor_nome: prof?.nome ?? null,
+      professor_telefone: prof?.telefone ?? null,
+      notificacao_professor_enviada: false,
+    }).eq('id', trocarProfModal.id)
+    setSalvandoProf(false)
+    setTrocarProfModal(null)
+    setNovoProfId('')
     loadAulas()
   }
 
@@ -184,7 +203,13 @@ export default function AulasExperimentais() {
             </div>
 
             {['agendada', 'confirmada'].includes(a.status?.toLowerCase()) && (
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => { setTrocarProfModal(a); setNovoProfId(a.professor_id ?? '') }}
+                  className="text-xs px-3 py-1.5 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Trocar professor
+                </button>
                 <button onClick={() => remarcar(a.id)} className="text-xs px-3 py-1.5 border rounded-lg hover:bg-gray-50 transition-colors">
                   Remarcar
                 </button>
@@ -235,6 +260,59 @@ export default function AulasExperimentais() {
           onClose={() => setConverterAula(null)}
           onDone={() => { setConverterAula(null); loadAulas() }}
         />
+      )}
+
+      {/* Modal: Trocar Professor */}
+      {trocarProfModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h2 className="font-semibold text-gray-900">Trocar Professor</h2>
+              <button onClick={() => setTrocarProfModal(null)} className="p-1 hover:bg-gray-100 rounded">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-sm text-gray-600">
+                Aula de <strong>{trocarProfModal.instrumento}</strong> para <strong>{trocarProfModal.nome}</strong>
+                {' '} em {trocarProfModal.data_aula ? new Date(trocarProfModal.data_aula).toLocaleDateString('pt-BR') : '—'}
+              </p>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Professor atual: <strong>{trocarProfModal.professor_nome || '(nenhum)'}</strong></label>
+                <label className="text-xs text-gray-500 mb-1 block">Novo professor *</label>
+                <select
+                  value={novoProfId}
+                  onChange={e => setNovoProfId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Selecione...</option>
+                  {professores
+                    .filter(p => !trocarProfModal.instrumento || p.instrumentos?.some(i => i.toLowerCase() === trocarProfModal.instrumento?.toLowerCase()))
+                    .map(p => (
+                      <option key={p.id} value={p.id}>{p.nome}</option>
+                    ))}
+                  <option disabled>──────</option>
+                  {professores
+                    .filter(p => !p.instrumentos?.some(i => i.toLowerCase() === trocarProfModal.instrumento?.toLowerCase()))
+                    .map(p => (
+                      <option key={p.id + '_outro'} value={p.id}>{p.nome} (outro instrumento)</option>
+                    ))}
+                </select>
+              </div>
+              <p className="text-xs text-amber-600">⚠️ A notificação ao professor será redefinida para reenvio.</p>
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t">
+              <button onClick={() => setTrocarProfModal(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+              <button
+                onClick={salvarTrocaProfessor}
+                disabled={salvandoProf || !novoProfId || novoProfId === (trocarProfModal.professor_id ?? '')}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {salvandoProf ? 'Salvando...' : 'Confirmar troca'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
