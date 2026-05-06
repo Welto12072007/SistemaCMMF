@@ -107,7 +107,9 @@ export default function Contatos() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Tem certeza que deseja excluir este contato?')) return
+    if (!confirm('Tem certeza que deseja excluir este contato? Esta ação não pode ser desfeita.')) return
+    // Remover registros relacionados antes de excluir o aluno (FK constraints)
+    await supabase.from('encaminhamentos').delete().eq('aluno_id', id)
     const { error } = await supabase.from('alunos').delete().eq('id', id)
     if (error) { alert(`Erro ao excluir:\n${error.message}`); return }
     loadContatos()
