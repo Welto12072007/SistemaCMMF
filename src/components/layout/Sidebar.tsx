@@ -27,6 +27,7 @@ import {
   Tag,
   TrendingUp,
   CalendarPlus2,
+  ArrowLeftRight,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -62,6 +63,7 @@ const sections: NavSection[] = [
       { to: '/financeiro', label: 'Financeiro', icon: DollarSign, roles: ['admin'] },
       { to: '/dashboard-financeiro', label: 'Dashboard $', icon: BarChart3, roles: ['admin'] },
       { to: '/fluxo-caixa', label: 'Fluxo de Caixa', icon: Wallet, roles: ['admin'] },
+      { to: '/fluxo-alunos', label: 'Fluxo de Alunos', icon: ArrowLeftRight, roles: ['admin', 'recepcao'] },
       { to: '/mensalidades', label: 'Mensalidades', icon: DollarSign, roles: ['admin', 'recepcao'] },
       { to: '/cobranca', label: 'Cobrança & Jurídico', icon: AlertTriangle, roles: ['admin', 'recepcao'] },
     ],
