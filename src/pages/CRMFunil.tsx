@@ -84,6 +84,10 @@ export default function CRMFunil() {
   // Semana offset (0 = semana atual, -1 = semana passada, etc.)
   const [semanaOffset, setSemanaOffset] = useState(0)
 
+  // Filtros lista quente segmentada
+  const [filtroListaInstr, setFiltroListaInstr] = useState('')
+  const [filtroListaTipo, setFiltroListaTipo] = useState('')
+
   // Modal lead perdido
   const [modalPerdido, setModalPerdido] = useState<FunilContato | null>(null)
   const [motivoPerdido, setMotivoPerdido] = useState('')
@@ -144,12 +148,14 @@ export default function CRMFunil() {
       .sort((a, b) => b.score_temperatura - a.score_temperatura)
   }, [filtrados])
 
-  // Listas quentes ordenadas
+  // Listas quentes ordenadas e filtradas
   const listasOrdenadas = useMemo(() => {
     return [...listas]
       .filter(l => l.tipo !== 'aluno' || l.total >= 5)
+      .filter(l => !filtroListaInstr || l.instrumento === filtroListaInstr)
+      .filter(l => !filtroListaTipo || l.tipo === filtroListaTipo)
       .sort((a, b) => (b.em_negociacao - a.em_negociacao) || (b.score_medio - a.score_medio))
-  }, [listas])
+  }, [listas, filtroListaInstr, filtroListaTipo])
 
   // ─── dados semanais ───────────────────────────────────────────────────────
   const { semanaInicio, semanaFim, contatosSemana, entradosSemana, porEtapaSemana } = useMemo(() => {
@@ -457,6 +463,39 @@ export default function CRMFunil() {
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
             Use estas listas para <strong>abrir novas turmas</strong> ou fazer <strong>disparos segmentados</strong>.
             "Em negociação" = leads com aula experimental ativa.
+          </div>
+
+          {/* Filtros de segmentação */}
+          <div className="flex flex-wrap gap-3">
+            <select
+              value={filtroListaInstr}
+              onChange={e => setFiltroListaInstr(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Todos os instrumentos</option>
+              {[...new Set(listas.map(l => l.instrumento))].sort().map(i => (
+                <option key={i} value={i}>{i}</option>
+              ))}
+            </select>
+            <select
+              value={filtroListaTipo}
+              onChange={e => setFiltroListaTipo(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Todos os tipos</option>
+              <option value="lead">Leads</option>
+              <option value="aluno">Alunos ativos</option>
+              <option value="ex_aluno">Ex-alunos</option>
+            </select>
+            {(filtroListaInstr || filtroListaTipo) && (
+              <button
+                onClick={() => { setFiltroListaInstr(''); setFiltroListaTipo('') }}
+                className="text-xs text-gray-500 hover:text-gray-700 px-3 py-2 border border-gray-200 rounded-lg"
+              >
+                Limpar filtros
+              </button>
+            )}
+            <span className="self-center text-xs text-gray-500">{listasOrdenadas.length} segmento(s)</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {listasOrdenadas.map((l, i) => (
