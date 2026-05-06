@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   UserX, CalendarPlus, Clock, CheckCircle2, XCircle, AlertCircle,
-  RefreshCw, Plus, Trash2, ChevronDown, ChevronUp, Check, X,
+  RefreshCw, Plus, Trash2, ChevronDown, ChevronUp, Check, X, User,
 } from 'lucide-react'
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ function fmtTime(t: string) { return t?.slice(0, 5) ?? '' }
 
 // ─── component ────────────────────────────────────────────────────────────────
 
-type Tab = 'ausencias' | 'horarios_extras'
+type Tab = 'ausencias' | 'futuras' | 'horarios_extras'
 
 export default function FaltasProfessor() {
   const { hasRole, perfil } = useAuth()
@@ -379,7 +379,7 @@ export default function FaltasProfessor() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
-        {(['ausencias', 'horarios_extras'] as Tab[]).map(t => (
+        {(['ausencias', 'futuras', 'horarios_extras'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -389,7 +389,7 @@ export default function FaltasProfessor() {
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            {t === 'ausencias' ? 'Ausências' : 'Horários Extras'}
+            {t === 'ausencias' ? 'Ausências' : t === 'futuras' ? 'Próximas Ausências' : 'Horários Extras'}
             {t === 'horarios_extras' && pendentesExtra > 0 && (
               <span className="ml-2 bg-yellow-500 text-white text-xs px-1.5 py-0.5 rounded-full">
                 {pendentesExtra}
@@ -478,6 +478,81 @@ export default function FaltasProfessor() {
           )}
         </div>
       )}
+
+      {/* Tab Próximas Ausências */}
+      {tab === 'futuras' && (() => {
+        const hoje = new Date().toISOString().slice(0, 10)
+        const futuras = ausencias
+          .filter(a => a.data_ausencia >= hoje)
+          .sort((a, b) => a.data_ausencia.localeCompare(b.data_ausencia))
+
+        // Agrupar por professor
+        const porProfessor: Record<string, typeof futuras> = {}
+        futuras.forEach(a => {
+          const nome = a.professor_nome ?? '—'
+          if (!porProfessor[nome]) porProfessor[nome] = []
+          porProfessor[nome].push(a)
+        })
+
+        return (
+          <div className="space-y-4">
+            {futuras.length === 0 ? (
+              <div className="bg-white rounded-xl border border-gray-200 flex flex-col items-center justify-center py-16 text-gray-400">
+                <UserX className="w-10 h-10 mb-3" />
+                <p className="text-sm">Nenhuma ausência programada a partir de hoje.</p>
+              </div>
+            ) : (
+              <>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+                  <strong>{futuras.length}</strong> ausência{futuras.length > 1 ? 's' : ''} programada{futuras.length > 1 ? 's' : ''} a partir de hoje.
+                </div>
+                {Object.entries(porProfessor).map(([profNome, lista]) => (
+                  <div key={profNome} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+                      <User className="w-4 h-4 text-brand-500" />
+                      <span className="font-medium text-gray-800 text-sm">{profNome}</span>
+                      <span className="ml-auto text-xs text-gray-400">{lista.length} ausência{lista.length > 1 ? 's' : ''}</span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 text-xs text-gray-500 border-b border-gray-100">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-medium">Data</th>
+                          <th className="px-4 py-2 text-left font-medium">Dia</th>
+                          <th className="px-4 py-2 text-left font-medium">Período</th>
+                          <th className="px-4 py-2 text-left font-medium">Motivo</th>
+                          <th className="px-4 py-2 text-left font-medium">Dias restantes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {lista.map(a => {
+                          const diff = Math.ceil((new Date(a.data_ausencia + 'T12:00:00').getTime() - Date.now()) / 86400000)
+                          return (
+                            <tr key={a.id} className={diff <= 3 ? 'bg-red-50/40' : diff <= 7 ? 'bg-amber-50/30' : ''}>
+                              <td className="px-4 py-2 font-medium">{fmtDate(a.data_ausencia)}</td>
+                              <td className="px-4 py-2 text-gray-600">{dataParaDiaSemana(a.data_ausencia)}</td>
+                              <td className="px-4 py-2 text-gray-600">{PERIODO_LABEL[a.periodo] ?? a.periodo}</td>
+                              <td className="px-4 py-2 text-gray-500">{a.motivo || '—'}</td>
+                              <td className="px-4 py-2">
+                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                                  diff <= 3 ? 'bg-red-100 text-red-700' :
+                                  diff <= 7 ? 'bg-amber-100 text-amber-700' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {diff === 0 ? 'Hoje' : diff === 1 ? 'Amanhã' : `em ${diff} dias`}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Tab Horários Extras */}
       {tab === 'horarios_extras' && (
