@@ -133,7 +133,7 @@ export default function MensagemManual() {
           <MessageSquare className="w-6 h-6 text-brand-600" />
           <h1 className="text-2xl font-bold text-gray-900">Mensagem Manual</h1>
         </div>
-        <p className="text-gray-500 mt-1 text-sm">Envie mensagens WhatsApp diretamente para leads ou alunos via Sofia (Evolution API).</p>
+        <p className="text-gray-500 mt-1 text-sm">Envie mensagens WhatsApp diretamente para leads ou alunos via Antonia (Evolution API).</p>
         <div className="mt-2 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
           <AlertTriangle className="w-4 h-4 flex-shrink-0" />
           <span><strong>Atenção:</strong> Mensagens são enviadas pelo número oficial do CMMF. Use apenas para fins legítimos e relacionados ao centro.</span>

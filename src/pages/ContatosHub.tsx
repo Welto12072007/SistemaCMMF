@@ -11,7 +11,7 @@ type TabKey = 'lista' | 'followup' | 'labels'
 const TABS: { key: TabKey; label: string; icon: typeof Users; descricao: string }[] = [
   { key: 'lista',    label: 'Lista',     icon: Users,          descricao: 'Todos os contatos cadastrados' },
   { key: 'followup', label: 'Follow-up', icon: PhoneForwarded, descricao: 'Contatos a acompanhar' },
-  { key: 'labels',   label: 'Labels & Sofia', icon: Tag,       descricao: 'Labels do WhatsApp e pausa da Sofia' },
+  { key: 'labels',   label: 'Labels & Antonia', icon: Tag,       descricao: 'Labels do WhatsApp e pausa da Antonia' },
 ]
 
 export default function ContatosHub() {

@@ -207,11 +207,11 @@ export default function ContatosLabels() {
         </div>
         <div className="bg-red-50 rounded-xl border border-red-200 p-4 text-center">
           <p className="text-2xl font-bold text-red-700">{totalPausados}</p>
-          <p className="text-xs text-red-500 mt-1">Sofia pausada</p>
+          <p className="text-xs text-red-500 mt-1">Antonia pausada</p>
         </div>
         <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-4 text-center">
           <p className="text-2xl font-bold text-emerald-700">{contatos.length - totalPausados}</p>
-          <p className="text-xs text-emerald-500 mt-1">Sofia ativa</p>
+          <p className="text-xs text-emerald-500 mt-1">Antonia ativa</p>
         </div>
       </div>
 
@@ -260,7 +260,7 @@ export default function ContatosLabels() {
                 <th className="px-4 py-3 text-left font-medium">Telefone</th>
                 <th className="px-4 py-3 text-left font-medium">Nome</th>
                 <th className="px-4 py-3 text-left font-medium">Labels WhatsApp</th>
-                <th className="px-4 py-3 text-center font-medium">Sofia</th>
+                <th className="px-4 py-3 text-center font-medium">Antonia</th>
                 <th className="px-4 py-3 text-center font-medium">Ação</th>
               </tr>
             </thead>
@@ -312,14 +312,14 @@ export default function ContatosLabels() {
                           onClick={() => togglePausa(c, false)}
                           className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg font-medium"
                         >
-                          Retomar Sofia
+                          Retomar Antonia
                         </button>
                       ) : (
                         <button
                           onClick={() => togglePausa(c, true)}
                           className="text-xs bg-red-50 hover:bg-red-100 text-red-700 px-3 py-1.5 rounded-lg font-medium"
                         >
-                          Pausar Sofia
+                          Pausar Antonia
                         </button>
                       )}
                     </td>
@@ -334,8 +334,8 @@ export default function ContatosLabels() {
       {/* Info sobre sync */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
         <strong>Como funciona:</strong> Labels aplicados no WhatsApp são sincronizados automaticamente.
-        Use "Pausar Sofia" para bloquear a IA mesmo sem label (ex: chefe assumiu o contato).
-        A pausa manual tem prioridade sobre tudo — mesmo que o label seja removido, a Sofia fica pausada até você clicar "Retomar".
+        Use "Pausar Antonia" para bloquear a IA mesmo sem label (ex: chefe assumiu o contato).
+        A pausa manual tem prioridade sobre tudo — mesmo que o label seja removido, a Antonia fica pausada até você clicar "Retomar".
       </div>
 
       {/* Modal confirmar toggle */}
@@ -349,7 +349,7 @@ export default function ContatosLabels() {
                 <PlayCircle className="w-6 h-6 text-emerald-500 flex-shrink-0" />
               )}
               <h2 className="text-base font-bold text-gray-900">
-                {modalContato.pausada_manual ? 'Pausar Sofia' : 'Retomar Sofia'}
+                {modalContato.pausada_manual ? 'Pausar Antonia' : 'Retomar Antonia'}
               </h2>
             </div>
             <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
@@ -368,8 +368,8 @@ export default function ContatosLabels() {
             </div>
             <p className="text-xs text-gray-400">
               {modalContato.pausada_manual
-                ? 'Sofia ficará pausada para este contato até você retomar manualmente.'
-                : 'Sofia voltará a responder este contato normalmente.'}
+                ? 'Antonia ficará pausada para este contato até você retomar manualmente.'
+                : 'Antonia voltará a responder este contato normalmente.'}
             </p>
             <div className="flex justify-end gap-3 pt-1">
               <button onClick={() => setShowModal(false)} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2">
