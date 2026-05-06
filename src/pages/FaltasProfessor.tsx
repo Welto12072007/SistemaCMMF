@@ -216,6 +216,15 @@ export default function FaltasProfessor() {
       observacoes: formAusencia.observacoes || null,
       registrado_por: perfil?.user_id ?? null,
     })
+    if (!error) {
+      // Marcar aulas do professor nesse dia como "a_remarcar"
+      await supabase
+        .from('presencas')
+        .update({ status_aula: 'a_remarcar' })
+        .eq('professor_id', formAusencia.professor_id)
+        .eq('data', formAusencia.data_ausencia)
+        .neq('status_aula', 'remarcada')
+    }
     setSaving(false)
     if (!error) {
       setShowModalAusencia(false)
