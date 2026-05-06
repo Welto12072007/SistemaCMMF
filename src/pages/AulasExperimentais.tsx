@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List, RefreshCw } from 'lucide-react'
+import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List, RefreshCw, Download } from 'lucide-react'
 import type { AulaExperimental, Professor } from '@/types'
 import ExperimentaisSemana from './ExperimentaisSemana'
 
@@ -83,6 +83,55 @@ export default function AulasExperimentais() {
     loadAulas()
   }
 
+  function exportarICS() {
+    const aulasParaExportar = aulas.filter(a =>
+      ['agendada', 'confirmada', 'confirmado_professor', 'aguardando_pagamento', 'experimental_paga'].includes(a.status?.toLowerCase() ?? '')
+    )
+    if (aulasParaExportar.length === 0) {
+      alert('Nenhuma aula experimental agendada/confirmada para exportar.')
+      return
+    }
+    const lines: string[] = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//CMMF//Aulas Experimentais//PT',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+    ]
+    aulasParaExportar.forEach(a => {
+      const dtStart = a.data_aula && a.hora_inicio
+        ? a.data_aula.replace(/-/g, '') + 'T' + a.hora_inicio.replace(/:/g, '').slice(0, 6) + '00'
+        : null
+      const dtEnd = a.data_aula && a.hora_fim
+        ? a.data_aula.replace(/-/g, '') + 'T' + a.hora_fim.replace(/:/g, '').slice(0, 6) + '00'
+        : dtStart
+      if (!dtStart) return
+      const summary = `Experimental: ${a.nome} — ${a.instrumento}`
+      const desc = [
+        a.professor_nome ? `Professor: ${a.professor_nome}` : '',
+        a.telefone ? `Telefone: ${a.telefone}` : '',
+        `Status: ${a.status}`,
+      ].filter(Boolean).join('\\n')
+      lines.push('BEGIN:VEVENT')
+      lines.push(`UID:cmmf-exp-${a.id}`)
+      lines.push(`DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`)
+      lines.push(`DTSTART;TZID=America/Sao_Paulo:${dtStart}`)
+      if (dtEnd) lines.push(`DTEND;TZID=America/Sao_Paulo:${dtEnd}`)
+      lines.push(`SUMMARY:${summary}`)
+      if (desc) lines.push(`DESCRIPTION:${desc}`)
+      lines.push('END:VEVENT')
+    })
+    lines.push('END:VCALENDAR')
+
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `experimentais-cmmf-${new Date().toISOString().slice(0, 10)}.ics`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function handleSaveAula(form: { nome: string; telefone: string; instrumento: string; professor_id: string; data_aula: string; hora_inicio: string; observacoes: string }) {
     const prof = professores.find(p => p.id === form.professor_id)
     const { error } = await supabase.from('aulas_experimentais').insert({
@@ -114,13 +163,22 @@ export default function AulasExperimentais() {
           <h1 className="text-2xl font-bold text-gray-900">Aulas Experimentais</h1>
           <p className="text-gray-500">Gerencie as aulas experimentais agendadas</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Nova Aula Experimental
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportarICS}
+            className="flex items-center gap-2 border border-gray-200 text-gray-600 px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+          >
+            <Download className="w-4 h-4" />
+            Exportar .ics
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Nova Aula Experimental
+          </button>
+        </div>
       </div>
 
       {/* Abas */}
