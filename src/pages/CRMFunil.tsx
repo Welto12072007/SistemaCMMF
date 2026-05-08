@@ -50,13 +50,12 @@ interface ConversaoProf {
 const ETAPAS = [
   { key: '1_lead_novo',            label: 'Lead novo',             cor: 'bg-gray-100 text-gray-700 border-gray-200',         pill: 'bg-gray-500' },
   { key: '2_em_atendimento',       label: 'Em atendimento',        cor: 'bg-blue-50 text-blue-700 border-blue-200',          pill: 'bg-blue-500' },
-  { key: '3_horario_pre_aprovado', label: 'Horário pré-aprovado',  cor: 'bg-indigo-50 text-indigo-700 border-indigo-200',    pill: 'bg-indigo-500' },
-  { key: '4_aguardando_pagamento', label: 'Aguardando pagamento',  cor: 'bg-amber-50 text-amber-700 border-amber-200',       pill: 'bg-amber-500' },
-  { key: '5_experimental_paga',    label: 'Experimental paga',     cor: 'bg-emerald-50 text-emerald-700 border-emerald-200', pill: 'bg-emerald-500' },
-  { key: '6_aula_realizada',       label: 'Aula realizada',        cor: 'bg-teal-50 text-teal-700 border-teal-200',          pill: 'bg-teal-500' },
-  { key: '7_matriculado',          label: 'Matriculado',           cor: 'bg-green-50 text-green-700 border-green-200',       pill: 'bg-green-600' },
-  { key: '8_ex_aluno',             label: 'Ex-aluno',              cor: 'bg-rose-50 text-rose-700 border-rose-200',          pill: 'bg-rose-400' },
-  { key: '9_perdido',              label: 'Perdido',               cor: 'bg-red-50 text-red-700 border-red-200',             pill: 'bg-red-500' },
+  { key: '3_horario_pre_aprovado',     label: 'Horário pré-aprovado',      cor: 'bg-indigo-50 text-indigo-700 border-indigo-200',    pill: 'bg-indigo-500' },
+  { key: '4_experimental_confirmada', label: 'Experimental confirmada',  cor: 'bg-emerald-50 text-emerald-700 border-emerald-200', pill: 'bg-emerald-500' },
+  { key: '6_aula_realizada',          label: 'Aula realizada',           cor: 'bg-teal-50 text-teal-700 border-teal-200',          pill: 'bg-teal-500' },
+  { key: '7_matriculado',             label: 'Matriculado',              cor: 'bg-green-50 text-green-700 border-green-200',       pill: 'bg-green-600' },
+  { key: '8_ex_aluno',                label: 'Ex-aluno',                 cor: 'bg-rose-50 text-rose-700 border-rose-200',          pill: 'bg-rose-400' },
+  { key: '9_perdido',                 label: 'Perdido',                  cor: 'bg-red-50 text-red-700 border-red-200',             pill: 'bg-red-500' },
 ] as const
 
 function corScore(score: number) {
@@ -142,7 +141,7 @@ export default function CRMFunil() {
 
   // Gargalos: leads travados em etapas comerciais
   const gargalos = useMemo(() => {
-    const etapasGargalo = ['3_horario_pre_aprovado', '4_aguardando_pagamento', '5_experimental_paga', '6_aula_realizada']
+    const etapasGargalo = ['3_horario_pre_aprovado', '4_experimental_confirmada', '6_aula_realizada']
     return filtrados
       .filter(c => etapasGargalo.includes(c.etapa_funil))
       .sort((a, b) => b.score_temperatura - a.score_temperatura)
@@ -413,7 +412,7 @@ export default function CRMFunil() {
       {tab === 'gargalos' && (
         <div className="space-y-3">
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-            <strong>{gargalos.length} contatos</strong> travados nas etapas comerciais (pré-aprovado, aguardando pagamento, paga, realizada).
+            <strong>{gargalos.length} contatos</strong> travados nas etapas comerciais (pré-aprovado, experimental confirmada, realizada).
             Estes são os <strong>leads quentes</strong> que precisam de ação imediata para fechar matrícula.
           </div>
           <div className="grid gap-2">

@@ -11,7 +11,6 @@ const statusColor: Record<string, string> = {
   confirmada: 'bg-blue-100 text-blue-800 border-blue-200',
   aguardando_professor: 'bg-amber-100 text-amber-800 border-amber-200',
   confirmado_professor: 'bg-cyan-100 text-cyan-800 border-cyan-200',
-  aguardando_pagamento: 'bg-orange-100 text-orange-800 border-orange-200',
   realizada: 'bg-green-100 text-green-800 border-green-200',
   concluida: 'bg-green-100 text-green-800 border-green-200',
   cancelada: 'bg-red-100 text-red-800 border-red-200',
@@ -54,7 +53,7 @@ export default function AulasExperimentais() {
     return a.status?.toLowerCase() === filtro.toLowerCase()
   })
 
-  const agendadas = aulas.filter((a) => ['agendada', 'confirmada', 'aguardando_professor', 'confirmado_professor', 'aguardando_pagamento'].includes(a.status?.toLowerCase())).length
+  const agendadas = aulas.filter((a) => ['agendada', 'confirmada', 'aguardando_professor', 'confirmado_professor'].includes(a.status?.toLowerCase())).length
   const realizadas = aulas.filter((a) => ['realizada', 'concluida'].includes(a.status?.toLowerCase())).length
   const canceladas = aulas.filter((a) => ['cancelada', 'remarcada', 'rejeitado'].includes(a.status?.toLowerCase())).length
 
@@ -86,7 +85,7 @@ export default function AulasExperimentais() {
 
   function exportarICS() {
     const aulasParaExportar = aulas.filter(a =>
-      ['agendada', 'confirmada', 'confirmado_professor', 'aguardando_pagamento', 'experimental_paga'].includes(a.status?.toLowerCase() ?? '')
+      ['agendada', 'confirmada', 'confirmado_professor'].includes(a.status?.toLowerCase() ?? '')
     )
     if (aulasParaExportar.length === 0) {
       alert('Nenhuma aula experimental agendada/confirmada para exportar.')
@@ -234,7 +233,6 @@ export default function AulasExperimentais() {
         <option>confirmada</option>
         <option>aguardando_professor</option>
         <option>confirmado_professor</option>
-        <option>aguardando_pagamento</option>
         <option>concluida</option>
         <option>cancelada</option>
         <option>rejeitado</option>
@@ -499,7 +497,7 @@ function NovaAulaForm({ professores, onSave, onClose }: {
 // ---------------------------------------------------------------------------
 // EditarAulaForm — edita qualquer aula experimental (manual ou gerada pela IA)
 // ---------------------------------------------------------------------------
-const STATUS_OPTIONS = ['agendada', 'confirmada', 'aguardando_professor', 'confirmado_professor', 'aguardando_pagamento', 'realizada', 'concluida', 'remarcada', 'cancelada']
+const STATUS_OPTIONS = ['agendada', 'confirmada', 'aguardando_professor', 'confirmado_professor', 'realizada', 'concluida', 'remarcada', 'cancelada']
 
 function EditarAulaForm({ aula, professores, onSave, onClose }: {
   aula: AulaExperimental
