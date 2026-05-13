@@ -236,9 +236,9 @@ export default function Contatos() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1">
-                    {(c.telefone || c.telefone_responsavel) && (
+                    {c.telefone && (
                       <button
-                        onClick={() => { const t = ((c.telefone || c.telefone_responsavel) ?? '').replace(/\D/g,''); window.open(`https://wa.me/${t}`, '_blank') }}
+                        onClick={() => { const t = (c.telefone ?? '').replace(/\D/g,''); window.open(`https://wa.me/${t}`, '_blank') }}
                         className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="WhatsApp">
                         <Phone className="w-3.5 h-3.5" />
                       </button>
