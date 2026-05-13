@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import {
   TrendingUp, RefreshCw, Search, Filter, Phone, Flame,
   CheckCircle2, Clock, AlertCircle, X, ExternalLink,
-  ChevronRight, BarChart3, Trophy, ChevronLeft, PhoneForwarded,
+  ChevronRight, BarChart3, Trophy, ChevronLeft, PhoneForwarded, Edit2,
 } from 'lucide-react'
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
@@ -93,6 +93,41 @@ export default function CRMFunil() {
   // Modal lead perdido
   const [modalPerdido, setModalPerdido] = useState<FunilContato | null>(null)
   const [motivoPerdido, setMotivoPerdido] = useState('')
+
+  // Modal edição de contato
+  const [modalEditar, setModalEditar] = useState<FunilContato | null>(null)
+  const [formEditar, setFormEditar] = useState({ nome: '', telefone: '', instrumento: '', etapa: '' })
+
+  // Mapeamento etapa_funil → status na tabela alunos
+  const ETAPA_PARA_STATUS: Record<string, string> = {
+    '1_lead_novo': 'lead',
+    '2_em_atendimento': 'Em Follow-up',
+    '3_horario_pre_aprovado': 'agendado',
+    '9_perdido': 'perdido',
+  }
+
+  function abrirEditar(c: FunilContato) {
+    setFormEditar({
+      nome: c.nome,
+      telefone: c.telefone ?? '',
+      instrumento: c.instrumento_interesse ?? '',
+      etapa: c.etapa_funil,
+    })
+    setModalEditar(c)
+  }
+
+  async function salvarEdicao() {
+    if (!modalEditar) return
+    const novoStatus = ETAPA_PARA_STATUS[formEditar.etapa] ?? modalEditar.status_aluno
+    await supabase.from('alunos').update({
+      nome: formEditar.nome.trim() || modalEditar.nome,
+      telefone: formEditar.telefone.trim() || null,
+      instrumento_interesse: formEditar.instrumento.trim() || null,
+      status: novoStatus,
+    }).eq('id', modalEditar.id)
+    setModalEditar(null)
+    load()
+  }
 
   async function load() {
     setLoading(true)
@@ -401,6 +436,10 @@ export default function CRMFunil() {
                                 <Phone className="w-3.5 h-3.5" />
                               </button>
                             )}
+                            <button onClick={() => abrirEditar(c)}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded" title="Editar">
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
                             <button onClick={() => toggleFollowup(c)}
                               className={`p-1.5 rounded ${c.followup_pendente ? 'text-amber-600 bg-amber-50' : 'text-gray-400 hover:bg-gray-100'}`}
                               title="Follow-up">
@@ -885,6 +924,80 @@ export default function CRMFunil() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Modal edição de contato */}
+      {modalEditar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-gray-900">Editar contato</h2>
+              <button onClick={() => setModalEditar(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Nome</label>
+                <input
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  value={formEditar.nome}
+                  onChange={e => setFormEditar(f => ({ ...f, nome: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Telefone</label>
+                <input
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  value={formEditar.telefone}
+                  onChange={e => setFormEditar(f => ({ ...f, telefone: e.target.value }))}
+                  placeholder="5551999999999"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Instrumento</label>
+                <select
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  value={formEditar.instrumento}
+                  onChange={e => setFormEditar(f => ({ ...f, instrumento: e.target.value }))}
+                >
+                  <option value="">— Não definido —</option>
+                  {['Piano','Violão','Guitarra','Bateria','Canto','Ukulele','Baixo','Teclado','Musicalização Infantil','Cavaquinho','Contrabaixo','Violino','Percussão'].map(i => (
+                    <option key={i} value={i}>{i}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Etapa no funil</label>
+                <select
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  value={formEditar.etapa}
+                  onChange={e => setFormEditar(f => ({ ...f, etapa: e.target.value }))}
+                >
+                  <option value="1_lead_novo">Lead novo</option>
+                  <option value="2_em_atendimento">Em atendimento</option>
+                  <option value="3_horario_pre_aprovado">Horário pré-aprovado</option>
+                  <option value="9_perdido">Perdido</option>
+                </select>
+                {(formEditar.etapa === '4_experimental_confirmada' || formEditar.etapa === '6_aula_realizada') && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Esta etapa é controlada pela aula experimental. Você pode mover para uma etapa anterior.
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-1">
+              <button onClick={() => setModalEditar(null)} className="text-sm text-gray-500 px-4 py-2">Cancelar</button>
+              <button
+                onClick={salvarEdicao}
+                disabled={!formEditar.nome.trim()}
+                className="text-sm bg-brand-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 hover:bg-brand-700"
+              >
+                Salvar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

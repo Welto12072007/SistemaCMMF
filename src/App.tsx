@@ -96,7 +96,7 @@ export default function App() {
         <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Faltas /></Suspense></Guard>} />
         <Route path="/faltas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Faltas /></Suspense></Guard>} />
         <Route path="/faltas-professor" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><FaltasProfessor /></Suspense></Guard>} />
-        <Route path="/contatos-labels" element={<Navigate to="/contatos?tab=labels" replace />} />
+        <Route path="/contatos-labels" element={<Navigate to="/contatos" replace />} />
         <Route path="/crm-funil" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><CRMFunil /></Suspense></Guard>} />
         <Route path="/portal-aluno" element={<Guard roles={['aluno']}><Suspense fallback={<PageLoader />}><PortalAluno /></Suspense></Guard>} />
         <Route path="/biblioteca" element={<Suspense fallback={<PageLoader />}><Biblioteca /></Suspense>} />
