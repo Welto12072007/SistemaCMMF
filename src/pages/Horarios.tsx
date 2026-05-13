@@ -126,7 +126,15 @@ export default function Horarios() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'sync-all' }),
       })
-      const data = await resp.json()
+      const text = await resp.text()
+      // n8n retorna corpo vazio quando não há slots para processar (0 mudanças)
+      if (!text || text.trim() === '') {
+        setLastSync(new Date())
+        await fetchData()
+        alert('Sincronização concluída! Nenhuma alteração pendente.')
+        return
+      }
+      const data = JSON.parse(text)
       if (!data.sucesso || !data.slots) throw new Error(data.erro || 'Erro ao sincronizar')
 
       // Build professor ID lookup from DB
