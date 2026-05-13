@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   Plus, Search, Filter, Phone, Mail, ChevronDown, ChevronUp,
-  Users, Music,
+  Users, Music, Edit2, Trash2,
 } from 'lucide-react'
 
 interface Aluno {
@@ -262,9 +262,18 @@ function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete }: {
           {a.created_at ? new Date(a.created_at).toLocaleDateString('pt-BR') : '—'}
         </td>
         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-          <div className="flex gap-2">
-            <button onClick={onEdit} className="text-xs text-blue-600 hover:underline">Editar</button>
-            <button onClick={onDelete} className="text-xs text-red-600 hover:underline">Remover</button>
+          <div className="flex items-center gap-1">
+            {a.telefone && (
+              <button onClick={() => { const t = (a.telefone ?? '').replace(/\D/g,''); window.open(`https://wa.me/${t}`, '_blank') }} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="WhatsApp">
+                <Phone className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <button onClick={onEdit} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded" title="Editar">
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onDelete} className="p-1.5 text-red-400 hover:bg-red-50 rounded" title="Remover">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           </div>
         </td>
       </tr>

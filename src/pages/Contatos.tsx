@@ -6,12 +6,15 @@ import type { Contato } from '@/types'
 const STATUS_OPTIONS = [
   'Todos os status',
   'lead',
-  'qualificado',
+  'Em Follow-up',
   'experimental_agendada',
   'experimental_concluida',
+  'ativo',
   'matriculado',
   'perdido',
-  'Em Follow-up',
+  'inativo',
+  'cancelado',
+  'ex_aluno',
 ]
 
 const CANAL_OPTIONS = ['Todas as origens', 'WhatsApp', 'Instagram', 'Indicação', 'Google']
@@ -66,7 +69,7 @@ export default function Contatos() {
   const filtered = baseAba.filter((c) => {
     if (busca && !c.nome?.toLowerCase().includes(busca.toLowerCase()) && !c.telefone?.includes(busca) && !(c.email?.toLowerCase().includes(busca.toLowerCase()))) return false
     if (filtroStatus !== 'Todos os status' && c.status !== filtroStatus) return false
-    if (filtroCanal !== 'Todas as origens' && c.origem !== filtroCanal) return false
+    if (filtroCanal !== 'Todas as origens' && c.origem?.toLowerCase() !== filtroCanal.toLowerCase()) return false
     if (filtroInstrumento !== 'Todos os instrumentos' && c.instrumento_interesse !== filtroInstrumento) return false
     if (filtroInvalidos === 'invalidos' && !(c as any).contato_invalido) return false
     if (filtroInvalidos === 'validos' && (c as any).contato_invalido) return false
