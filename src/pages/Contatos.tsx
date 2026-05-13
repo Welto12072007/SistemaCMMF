@@ -196,7 +196,7 @@ export default function Contatos() {
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Origem</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Data</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-4 py-3"></th>
+              <th className="px-4 py-3 w-32"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -234,7 +234,7 @@ export default function Contatos() {
                     {c.status || '—'}
                   </span>
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 whitespace-nowrap">
                   <div className="flex items-center gap-1">
                     {c.telefone && (
                       <button
