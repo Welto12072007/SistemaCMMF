@@ -18,16 +18,21 @@ interface FunilContato {
   origem?: string
   tipo: 'lead' | 'aluno' | 'ex_aluno'
   etapa_funil: string
-  status_pagamento_exp: 'pago' | 'aguardando' | 'finalizado' | 'nao_iniciado' | 'nao_aplica'
   exp_id?: string
   exp_data?: string
   exp_professor_nome?: string
   total_exp: number
-  exp_pagas: number
+  exp_concluidas: number
   score_temperatura: number
   followup_pendente: boolean
   data_ultima_interacao?: string
   data_primeiro_contato?: string
+  data_lead_novo_at?: string
+  data_em_atendimento_at?: string
+  data_horario_aprovado_at?: string
+  data_exp_confirmada_at?: string
+  data_aula_realizada_at?: string
+  data_perdido_at?: string
 }
 
 interface ListaQuente {
@@ -340,7 +345,7 @@ export default function CRMFunil() {
                     <th className="px-3 py-2 text-left font-medium">Nome</th>
                     <th className="px-3 py-2 text-left font-medium">Etapa</th>
                     <th className="px-3 py-2 text-left font-medium">Instrumento</th>
-                    <th className="px-3 py-2 text-left font-medium">Pagamento</th>
+                    <th className="px-3 py-2 text-left font-medium">Na etapa desde</th>
                     <th className="px-3 py-2 text-left font-medium">Professor</th>
                     <th className="px-3 py-2 text-center font-medium">Ações</th>
                   </tr>
@@ -365,12 +370,16 @@ export default function CRMFunil() {
                           </span>
                         </td>
                         <td className="px-3 py-2 text-gray-600">{c.instrumento_interesse ?? '—'}</td>
-                        <td className="px-3 py-2">
-                          {c.status_pagamento_exp === 'pago' && <span className="text-xs text-emerald-600">✓ Pago</span>}
-                          {c.status_pagamento_exp === 'aguardando' && <span className="text-xs text-amber-600">⏳ Aguardando</span>}
-                          {c.status_pagamento_exp === 'finalizado' && <span className="text-xs text-gray-500">Finalizado</span>}
-                          {c.status_pagamento_exp === 'nao_iniciado' && <span className="text-xs text-gray-400">—</span>}
-                          {c.status_pagamento_exp === 'nao_aplica' && <span className="text-xs text-gray-300">—</span>}
+                        <td className="px-3 py-2 text-xs text-gray-500">
+                          {(() => {
+                            const d = c.etapa_funil === '9_perdido' ? c.data_perdido_at
+                              : c.etapa_funil === '6_aula_realizada' ? c.data_aula_realizada_at
+                              : c.etapa_funil === '4_experimental_confirmada' ? c.data_exp_confirmada_at
+                              : c.etapa_funil === '3_horario_pre_aprovado' ? c.data_horario_aprovado_at
+                              : c.etapa_funil === '2_em_atendimento' ? c.data_em_atendimento_at
+                              : c.data_lead_novo_at
+                            return d ? new Date(d).toLocaleDateString('pt-BR') : '—'
+                          })()}
                         </td>
                         <td className="px-3 py-2 text-gray-600 text-xs">{c.exp_professor_nome ?? '—'}</td>
                         <td className="px-3 py-2">
