@@ -789,18 +789,19 @@ export default function Horarios() {
                   ))}
                 </div>
               </div>
-              {editStatus === 'ocupado' && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Nome do Aluno</label>
-                  <input
-                    value={editAluno}
-                    onChange={e => setEditAluno(e.target.value)}
-                    placeholder="Nome do aluno"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                    autoFocus
-                  />
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nome do Aluno</label>
+                <input
+                  value={editAluno}
+                  onChange={e => {
+                    setEditAluno(e.target.value)
+                    if (e.target.value.trim()) setEditStatus('ocupado')
+                  }}
+                  placeholder="Nome do aluno (deixe vazio se disponível)"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  autoFocus
+                />
+              </div>
             </div>
             <div className="flex items-center justify-between gap-2 px-5 py-3 border-t bg-gray-50 rounded-b-xl">
               <button
@@ -887,18 +888,18 @@ export default function Horarios() {
                   ))}
                 </div>
               </div>
-              {novoStatus === 'ocupado' && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Nome do Aluno</label>
-                  <input
-                    value={novoAluno}
-                    onChange={e => setNovoAluno(e.target.value)}
-                    placeholder="Nome do aluno"
-                    autoFocus
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                  />
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nome do Aluno</label>
+                <input
+                  value={novoAluno}
+                  onChange={e => {
+                    setNovoAluno(e.target.value)
+                    if (e.target.value.trim()) setNovoStatus('ocupado')
+                  }}
+                  placeholder="Nome do aluno (deixe vazio se disponível)"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                />
+              </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t bg-gray-50 rounded-b-xl">
               <button
