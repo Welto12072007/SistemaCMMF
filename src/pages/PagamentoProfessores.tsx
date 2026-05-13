@@ -275,11 +275,7 @@ export default function PagamentoProfessores() {
   return (
     <div className="p-4 md:p-6 space-y-6">
       {/* Cabeçalho */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Pagamento de Professores</h1>
-          <p className="text-sm text-gray-500">Baseado em presenças confirmadas + trabalhos extras</p>
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3">
         <div className="flex items-center gap-2">
           <button onClick={() => carregar()} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg">
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />

@@ -52,7 +52,6 @@ const sections: NavSection[] = [
       { to: '/usuarios', label: 'Usuários', icon: UserCheck, roles: ['admin', 'recepcao'] },
       { to: '/horarios', label: 'Horários', icon: CalendarClock, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/presencas', label: 'Presenças & Faltas', icon: ClipboardCheck, roles: ['admin', 'recepcao', 'professor'] },
-      { to: '/horarios-extras', label: 'Horários Extras', icon: CalendarPlus2, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/portal-aluno', label: 'Minhas Aulas', icon: Calendar, roles: ['aluno'] },
     ],
   },
@@ -62,8 +61,6 @@ const sections: NavSection[] = [
     items: [
       { to: '/financeiro', label: 'Financeiro', icon: DollarSign, roles: ['admin'] },
       { to: '/fluxo-caixa', label: 'Fluxo de Caixa', icon: Wallet, roles: ['admin'] },
-      { to: '/fluxo-alunos', label: 'Fluxo de Alunos', icon: ArrowLeftRight, roles: ['admin', 'recepcao'] },
-      { to: '/pagamento-professores', label: 'Pagamento Professores', icon: UsersRound, roles: ['admin'] },
       { to: '/mensalidades', label: 'Mensalidades', icon: DollarSign, roles: ['admin', 'recepcao'] },
       { to: '/cobranca', label: 'Cobrança & Jurídico', icon: AlertTriangle, roles: ['admin', 'recepcao'] },
     ],

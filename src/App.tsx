@@ -82,7 +82,7 @@ export default function App() {
         <Route path="/contatos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><ContatosHub /></Suspense></Guard>} />
         <Route path="/contatos-lista" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Contatos /></Suspense></Guard>} />
         <Route path="/aulas-experimentais" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><AulasExperimentais /></Suspense></Guard>} />
-        <Route path="/horarios-extras" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><HorariosExtras /></Suspense></Guard>} />
+        <Route path="/horarios-extras" element={<Navigate to="/financeiro" replace />} />
         <Route path="/usuarios" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Usuarios /></Suspense></Guard>} />
         <Route path="/followup" element={<Navigate to="/crm-funil" replace />} />
         <Route path="/disparos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Disparos /></Suspense></Guard>} />
@@ -91,8 +91,8 @@ export default function App() {
         <Route path="/financeiro" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><FinanceiroHub /></Suspense></Guard>} />
         <Route path="/dashboard-financeiro" element={<Navigate to="/financeiro" replace />} />
         <Route path="/fluxo-caixa" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><FluxoCaixa /></Suspense></Guard>} />
-        <Route path="/fluxo-alunos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><FluxoAlunos /></Suspense></Guard>} />
-        <Route path="/pagamento-professores" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><PagamentoProfessores /></Suspense></Guard>} />
+        <Route path="/fluxo-alunos" element={<Navigate to="/financeiro" replace />} />
+        <Route path="/pagamento-professores" element={<Navigate to="/financeiro" replace />} />
         <Route path="/mensalidades" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Mensalidades /></Suspense></Guard>} />
         <Route path="/cobranca" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Cobranca /></Suspense></Guard>} />
         <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><PresencasFaltasHub /></Suspense></Guard>} />

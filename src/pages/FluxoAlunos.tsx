@@ -319,11 +319,7 @@ export default function FluxoAlunos() {
   return (
     <div className="p-4 md:p-6 space-y-6">
       {/* Cabeçalho */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Fluxo de Alunos</h1>
-          <p className="text-sm text-gray-500">Entradas, saídas e evolução por período</p>
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3">
         <div className="flex items-center gap-2">
           <button
             onClick={carregar}
