@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import {
   TrendingUp, RefreshCw, Search, Filter, Phone, Flame,
   CheckCircle2, Clock, AlertCircle, X, ExternalLink,
-  ChevronRight, BarChart3, Trophy, ChevronLeft,
+  ChevronRight, BarChart3, Trophy, ChevronLeft, PhoneForwarded,
 } from 'lucide-react'
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
@@ -77,7 +77,7 @@ export default function CRMFunil() {
   const [listas, setListas] = useState<ListaQuente[]>([])
   const [conversao, setConversao] = useState<ConversaoProf[]>([])
 
-  const [tab, setTab] = useState<'funil' | 'gargalos' | 'instrumento' | 'conversao' | 'semanal'>('funil')
+  const [tab, setTab] = useState<'funil' | 'gargalos' | 'instrumento' | 'conversao' | 'semanal' | 'followup'>('funil')
   const [busca, setBusca] = useState('')
   const [filtroInstr, setFiltroInstr] = useState('')
   const [filtroEtapa, setFiltroEtapa] = useState<string>('')
@@ -152,6 +152,13 @@ export default function CRMFunil() {
       .filter(c => etapasGargalo.includes(c.etapa_funil))
       .sort((a, b) => b.score_temperatura - a.score_temperatura)
   }, [filtrados])
+
+  // Follow-ups pendentes (todos os contatos, não só leads do funil)
+  const followupsPendentes = useMemo(() => {
+    return contatos
+      .filter(c => c.followup_pendente)
+      .sort((a, b) => b.score_temperatura - a.score_temperatura)
+  }, [contatos])
 
   // Listas quentes ordenadas e filtradas
   const listasOrdenadas = useMemo(() => {
@@ -251,8 +258,7 @@ export default function CRMFunil() {
       <div className="flex gap-1 border-b border-gray-200">
         {([
           { k: 'funil', l: 'Funil', i: TrendingUp },
-          { k: 'gargalos', l: 'Gargalos', i: AlertCircle },
-          { k: 'instrumento', l: 'Listas Quentes', i: Flame },
+          { k: 'gargalos', l: 'Gargalos', i: AlertCircle },          { k: 'followup', l: 'Follow-up', i: PhoneForwarded, badge: followupsPendentes.length },          { k: 'instrumento', l: 'Listas Quentes', i: Flame },
           { k: 'conversao', l: 'Conversão Professor', i: Trophy },
           { k: 'semanal', l: 'Relatório Semanal', i: BarChart3 },
         ] as const).map(t => {
@@ -265,6 +271,11 @@ export default function CRMFunil() {
             >
               <Icon className="w-4 h-4" />
               {t.l}
+              {'badge' in t && t.badge > 0 && (
+                <span className="ml-1 bg-amber-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+                  {t.badge}
+                </span>
+              )}
             </button>
           )
         })}
@@ -752,6 +763,126 @@ export default function CRMFunil() {
           {contatosSemana.length === 0 && (
             <div className="text-center py-10 text-gray-400 bg-white rounded-xl border">
               Nenhuma interação registrada nesta semana.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB FOLLOW-UP */}
+      {tab === 'followup' && (
+        <div className="space-y-4">
+          {/* KPIs */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <PhoneForwarded className="w-4 h-4 text-amber-500" />
+                <span className="text-xs text-gray-500">Pendentes agora</span>
+              </div>
+              <div className="text-3xl font-bold text-amber-600">{followupsPendentes.length}</div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Clock className="w-4 h-4 text-blue-500" />
+                <span className="text-xs text-gray-500">Em atendimento</span>
+              </div>
+              <div className="text-3xl font-bold text-blue-600">
+                {contatos.filter(c => c.etapa_funil === '2_em_atendimento').length}
+              </div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertCircle className="w-4 h-4 text-indigo-500" />
+                <span className="text-xs text-gray-500">Horário pré-aprovado</span>
+              </div>
+              <div className="text-3xl font-bold text-indigo-600">
+                {contatos.filter(c => c.etapa_funil === '3_horario_pre_aprovado').length}
+              </div>
+            </div>
+          </div>
+
+          {followupsPendentes.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 py-16 text-center">
+              <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-400" />
+              <p className="text-sm text-gray-400">Nenhum follow-up pendente. 🎉</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-800 text-sm">{followupsPendentes.length} contatos precisam de retorno</h3>
+                <span className="text-xs text-gray-400">Ordenado por temperatura</span>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-500 border-b border-gray-100">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium w-8">🔥</th>
+                    <th className="px-3 py-2 text-left font-medium">Contato</th>
+                    <th className="px-3 py-2 text-left font-medium">Etapa</th>
+                    <th className="px-3 py-2 text-left font-medium">Instrumento</th>
+                    <th className="px-3 py-2 text-left font-medium">Última interação</th>
+                    <th className="px-3 py-2 text-center font-medium">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {followupsPendentes.map(c => {
+                    const etapa = ETAPAS.find(e => e.key === c.etapa_funil)
+                    return (
+                      <tr key={c.id} className="hover:bg-amber-50/50">
+                        <td className="px-3 py-2">
+                          <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${corScore(c.score_temperatura)}`}>
+                            {c.score_temperatura}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="font-medium text-gray-800">{c.nome}</div>
+                          {c.telefone && <div className="text-xs text-gray-400">{c.telefone}</div>}
+                        </td>
+                        <td className="px-3 py-2">
+                          {etapa ? (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${etapa.cor}`}>{etapa.label}</span>
+                          ) : (
+                            <span className="text-xs text-gray-400">{c.etapa_funil}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-gray-600 text-xs">{c.instrumento_interesse ?? '—'}</td>
+                        <td className="px-3 py-2 text-xs text-gray-500">
+                          {c.data_ultima_interacao
+                            ? new Date(c.data_ultima_interacao).toLocaleDateString('pt-BR')
+                            : '—'}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex justify-center gap-1">
+                            {c.telefone && (
+                              <button
+                                onClick={() => abrirWhats(c.telefone)}
+                                className="px-3 py-1.5 bg-emerald-600 text-white text-xs rounded-lg hover:bg-emerald-700 flex items-center gap-1"
+                                title="Abrir WhatsApp"
+                              >
+                                <Phone className="w-3 h-3" /> Contatar
+                              </button>
+                            )}
+                            <button
+                              onClick={() => toggleFollowup(c)}
+                              className="px-3 py-1.5 bg-amber-100 text-amber-700 text-xs rounded-lg hover:bg-amber-200 flex items-center gap-1"
+                              title="Marcar follow-up como feito"
+                            >
+                              <CheckCircle2 className="w-3 h-3" /> Feito
+                            </button>
+                            {c.tipo === 'lead' && c.etapa_funil !== '9_perdido' && (
+                              <button
+                                onClick={() => setModalPerdido(c)}
+                                className="p-1.5 text-red-400 hover:bg-red-50 rounded"
+                                title="Marcar como perdido"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

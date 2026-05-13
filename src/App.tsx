@@ -7,10 +7,9 @@ import DefinirSenha from './pages/DefinirSenha'
 import Dashboard from './pages/Dashboard'
 
 const Contatos = lazy(() => import('./pages/Contatos'))
-const ContatosHub = lazy(() => import('./pages/ContatosHub'))
 const AulasExperimentais = lazy(() => import('./pages/AulasExperimentais'))
 const Usuarios = lazy(() => import('./pages/Usuarios'))
-const Followup = lazy(() => import('./pages/Followup'))
+const ContatosHub = lazy(() => import('./pages/ContatosHub'))
 const Disparos = lazy(() => import('./pages/Disparos'))
 const Relatorios = lazy(() => import('./pages/Relatorios'))
 const Horarios = lazy(() => import('./pages/Horarios'))
@@ -83,7 +82,7 @@ export default function App() {
         <Route path="/aulas-experimentais" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><AulasExperimentais /></Suspense></Guard>} />
         <Route path="/horarios-extras" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><HorariosExtras /></Suspense></Guard>} />
         <Route path="/usuarios" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Usuarios /></Suspense></Guard>} />
-        <Route path="/followup" element={<Navigate to="/contatos?tab=followup" replace />} />
+        <Route path="/followup" element={<Navigate to="/crm-funil" replace />} />
         <Route path="/disparos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Disparos /></Suspense></Guard>} />
         <Route path="/disparos-programados" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><DisparosProgramados /></Suspense></Guard>} />
         <Route path="/horarios" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Horarios /></Suspense></Guard>} />

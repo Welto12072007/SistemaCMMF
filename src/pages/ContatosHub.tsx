@@ -1,17 +1,15 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Users, PhoneForwarded, Tag } from 'lucide-react'
+import { Users, Tag } from 'lucide-react'
 
 const Contatos = lazy(() => import('./Contatos'))
-const Followup = lazy(() => import('./Followup'))
 const ContatosLabels = lazy(() => import('./ContatosLabels'))
 
-type TabKey = 'lista' | 'followup' | 'labels'
+type TabKey = 'lista' | 'labels'
 
 const TABS: { key: TabKey; label: string; icon: typeof Users; descricao: string }[] = [
-  { key: 'lista',    label: 'Lista',     icon: Users,          descricao: 'Todos os contatos cadastrados' },
-  { key: 'followup', label: 'Follow-up', icon: PhoneForwarded, descricao: 'Contatos a acompanhar' },
-  { key: 'labels',   label: 'Labels & Antonia', icon: Tag,       descricao: 'Labels do WhatsApp e pausa da Antonia' },
+  { key: 'lista',  label: 'Lista',           icon: Users, descricao: 'Todos os contatos cadastrados' },
+  { key: 'labels', label: 'Labels & Antonia', icon: Tag,   descricao: 'Labels do WhatsApp e pausa da Antonia' },
 ]
 
 export default function ContatosHub() {
@@ -54,7 +52,6 @@ export default function ContatosHub() {
 
       <Suspense fallback={<div className="py-20 text-center text-gray-400 text-sm">Carregando...</div>}>
         {tab === 'lista' && <Contatos />}
-        {tab === 'followup' && <Followup />}
         {tab === 'labels' && <ContatosLabels />}
       </Suspense>
     </div>
