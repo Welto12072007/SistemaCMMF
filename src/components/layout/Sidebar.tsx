@@ -61,7 +61,6 @@ const sections: NavSection[] = [
     roles: ['admin', 'recepcao'],
     items: [
       { to: '/financeiro', label: 'Financeiro', icon: DollarSign, roles: ['admin'] },
-      { to: '/dashboard-financeiro', label: 'Dashboard $', icon: BarChart3, roles: ['admin'] },
       { to: '/fluxo-caixa', label: 'Fluxo de Caixa', icon: Wallet, roles: ['admin'] },
       { to: '/fluxo-alunos', label: 'Fluxo de Alunos', icon: ArrowLeftRight, roles: ['admin', 'recepcao'] },
       { to: '/pagamento-professores', label: 'Pagamento Professores', icon: UsersRound, roles: ['admin'] },

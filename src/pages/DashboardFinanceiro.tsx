@@ -233,11 +233,7 @@ export default function DashboardFinanceiro() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard Financeiro</h1>
-          <p className="text-gray-500">Receita, inadimplência e performance de mensalidades</p>
-        </div>
+      <div className="flex items-center justify-end flex-wrap gap-4">
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-gray-400" />
           <select

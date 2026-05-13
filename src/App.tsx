@@ -15,6 +15,7 @@ const Relatorios = lazy(() => import('./pages/Relatorios'))
 const Horarios = lazy(() => import('./pages/Horarios'))
 const Financeiro = lazy(() => import('./pages/Financeiro'))
 const DashboardFinanceiro = lazy(() => import('./pages/DashboardFinanceiro'))
+const FinanceiroHub = lazy(() => import('./pages/FinanceiroHub'))
 const Mensalidades = lazy(() => import('./pages/Mensalidades'))
 const Cobranca = lazy(() => import('./pages/Cobranca'))
 const Biblioteca = lazy(() => import('./pages/Biblioteca'))
@@ -87,8 +88,8 @@ export default function App() {
         <Route path="/disparos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Disparos /></Suspense></Guard>} />
         <Route path="/disparos-programados" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><DisparosProgramados /></Suspense></Guard>} />
         <Route path="/horarios" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Horarios /></Suspense></Guard>} />
-        <Route path="/financeiro" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><Financeiro /></Suspense></Guard>} />
-        <Route path="/dashboard-financeiro" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><DashboardFinanceiro /></Suspense></Guard>} />
+        <Route path="/financeiro" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><FinanceiroHub /></Suspense></Guard>} />
+        <Route path="/dashboard-financeiro" element={<Navigate to="/financeiro" replace />} />
         <Route path="/fluxo-caixa" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><FluxoCaixa /></Suspense></Guard>} />
         <Route path="/fluxo-alunos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><FluxoAlunos /></Suspense></Guard>} />
         <Route path="/pagamento-professores" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><PagamentoProfessores /></Suspense></Guard>} />
