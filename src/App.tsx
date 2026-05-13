@@ -23,6 +23,7 @@ const MaterialApoio = lazy(() => import('./pages/MaterialApoio'))
 const Logs = lazy(() => import('./pages/Logs'))
 const Presencas = lazy(() => import('./pages/Presencas'))
 const Faltas = lazy(() => import('./pages/Faltas'))
+const PresencasFaltasHub = lazy(() => import('./pages/PresencasFaltasHub'))
 const DisparosProgramados = lazy(() => import('./pages/DisparosProgramados'))
 const PortalAluno = lazy(() => import('./pages/PortalAluno'))
 const Configuracoes = lazy(() => import('./pages/Configuracoes'))
@@ -93,9 +94,9 @@ export default function App() {
         <Route path="/pagamento-professores" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><PagamentoProfessores /></Suspense></Guard>} />
         <Route path="/mensalidades" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Mensalidades /></Suspense></Guard>} />
         <Route path="/cobranca" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Cobranca /></Suspense></Guard>} />
-        <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Faltas /></Suspense></Guard>} />
-        <Route path="/faltas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Faltas /></Suspense></Guard>} />
-        <Route path="/faltas-professor" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><FaltasProfessor /></Suspense></Guard>} />
+        <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><PresencasFaltasHub /></Suspense></Guard>} />
+        <Route path="/faltas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><PresencasFaltasHub /></Suspense></Guard>} />
+        <Route path="/faltas-professor" element={<Navigate to="/presencas" replace />} />
         <Route path="/contatos-labels" element={<Navigate to="/contatos" replace />} />
         <Route path="/crm-funil" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><CRMFunil /></Suspense></Guard>} />
         <Route path="/portal-aluno" element={<Guard roles={['aluno']}><Suspense fallback={<PageLoader />}><PortalAluno /></Suspense></Guard>} />

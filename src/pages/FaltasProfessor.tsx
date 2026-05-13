@@ -422,11 +422,7 @@ export default function FaltasProfessor() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <UserX className="w-6 h-6 text-orange-500" />
-          <h1 className="text-2xl font-bold text-gray-900">Faltas de Professor</h1>
-        </div>
+      <div className="flex items-center justify-end">
         <div className="flex gap-2">
           {isAdmin && (
             <button

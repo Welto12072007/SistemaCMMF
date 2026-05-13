@@ -269,11 +269,7 @@ export default function Faltas() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Presenças & Faltas</h1>
-          <p className="text-gray-500">Marcar presenças, painel de faltas, alertas e reposições</p>
-        </div>
+      <div className="flex items-center justify-end">
         <button
           onClick={detectarAgora}
           disabled={detectando}

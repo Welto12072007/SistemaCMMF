@@ -52,7 +52,6 @@ const sections: NavSection[] = [
       { to: '/usuarios', label: 'Usuários', icon: UserCheck, roles: ['admin', 'recepcao'] },
       { to: '/horarios', label: 'Horários', icon: CalendarClock, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/presencas', label: 'Presenças & Faltas', icon: ClipboardCheck, roles: ['admin', 'recepcao', 'professor'] },
-      { to: '/faltas-professor', label: 'Faltas de Professor', icon: UserX, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/horarios-extras', label: 'Horários Extras', icon: CalendarPlus2, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/portal-aluno', label: 'Minhas Aulas', icon: Calendar, roles: ['aluno'] },
     ],
