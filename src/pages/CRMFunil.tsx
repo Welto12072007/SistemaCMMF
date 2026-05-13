@@ -142,7 +142,22 @@ export default function CRMFunil() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+
+    // Realtime: recarrega funil quando Sofia capta lead novo ou atualiza status
+    const channel = supabase
+      .channel('crm-funil-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'alunos' }, () => {
+        load()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'aulas_experimentais' }, () => {
+        load()
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [])
 
   // ─── derived ──────────────────────────────────────────────────────────────
 

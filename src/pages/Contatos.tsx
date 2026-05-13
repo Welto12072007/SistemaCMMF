@@ -45,6 +45,16 @@ export default function Contatos() {
 
   useEffect(() => {
     loadContatos()
+
+    // Realtime: atualiza automaticamente quando Sofia capta lead novo
+    const channel = supabase
+      .channel('contatos-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'alunos' }, () => {
+        loadContatos()
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
   }, [])
 
   async function loadContatos() {
@@ -103,7 +113,14 @@ export default function Contatos() {
     const { error } = editando
       ? await supabase.from('alunos').update(data).eq('id', editando.id)
       : await supabase.from('alunos').insert(data)
-    if (error) { alert(`Erro ao salvar contato:\n${error.message}`); return }
+    if (error) {
+      if (error.message?.includes('alunos_telefone_key')) {
+        alert('Telefone já cadastrado para outro contato. Verifique se este lead já existe na lista.')
+      } else {
+        alert(`Erro ao salvar contato:\n${error.message}`)
+      }
+      return
+    }
     setShowForm(false)
     setEditando(null)
     loadContatos()
