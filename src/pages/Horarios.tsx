@@ -5,13 +5,13 @@ import {
   Save,
   X,
   ChevronDown,
-  RefreshCw,
   Check,
   Ban,
   Clock,
   Trash2,
   MessageSquare,
   Send,
+  Plus,
 } from 'lucide-react'
 
 interface Professor {
@@ -61,9 +61,13 @@ export default function Horarios() {
   const [editStatus, setEditStatus] = useState<Status>('disponivel')
   const [editAluno, setEditAluno] = useState('')
   const [saving, setSaving] = useState(false)
-  const [syncing, setSyncing] = useState(false)
-  const [lastSync, setLastSync] = useState<Date | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [novoHorario, setNovoHorario] = useState<{ profId: string } | null>(null)
+  const [novoDia, setNovoDia] = useState('Segunda')
+  const [novaHora, setNovaHora] = useState('08:00')
+  const [novoStatus, setNovoStatus] = useState<Status>('disponivel')
+  const [novoAluno, setNovoAluno] = useState('')
+  const [novoSaving, setNovoSaving] = useState(false)
   const [bulkSaving, setBulkSaving] = useState(false)
   const [lastClicked, setLastClicked] = useState<string | null>(null)
   const [disparoOpen, setDisparoOpen] = useState(false)
@@ -104,89 +108,34 @@ export default function Horarios() {
     }
   }, [fetchData])
 
-  // Professor name mapping (sheet nickname → DB full name)
-  const sheetToDbName: Record<string, string> = {
-    'Betto': 'Alberto Gabriel Maracheski (Betto)',
-    'Fabi': 'Fabiana Cezar Renner',
-    'Jeferson': 'Jeferson Coelho Rodrigues',
-    'João': 'João Vitor Saft',
-    'Lucas Cardoso': 'Lucas Cardoso da Silva',
-    'Madu': 'Maria Eduarda Ermel Thoen (Madu)',
-    'Neto Bateria': 'Olmiro Daniel Velho Neto (Neto)',
-    'Uilian Dorneles': 'Uilian Dornelles',
-    'Wesley Gonçalves': 'Wesley Goncalves da Silva Araujo',
-    'Willian Fruscalso': 'Willian Batista Fruscalso',
+  // Save new slot
+  const handleSaveNovo = async () => {
+    if (!novoHorario) return
+    setNovoSaving(true)
+    const aluno = novoStatus === 'ocupado' ? (novoAluno.trim() || null) : null
+    const { data, error } = await supabase.from('horarios').insert({
+      professor_id: novoHorario.profId,
+      dia_semana: novoDia,
+      hora_inicio: novaHora + ':00',
+      status: novoStatus,
+      aluno_nome: aluno,
+    }).select().single()
+    if (error) {
+      alert('Erro ao criar horário: ' + error.message)
+    } else if (data) {
+      setHorarios(prev => [...prev, data])
+    }
+    setNovoSaving(false)
+    setNovoHorario(null)
   }
 
-  const syncFromSheets = async () => {
-    setSyncing(true)
-    try {
-      const resp = await fetch('https://cmmf.app.n8n.cloud/webhook/verificar-disponibilidade', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'sync-all' }),
-      })
-      const text = await resp.text()
-      // n8n retorna corpo vazio quando não há slots para processar (0 mudanças)
-      if (!text || text.trim() === '') {
-        setLastSync(new Date())
-        await fetchData()
-        alert('Sincronização concluída! Nenhuma alteração pendente.')
-        return
-      }
-      const data = JSON.parse(text)
-      if (!data.sucesso || !data.slots) throw new Error(data.erro || 'Erro ao sincronizar')
-
-      // Build professor ID lookup from DB
-      const profIdMap = new Map<string, string>()
-      for (const p of professores) {
-        profIdMap.set(p.nome, p.id)
-      }
-
-      // Match sheet slots to DB and batch upsert
-      let updated = 0
-      const updates: { id: string; status: string; aluno_nome: string | null }[] = []
-
-      for (const slot of data.slots as { professor: string; dia_semana: string; hora_inicio: string; status: string; aluno_nome: string | null }[]) {
-        const dbName = sheetToDbName[slot.professor] || slot.professor
-        const profId = profIdMap.get(dbName)
-        if (!profId) continue
-
-        // Find matching horario in local data
-        const match = horarios.find(h =>
-          h.professor_id === profId &&
-          h.dia_semana === slot.dia_semana &&
-          h.hora_inicio.slice(0, 5) === slot.hora_inicio
-        )
-        if (!match) continue
-
-        // Only update if different
-        const newAluno = slot.status === 'ocupado' ? (slot.aluno_nome || null) : null
-        if (match.status !== slot.status || match.aluno_nome !== newAluno) {
-          updates.push({ id: match.id, status: slot.status, aluno_nome: newAluno })
-        }
-      }
-
-      // Batch update to Supabase (chunks of 50)
-      for (let i = 0; i < updates.length; i += 50) {
-        const chunk = updates.slice(i, i + 50)
-        await Promise.all(chunk.map(u =>
-          supabase.from('horarios').update({
-            status: u.status,
-            aluno_nome: u.aluno_nome,
-          }).eq('id', u.id)
-        ))
-        updated += chunk.length
-      }
-
-      setLastSync(new Date())
-      await fetchData()
-      alert(`Sincronização concluída! ${updated} alteração(ões) da planilha.`)
-    } catch (err) {
-      alert('Erro na sincronização: ' + (err instanceof Error ? err.message : String(err)))
-    } finally {
-      setSyncing(false)
-    }
+  // Delete slot
+  const handleDelete = async () => {
+    if (!editCell) return
+    if (!confirm('Excluir este horário permanentemente?')) return
+    await supabase.from('horarios').delete().eq('id', editCell.id)
+    setHorarios(prev => prev.filter(h => h.id !== editCell.id))
+    setEditCell(null)
   }
 
   // Close popup on outside click
@@ -298,20 +247,6 @@ export default function Horarios() {
     const selectedHorarios = horarios.filter(h => selected.has(h.id))
     const aluno = newStatus === 'ocupado' ? null : null
 
-    // Build professor sheet name lookup
-    const sheetNameMap: Record<string, string> = {
-      'Alberto Gabriel Maracheski (Betto)': 'Betto',
-      'Fabiana Cezar Renner': 'Fabi',
-      'Jeferson Coelho Rodrigues': 'Jeferson',
-      'João Vitor Saft': 'João',
-      'Lucas Cardoso da Silva': 'Lucas Cardoso',
-      'Maria Eduarda Ermel Thoen (Madu)': 'Madu',
-      'Olmiro Daniel Velho Neto (Neto)': 'Neto Bateria',
-      'Uilian Dornelles': 'Uilian Dorneles',
-      'Wesley Goncalves da Silva Araujo': 'Wesley Gonçalves',
-      'Willian Batista Fruscalso': 'Willian Fruscalso',
-    }
-
     // Batch update Supabase (chunks of 50)
     for (let i = 0; i < selectedHorarios.length; i += 50) {
       const chunk = selectedHorarios.slice(i, i + 50)
@@ -321,26 +256,6 @@ export default function Horarios() {
           aluno_nome: aluno,
         }).eq('id', h.id)
       ))
-    }
-
-    // Write-back to Google Sheets (fire-and-forget, in chunks)
-    for (const h of selectedHorarios) {
-      const prof = professores.find(p => p.id === h.professor_id)
-      if (prof) {
-        const sheetName = sheetNameMap[prof.nome] || prof.nome
-        fetch('https://cmmf.app.n8n.cloud/webhook/verificar-disponibilidade', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            mode: 'update-cell',
-            professor: sheetName,
-            dia_semana: h.dia_semana,
-            hora_inicio: h.hora_inicio.slice(0, 5),
-            status: newStatus,
-            aluno_nome: '',
-          }),
-        }).catch(() => {})
-      }
     }
 
     // Update local state
@@ -419,46 +334,10 @@ export default function Horarios() {
     setSaving(true)
     const aluno = editStatus === 'ocupado' ? (editAluno.trim() || null) : null
 
-    // 1. Update Supabase
     await supabase.from('horarios').update({
       status: editStatus,
       aluno_nome: aluno,
     }).eq('id', editCell.id)
-
-    // 2. Write-back to Google Sheets via n8n webhook
-    const prof = professores.find(p => p.id === editCell.professor_id)
-    if (prof) {
-      // Map full DB name → sheet name (apelido usado na planilha)
-      const sheetNameMap: Record<string, string> = {
-        'Alberto Gabriel Maracheski (Betto)': 'Betto',
-        'Fabiana Cezar Renner': 'Fabi',
-        'Jeferson Coelho Rodrigues': 'Jeferson',
-        'João Vitor Saft': 'João',
-        'Lucas Cardoso da Silva': 'Lucas Cardoso',
-        'Maria Eduarda Ermel Thoen (Madu)': 'Madu',
-        'Olmiro Daniel Velho Neto (Neto)': 'Neto Bateria',
-        'Uilian Dornelles': 'Uilian Dorneles',
-        'Wesley Goncalves da Silva Araujo': 'Wesley Gonçalves',
-        'Willian Batista Fruscalso': 'Willian Fruscalso',
-      }
-      const sheetName = sheetNameMap[prof.nome] || prof.nome
-      try {
-        await fetch('https://cmmf.app.n8n.cloud/webhook/verificar-disponibilidade', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            mode: 'update-cell',
-            professor: sheetName,
-            dia_semana: editCell.dia_semana,
-            hora_inicio: editCell.hora_inicio.slice(0, 5),
-            status: editStatus,
-            aluno_nome: aluno || '',
-          }),
-        })
-      } catch {
-        // Silently fail - Supabase is the source of truth
-      }
-    }
 
     // Update local state
     setHorarios(prev => prev.map(h =>
@@ -487,26 +366,14 @@ export default function Horarios() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <CalendarClock className="w-8 h-8 text-brand-500" />
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Quadro de Horários</h1>
-            <p className="text-sm text-gray-500">
-              {horarios.length} slots • {professores.length} professores
-              {lastSync && <span className="ml-2 text-gray-400">• Última sync: {lastSync.toLocaleTimeString('pt-BR')}</span>}
-            </p>
-          </div>
+      <div className="flex items-center gap-3">
+        <CalendarClock className="w-8 h-8 text-brand-500" />
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Quadro de Horários</h1>
+          <p className="text-sm text-gray-500">
+            {horarios.length} slots • {professores.length} professores
+          </p>
         </div>
-        <button
-          onClick={syncFromSheets}
-          disabled={syncing}
-          className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-sm font-medium shadow-sm"
-          title="Sincronizar dados da planilha Google Sheets para o sistema"
-        >
-          <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-          {syncing ? 'Sincronizando...' : 'Sincronizar da Planilha'}
-        </button>
       </div>
 
       {/* Stats + Filter bar */}
@@ -589,6 +456,20 @@ export default function Horarios() {
                   )}
                   <span className="text-emerald-600">{profStats.disponivel} livres</span>
                   <span className="text-blue-600">{profStats.ocupado} ocupados</span>
+                  <button
+                    onClick={() => {
+                      setNovoHorario({ profId: prof.id })
+                      setNovoDia('Segunda')
+                      setNovaHora('08:00')
+                      setNovoStatus('disponivel')
+                      setNovoAluno('')
+                    }}
+                    className="flex items-center gap-1 bg-brand-500 hover:bg-brand-600 text-white px-2 py-0.5 rounded-lg text-xs font-medium transition-colors"
+                    title="Adicionar novo horário"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Adicionar horário
+                  </button>
                 </div>
               </div>
 
@@ -921,20 +802,118 @@ export default function Horarios() {
                 </div>
               )}
             </div>
+            <div className="flex items-center justify-between gap-2 px-5 py-3 border-t bg-gray-50 rounded-b-xl">
+              <button
+                onClick={handleDelete}
+                className="flex items-center gap-1 text-red-500 hover:text-red-700 text-sm transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Excluir
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditCell(null)}
+                  className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-1.5 bg-brand-500 text-white px-4 py-1.5 rounded-lg hover:bg-brand-600 transition-colors disabled:opacity-50 font-medium text-sm"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {saving ? 'Salvando...' : 'Salvar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Novo Horário modal */}
+      {novoHorario && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-5 py-3 border-b">
+              <h3 className="font-semibold text-gray-900 text-sm">
+                Novo Horário — {professores.find(p => p.id === novoHorario.profId)?.nome?.split(' ')[0]}
+              </h3>
+              <button onClick={() => setNovoHorario(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Dia da semana</label>
+                  <select
+                    value={novoDia}
+                    onChange={e => setNovoDia(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  >
+                    {DIAS_SEMANA.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Horário</label>
+                  <input
+                    type="time"
+                    value={novaHora}
+                    onChange={e => setNovaHora(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
+                <div className="flex gap-2">
+                  {(['disponivel', 'ocupado', 'indisponivel'] as Status[]).map(st => (
+                    <button
+                      key={st}
+                      onClick={() => setNovoStatus(st)}
+                      className={`flex-1 py-2 rounded-lg text-xs font-medium border-2 transition-colors ${
+                        novoStatus === st
+                          ? st === 'disponivel'
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                            : st === 'ocupado'
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-gray-500 bg-gray-100 text-gray-700'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}
+                    >
+                      {STATUS_LABEL[st]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {novoStatus === 'ocupado' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Nome do Aluno</label>
+                  <input
+                    value={novoAluno}
+                    onChange={e => setNovoAluno(e.target.value)}
+                    placeholder="Nome do aluno"
+                    autoFocus
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  />
+                </div>
+              )}
+            </div>
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t bg-gray-50 rounded-b-xl">
               <button
-                onClick={() => setEditCell(null)}
+                onClick={() => setNovoHorario(null)}
                 className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
               >
                 Cancelar
               </button>
               <button
-                onClick={handleSave}
-                disabled={saving}
+                onClick={handleSaveNovo}
+                disabled={novoSaving}
                 className="flex items-center gap-1.5 bg-brand-500 text-white px-4 py-1.5 rounded-lg hover:bg-brand-600 transition-colors disabled:opacity-50 font-medium text-sm"
               >
-                <Save className="w-3.5 h-3.5" />
-                {saving ? 'Salvando...' : 'Salvar'}
+                <Plus className="w-3.5 h-3.5" />
+                {novoSaving ? 'Salvando...' : 'Adicionar'}
               </button>
             </div>
           </div>
