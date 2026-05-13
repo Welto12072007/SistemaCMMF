@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Search, Plus, Phone, Mail, Filter, AlertTriangle, History, Check } from 'lucide-react'
+import { Search, Plus, Phone, Mail, Filter, AlertTriangle, History, Check, Edit2, Trash2 } from 'lucide-react'
 import type { Contato } from '@/types'
 
 const STATUS_OPTIONS = [
@@ -232,32 +232,35 @@ export default function Contatos() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex items-center gap-1">
+                    {(c.telefone || c.telefone_responsavel) && (
+                      <button
+                        onClick={() => { const t = ((c.telefone || c.telefone_responsavel) ?? '').replace(/\D/g,''); window.open(`https://wa.me/${t}`, '_blank') }}
+                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="WhatsApp">
+                        <Phone className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
                       onClick={() => { setEditando(c); setShowForm(true) }}
-                      className="text-xs px-3 py-1.5 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                    >
-                      Editar
+                      className="p-1.5 text-blue-500 hover:bg-blue-50 rounded" title="Editar">
+                      <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => toggleInvalido(c)}
                       title={(c as any).contato_invalido ? 'Marcar como válido' : 'Marcar contato como inválido'}
-                      className={`text-xs px-2 py-1.5 rounded-md transition-colors ${(c as any).contato_invalido ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}
-                    >
-                      {(c as any).contato_invalido ? <Check className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                      className={`p-1.5 rounded transition-colors ${(c as any).contato_invalido ? 'text-green-600 hover:bg-green-50' : 'text-amber-500 hover:bg-amber-50'}`}>
+                      {(c as any).contato_invalido ? <Check className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
                     </button>
                     <button
                       onClick={() => abrirAudit(c)}
                       title="Histórico de alterações"
-                      className="text-xs px-2 py-1.5 rounded-md bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
-                    >
-                      <History className="w-3 h-3" />
+                      className="p-1.5 text-gray-400 hover:bg-gray-100 rounded">
+                      <History className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => handleDelete(c.id)}
-                      className="text-xs px-3 py-1.5 rounded-md bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-                    >
-                      Excluir
+                      className="p-1.5 text-red-400 hover:bg-red-50 rounded" title="Excluir">
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </td>
