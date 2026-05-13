@@ -53,8 +53,6 @@ const ETAPAS = [
   { key: '3_horario_pre_aprovado',     label: 'Horário pré-aprovado',      cor: 'bg-indigo-50 text-indigo-700 border-indigo-200',    pill: 'bg-indigo-500' },
   { key: '4_experimental_confirmada', label: 'Experimental confirmada',  cor: 'bg-emerald-50 text-emerald-700 border-emerald-200', pill: 'bg-emerald-500' },
   { key: '6_aula_realizada',          label: 'Aula realizada',           cor: 'bg-teal-50 text-teal-700 border-teal-200',          pill: 'bg-teal-500' },
-  { key: '7_matriculado',             label: 'Matriculado',              cor: 'bg-green-50 text-green-700 border-green-200',       pill: 'bg-green-600' },
-  { key: '8_ex_aluno',                label: 'Ex-aluno',                 cor: 'bg-rose-50 text-rose-700 border-rose-200',          pill: 'bg-rose-400' },
   { key: '9_perdido',                 label: 'Perdido',                  cor: 'bg-red-50 text-red-700 border-red-200',             pill: 'bg-red-500' },
 ] as const
 
@@ -114,8 +112,11 @@ export default function CRMFunil() {
     return Array.from(set).sort()
   }, [contatos])
 
+  const ETAPAS_FUNIL = ['1_lead_novo','2_em_atendimento','3_horario_pre_aprovado','4_experimental_confirmada','6_aula_realizada','9_perdido']
+
   const filtrados = useMemo(() => {
     return contatos.filter(c => {
+      if (!ETAPAS_FUNIL.includes(c.etapa_funil)) return false
       if (busca) {
         const q = busca.toLowerCase()
         if (!c.nome.toLowerCase().includes(q)
@@ -311,7 +312,7 @@ export default function CRMFunil() {
       {tab === 'funil' && (
         <div className="space-y-3">
           {/* Faixa visual do funil */}
-          <div className="grid grid-cols-9 gap-2">
+          <div className="grid grid-cols-6 gap-2">
             {ETAPAS.map(e => {
               const n = porEtapa[e.key]?.length ?? 0
               return (
