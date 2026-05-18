@@ -145,7 +145,7 @@ export default function CRMFunil() {
   useEffect(() => {
     load()
 
-    // Realtime: recarrega funil quando Sofia capta lead novo ou atualiza status
+    // Realtime: recarrega funil quando aluno ou experimental muda
     const channel = supabase
       .channel('crm-funil-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'alunos' }, () => {
@@ -154,9 +154,19 @@ export default function CRMFunil() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'aulas_experimentais' }, () => {
         load()
       })
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.warn('[CRMFunil] Realtime error, usando polling fallback')
+        }
+      })
 
-    return () => { supabase.removeChannel(channel) }
+    // Polling fallback: atualiza a cada 30s caso o Realtime não entregue eventos
+    const poll = setInterval(load, 30_000)
+
+    return () => {
+      supabase.removeChannel(channel)
+      clearInterval(poll)
+    }
   }, [])
 
   // ─── derived ──────────────────────────────────────────────────────────────
