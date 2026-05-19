@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import {
   Plus, Search, Filter, Phone, Mail, ChevronDown, ChevronUp,
@@ -71,15 +72,28 @@ const ESTADOS_BR = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 
 const MODALIDADES = ['Individual Mensal', 'Individual Semestral', 'Grupo', 'Avulsa']
 
 export default function Usuarios() {
+  const location = useLocation()
   const [alunos, setAlunos] = useState<Aluno[]>([])
   const [busca, setBusca] = useState('')
   const [filtroInstrumento, setFiltroInstrumento] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editando, setEditando] = useState<Aluno | null>(null)
+  const [experimentalId, setExperimentalId] = useState<string | null>(null)
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
   const [removendo, setRemovendo] = useState<Aluno | null>(null)
 
   useEffect(() => { loadAlunos() }, [])
+
+  // Abre formulário pré-preenchido quando vindo de AulasExperimentais
+  useEffect(() => {
+    const from = (location.state as { fromExperimental?: { id: string; nome: string; telefone: string; instrumento: string } } | null)?.fromExperimental
+    if (from) {
+      setEditando({ nome: from.nome, telefone: from.telefone, instrumento_interesse: from.instrumento } as Aluno)
+      setExperimentalId(from.id)
+      setShowForm(true)
+      window.history.replaceState({}, '')
+    }
+  }, [location.state])
 
   async function loadAlunos() {
     const { data } = await supabase
@@ -106,13 +120,20 @@ export default function Usuarios() {
   })
 
   async function handleSave(data: Partial<Aluno>) {
-    const { error } = editando
+    const { error } = editando?.id
       ? await supabase.from('alunos').update({ ...data, updated_at: new Date().toISOString() }).eq('id', editando.id)
       : await supabase.from('alunos').insert({ ...data, status: 'ativo' })
     if (error) {
       console.error('[Usuarios] save error:', error)
       alert(`Erro ao salvar aluno:\n${error.message}`)
       return
+    }
+    // Marca experimental como convertida, se aplicável
+    if (experimentalId) {
+      await supabase.from('aulas_experimentais')
+        .update({ convertido_em: new Date().toISOString(), status: 'concluida' })
+        .eq('id', experimentalId)
+      setExperimentalId(null)
     }
     setShowForm(false)
     setEditando(null)
@@ -413,7 +434,7 @@ function AlunoForm({ aluno, onSave, onClose }: {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-4">{aluno ? 'Editar Aluno' : 'Novo Aluno'}</h2>
+        <h2 className="text-lg font-bold mb-4">{aluno?.id ? 'Editar Aluno' : 'Novo Aluno'}</h2>
 
         <h3 className="text-sm font-semibold text-gray-700 mb-2">Dados Principais:</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">

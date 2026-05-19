@@ -29,6 +29,7 @@ import {
   CalendarPlus2,
   ArrowLeftRight,
   UsersRound,
+  Star,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -72,6 +73,7 @@ const sections: NavSection[] = [
       { to: '/disparos', label: 'Disparos', icon: Send, roles: ['admin', 'recepcao'] },
       { to: '/disparos-programados', label: 'Programados', icon: CalendarCheck, roles: ['admin'] },
       { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'recepcao'] },
+      { to: '/avaliacoes', label: 'Avaliações', icon: Star, roles: ['admin', 'recepcao'] },
     ],
   },
   {

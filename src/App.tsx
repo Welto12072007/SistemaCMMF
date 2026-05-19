@@ -34,6 +34,7 @@ const ContatosLabels = lazy(() => import('./pages/ContatosLabels'))
 const CRMFunil = lazy(() => import('./pages/CRMFunil'))
 const HorariosExtras = lazy(() => import('./pages/HorariosExtras'))
 const FluxoAlunos = lazy(() => import('./pages/FluxoAlunos'))
+const AvaliacoesSatisfacao = lazy(() => import('./pages/AvaliacoesSatisfacao'))
 const PagamentoProfessores = lazy(() => import('./pages/PagamentoProfessores'))
 
 function PageLoader() {
@@ -104,6 +105,7 @@ export default function App() {
         <Route path="/biblioteca" element={<Suspense fallback={<PageLoader />}><Biblioteca /></Suspense>} />
         <Route path="/fingertv" element={<Suspense fallback={<PageLoader />}><FingerTV /></Suspense>} />
         <Route path="/material-apoio" element={<Suspense fallback={<PageLoader />}><MaterialApoio /></Suspense>} />
+        <Route path="/avaliacoes" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><AvaliacoesSatisfacao /></Suspense></Guard>} />
         <Route path="/logs" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><Logs /></Suspense></Guard>} />
         <Route path="/relatorios" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><Relatorios /></Suspense></Guard>} />
         <Route path="/configuracoes" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><Configuracoes /></Suspense></Guard>} />

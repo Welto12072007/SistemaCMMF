@@ -283,20 +283,41 @@ export default function Horarios() {
       if (!alunoMap.has(h.aluno_nome!)) alunoMap.set(h.aluno_nome!, [label])
       else alunoMap.get(h.aluno_nome!)!.push(label)
     }
-    // Lookup phones in alunos table
+    // Lookup phones — fetch all alunos with phones and do fuzzy name matching
+    // (horarios stores short names like "Graziela Gossler" but alunos has full names)
     const nomes = Array.from(alunoMap.keys())
     const { data: alunosRows } = await supabase
       .from('alunos')
       .select('nome, telefone')
-      .in('nome', nomes)
-    const phoneMap = new Map<string, string>()
-    for (const a of (alunosRows || [])) {
-      if (a.nome && a.telefone) phoneMap.set(a.nome, a.telefone)
+      .not('telefone', 'is', null)
+      .neq('telefone', '')
+
+    const normalize = (s: string) =>
+      s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+
+    const alunosList = (alunosRows || []).filter(a => a.nome && a.telefone)
+
+    const findPhone = (horarioName: string): string | null => {
+      const hn = normalize(horarioName)
+      const hWords = hn.split(/\s+/).filter(w => w.length > 2)
+      // 1. Exact normalized match
+      const exact = alunosList.find(a => normalize(a.nome) === hn)
+      if (exact) return exact.telefone
+      // 2. All significant words from horario name appear in aluno name
+      if (hWords.length > 0) {
+        const wordMatch = alunosList.find(a => {
+          const an = normalize(a.nome)
+          return hWords.every(w => an.includes(w))
+        })
+        if (wordMatch) return wordMatch.telefone
+      }
+      return null
     }
+
     const contatos = nomes.map(nome => ({
       nome,
-      telefone: phoneMap.get(nome) ?? null,
-      selected: !!phoneMap.get(nome),
+      telefone: findPhone(nome),
+      selected: !!findPhone(nome),
       slot: alunoMap.get(nome)!.join(', ')
     }))
     setDisparoContatos(contatos)
