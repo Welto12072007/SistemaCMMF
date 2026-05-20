@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Send,
   Plus,
+  Pencil,
 } from 'lucide-react'
 
 interface Professor {
@@ -73,10 +74,14 @@ export default function Horarios() {
   const [disparoOpen, setDisparoOpen] = useState(false)
   const [disparoContatos, setDisparoContatos] = useState<{
     nome: string
+    alunoId: string | null
     telefone: string | null
     selected: boolean
     slot: string
   }[]>([])
+  const [editingPhoneIdx, setEditingPhoneIdx] = useState<number | null>(null)
+  const [editingPhoneValue, setEditingPhoneValue] = useState('')
+  const [savingPhone, setSavingPhone] = useState(false)
   const [disparoMensagem, setDisparoMensagem] = useState('')
   const [disparoSending, setDisparoSending] = useState(false)
   const [disparoResultado, setDisparoResultado] = useState<{ enviados: number; erros: number } | null>(null)
@@ -283,47 +288,76 @@ export default function Horarios() {
       if (!alunoMap.has(h.aluno_nome!)) alunoMap.set(h.aluno_nome!, [label])
       else alunoMap.get(h.aluno_nome!)!.push(label)
     }
-    // Lookup phones — fetch all alunos with phones and do fuzzy name matching
+    // Lookup phones — fetch all alunos and do fuzzy name matching
     // (horarios stores short names like "Graziela Gossler" but alunos has full names)
     const nomes = Array.from(alunoMap.keys())
     const { data: alunosRows } = await supabase
       .from('alunos')
-      .select('nome, telefone')
-      .not('telefone', 'is', null)
-      .neq('telefone', '')
+      .select('id, nome, telefone')
 
     const normalize = (s: string) =>
       s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 
-    const alunosList = (alunosRows || []).filter(a => a.nome && a.telefone)
+    const alunosList = (alunosRows || []).filter(a => a.nome)
 
-    const findPhone = (horarioName: string): string | null => {
+    const findAluno = (horarioName: string): { telefone: string | null; id: string | null } => {
       const hn = normalize(horarioName)
       const hWords = hn.split(/\s+/).filter(w => w.length > 2)
       // 1. Exact normalized match
       const exact = alunosList.find(a => normalize(a.nome) === hn)
-      if (exact) return exact.telefone
+      if (exact) return { telefone: exact.telefone || null, id: exact.id }
       // 2. All significant words from horario name appear in aluno name
       if (hWords.length > 0) {
         const wordMatch = alunosList.find(a => {
           const an = normalize(a.nome)
           return hWords.every(w => an.includes(w))
         })
-        if (wordMatch) return wordMatch.telefone
+        if (wordMatch) return { telefone: wordMatch.telefone || null, id: wordMatch.id }
       }
-      return null
+      return { telefone: null, id: null }
     }
 
-    const contatos = nomes.map(nome => ({
-      nome,
-      telefone: findPhone(nome),
-      selected: !!findPhone(nome),
-      slot: alunoMap.get(nome)!.join(', ')
-    }))
+    const contatos = nomes.map(nome => {
+      const found = findAluno(nome)
+      return {
+        nome,
+        alunoId: found.id,
+        telefone: found.telefone,
+        selected: !!found.telefone,
+        slot: alunoMap.get(nome)!.join(', ')
+      }
+    })
     setDisparoContatos(contatos)
     setDisparoMensagem('')
     setDisparoResultado(null)
+    setEditingPhoneIdx(null)
+    setEditingPhoneValue('')
     setDisparoOpen(true)
+  }
+
+  const savePhone = async (idx: number) => {
+    const tel = editingPhoneValue.trim()
+    if (!tel) return
+    const contato = disparoContatos[idx]
+    if (!contato) return
+    setSavingPhone(true)
+    if (contato.alunoId) {
+      const { error } = await supabase
+        .from('alunos')
+        .update({ telefone: tel })
+        .eq('id', contato.alunoId)
+      if (error) {
+        alert('Erro ao salvar telefone:\n' + error.message)
+        setSavingPhone(false)
+        return
+      }
+    }
+    setDisparoContatos(prev =>
+      prev.map((c, i) => i === idx ? { ...c, telefone: tel, selected: true } : c)
+    )
+    setEditingPhoneIdx(null)
+    setEditingPhoneValue('')
+    setSavingPhone(false)
   }
 
   const sendDisparo = async () => {
@@ -684,7 +718,7 @@ export default function Horarios() {
                     <label
                       key={i}
                       className={`flex items-center gap-3 p-2 rounded-lg border transition-colors ${
-                        c.telefone ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                        c.telefone ? 'cursor-pointer' : 'cursor-default'
                       } ${
                         c.selected && c.telefone
                           ? 'border-violet-200 bg-violet-50'
@@ -707,10 +741,43 @@ export default function Horarios() {
                         <p className="text-xs text-gray-400 truncate">{c.slot}</p>
                       </div>
                       <div className="text-right shrink-0">
-                        {c.telefone
-                          ? <span className="text-xs text-gray-500 font-mono">{c.telefone}</span>
-                          : <span className="text-xs text-amber-500">Sem telefone</span>
-                        }
+                        {c.telefone ? (
+                          <span className="text-xs text-gray-500 font-mono">{c.telefone}</span>
+                        ) : editingPhoneIdx === i ? (
+                          <div className="flex items-center gap-1" onClick={e => e.preventDefault()}>
+                            <input
+                              autoFocus
+                              type="tel"
+                              value={editingPhoneValue}
+                              onChange={e => setEditingPhoneValue(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') savePhone(i); if (e.key === 'Escape') { setEditingPhoneIdx(null); setEditingPhoneValue('') } }}
+                              placeholder="5555999990000"
+                              className="w-36 border border-violet-300 rounded px-2 py-0.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-400"
+                            />
+                            <button
+                              onClick={() => savePhone(i)}
+                              disabled={savingPhone || !editingPhoneValue.trim()}
+                              className="text-xs px-2 py-0.5 bg-violet-600 text-white rounded hover:bg-violet-700 disabled:opacity-50"
+                            >
+                              {savingPhone ? '...' : 'OK'}
+                            </button>
+                            <button
+                              onClick={() => { setEditingPhoneIdx(null); setEditingPhoneValue('') }}
+                              className="text-gray-400 hover:text-gray-600"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={e => { e.preventDefault(); setEditingPhoneIdx(i); setEditingPhoneValue('') }}
+                            className="flex items-center gap-1 text-xs text-amber-500 hover:text-amber-700"
+                            title="Adicionar telefone"
+                          >
+                            <span>Sem telefone</span>
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
                     </label>
                   ))}
