@@ -184,7 +184,7 @@ export default function CRMFunil() {
       if (!ETAPAS_FUNIL.includes(c.etapa_funil)) return false
       if (busca) {
         const q = busca.toLowerCase()
-        if (!c.nome.toLowerCase().includes(q)
+        if (!(c.nome ?? '').toLowerCase().includes(q)
           && !(c.telefone ?? '').includes(q)
           && !(c.instrumento_interesse ?? '').toLowerCase().includes(q)) return false
       }
