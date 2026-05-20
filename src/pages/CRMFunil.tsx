@@ -4,6 +4,7 @@ import {
   TrendingUp, RefreshCw, Search, Filter, Phone, Flame,
   CheckCircle2, Clock, AlertCircle, X, ExternalLink,
   ChevronRight, BarChart3, Trophy, ChevronLeft, PhoneForwarded, Edit2,
+  BotOff, Bot,
 } from 'lucide-react'
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ interface FunilContato {
   exp_concluidas: number
   score_temperatura: number
   followup_pendente: boolean
+  chatbot_pausado?: boolean
   data_ultima_interacao?: string
   data_primeiro_contato?: string
   data_lead_novo_at?: string
@@ -291,6 +293,16 @@ export default function CRMFunil() {
     window.open(`https://wa.me/${num}`, '_blank')
   }
 
+  async function togglePausarAntonia(c: FunilContato) {
+    if (!c.telefone) return
+    await supabase.rpc('toggle_sofia_pausada', {
+      p_telefone: c.telefone,
+      p_pausada: !c.chatbot_pausado,
+      p_motivo: 'pausa_manual',
+    })
+    load()
+  }
+
   // ─── render ───────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -418,6 +430,7 @@ export default function CRMFunil() {
                     <th className="px-3 py-2 text-left font-medium">Instrumento</th>
                     <th className="px-3 py-2 text-left font-medium">Na etapa desde</th>
                     <th className="px-3 py-2 text-left font-medium">Professor</th>
+                    <th className="px-3 py-2 text-center font-medium">Bot</th>
                     <th className="px-3 py-2 text-center font-medium">Ações</th>
                   </tr>
                 </thead>
@@ -425,7 +438,7 @@ export default function CRMFunil() {
                   {filtrados.slice(0, 200).map(c => {
                     const etapa = ETAPAS.find(e => e.key === c.etapa_funil)
                     return (
-                      <tr key={c.id} className="hover:bg-gray-50">
+                      <tr key={c.id} className={`hover:bg-gray-50 ${c.chatbot_pausado ? 'bg-orange-50' : ''}`}>
                         <td className="px-3 py-2">
                           <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${corScore(c.score_temperatura)}`}>
                             {c.score_temperatura}
@@ -453,6 +466,21 @@ export default function CRMFunil() {
                           })()}
                         </td>
                         <td className="px-3 py-2 text-gray-600 text-xs">{c.exp_professor_nome ?? '—'}</td>
+                        <td className="px-3 py-2 text-center">
+                          {c.telefone && (
+                            <button
+                              onClick={() => togglePausarAntonia(c)}
+                              title={c.chatbot_pausado ? 'Retomar Antonia' : 'Pausar Antonia'}
+                              className={`p-1.5 rounded transition-colors ${
+                                c.chatbot_pausado
+                                  ? 'text-orange-600 bg-orange-100 hover:bg-orange-200'
+                                  : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                              }`}
+                            >
+                              {c.chatbot_pausado ? <BotOff className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
+                            </button>
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           <div className="flex justify-center gap-1">
                             {c.telefone && (
