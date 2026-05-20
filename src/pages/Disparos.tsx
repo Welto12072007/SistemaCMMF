@@ -29,22 +29,20 @@ interface Destinatario {
   selected: boolean
 }
 
-type Grupo =
+type GrupoBase =
   | 'todos'
   | 'alunos_ativos'
   | 'ex_alunos'
   | 'leads'
   | 'aguardando_pagamento'
-  | 'instrumento'
   | `segmento:${string}`
 
-const GRUPOS: { key: Grupo; label: string; desc: string }[] = [
+const GRUPOS: { key: GrupoBase; label: string; desc: string }[] = [
   { key: 'todos', label: 'Todos os contatos', desc: 'Enviar para toda a base' },
   { key: 'alunos_ativos', label: 'Alunos ativos', desc: 'Matriculados com plano ativo' },
   { key: 'ex_alunos', label: 'Ex-alunos', desc: 'Status concluido ou perdido' },
   { key: 'leads', label: 'Leads novos', desc: 'Leads que ainda não agendaram' },
   { key: 'aguardando_pagamento', label: 'Aguardando pagamento', desc: 'Experimental agendada, sem pagar' },
-  { key: 'instrumento', label: 'Por instrumento', desc: 'Filtrar por instrumento de interesse' },
 ]
 
 const INSTRUMENTOS = [
@@ -63,8 +61,8 @@ const INSTRUMENTOS = [
 export default function Disparos() {
   const [contatos, setContatos] = useState<Destinatario[]>([])
   const [segmentos, setSegmentos] = useState<CRMSegmento[]>([])
-  const [grupoAtivo, setGrupoAtivo] = useState<Grupo | string>('todos')
-  const [instrumentoFiltro, setInstrumentoFiltro] = useState('')
+  const [grupoBase, setGrupoBase] = useState<GrupoBase>('alunos_ativos')
+  const [instrumentosSelecionados, setInstrumentosSelecionados] = useState<string[]>([])
   const [busca, setBusca] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [enviando, setEnviando] = useState(false)
@@ -194,54 +192,44 @@ export default function Disparos() {
   const filtrados = useMemo(() => {
     let lista = contatos
 
-    if (typeof grupoAtivo === 'string' && grupoAtivo.startsWith('segmento:')) {
-      const segmentoId = grupoAtivo.replace('segmento:', '')
+    if (typeof grupoBase === 'string' && grupoBase.startsWith('segmento:')) {
+      const segmentoId = grupoBase.replace('segmento:', '')
       const segmento = segmentos.find((s) => s.id === segmentoId)
-
       if (segmento) {
-        if (segmento.grupoBase === 'alunos_ativos') {
-          lista = lista.filter((c) => c.status === 'ativo' || c.label === 'Aluno CMMF')
-        }
-        if (segmento.grupoBase === 'ex_alunos') {
-          lista = lista.filter((c) => ['perdido', 'cancelado', 'concluido'].includes(c.status || '') || c.label === 'Ex aluno')
-        }
-        if (segmento.grupoBase === 'leads') {
-          lista = lista.filter((c) => c.status === 'lead')
-        }
-        if (segmento.instrumento) {
-          lista = lista.filter((c) => c.instrumento_interesse?.toLowerCase().includes(segmento.instrumento.toLowerCase()))
-        }
-        if (segmento.apenasComTelefone) {
-          lista = lista.filter((c) => {
-            const tel = (c.telefone || '').replace(/\D/g, '')
-            return tel.length >= 10
-          })
-        }
+        if (segmento.grupoBase === 'alunos_ativos') lista = lista.filter((c) => c.status === 'ativo')
+        if (segmento.grupoBase === 'ex_alunos') lista = lista.filter((c) => ['perdido', 'cancelado', 'concluido'].includes(c.status || ''))
+        if (segmento.grupoBase === 'leads') lista = lista.filter((c) => c.status === 'lead')
+        if (segmento.instrumento) lista = lista.filter((c) => c.instrumento_interesse?.toLowerCase().includes(segmento.instrumento.toLowerCase()))
+        if (segmento.apenasComTelefone) lista = lista.filter((c) => (c.telefone || '').replace(/\D/g, '').length >= 10)
       }
     } else {
+      switch (grupoBase) {
+        case 'alunos_ativos':
+          lista = lista.filter((c) => c.status === 'ativo')
+          break
+        case 'ex_alunos':
+          lista = lista.filter((c) => ['perdido', 'cancelado', 'concluido'].includes(c.status || ''))
+          break
+        case 'leads':
+          lista = lista.filter((c) => c.status === 'lead')
+          break
+        case 'aguardando_pagamento':
+          lista = lista.filter((c) => c.status === 'agendado')
+          break
+      }
+    }
 
-    switch (grupoAtivo as Grupo) {
-      case 'alunos_ativos':
-        lista = lista.filter((c) => c.status === 'ativo' || c.label === 'Aluno CMMF')
-        break
-      case 'ex_alunos':
-        lista = lista.filter((c) => ['perdido', 'cancelado', 'concluido'].includes(c.status || '') || c.label === 'Ex aluno')
-        break
-      case 'leads':
-        lista = lista.filter((c) => c.status === 'lead')
-        break
-      case 'aguardando_pagamento':
-        lista = lista.filter((c) => c.status === 'agendado')
-        break
-      case 'instrumento':
-        if (instrumentoFiltro) {
-          lista = lista.filter((c) =>
-            c.instrumento_interesse?.toLowerCase().includes(instrumentoFiltro.toLowerCase())
-          )
-        }
-        break
+    // Instrument multi-filter (applied on top of group)
+    if (instrumentosSelecionados.length > 0) {
+      lista = lista.filter((c) =>
+        instrumentosSelecionados.some((inst) =>
+          c.instrumento_interesse?.toLowerCase().includes(inst.toLowerCase())
+        )
+      )
     }
-    }
+
+    // Only include contacts with valid phone
+    lista = lista.filter((c) => (c.telefone || '').replace(/\D/g, '').length >= 10)
 
     if (busca) {
       const term = busca.toLowerCase()
@@ -251,7 +239,7 @@ export default function Disparos() {
     }
 
     return lista
-  }, [contatos, segmentos, grupoAtivo, instrumentoFiltro, busca])
+  }, [contatos, segmentos, grupoBase, instrumentosSelecionados, busca])
 
   const selecionados = contatos.filter((c) => c.selected)
 
@@ -372,12 +360,9 @@ export default function Disparos() {
               {GRUPOS.map((g) => (
                 <button
                   key={g.key}
-                  onClick={() => {
-                    setGrupoAtivo(g.key)
-                    if (g.key !== 'instrumento') setInstrumentoFiltro('')
-                  }}
+                  onClick={() => setGrupoBase(g.key)}
                   className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                    grupoAtivo === g.key
+                    grupoBase === g.key
                       ? 'bg-brand-500 text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
@@ -389,12 +374,9 @@ export default function Disparos() {
               {segmentos.map((s) => (
                 <button
                   key={s.id}
-                  onClick={() => {
-                    setGrupoAtivo(`segmento:${s.id}`)
-                    setInstrumentoFiltro('')
-                  }}
+                  onClick={() => setGrupoBase(`segmento:${s.id}`)}
                   className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                    grupoAtivo === `segmento:${s.id}`
+                    grupoBase === `segmento:${s.id}`
                       ? 'bg-brand-500 text-white'
                       : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
                   }`}
@@ -405,23 +387,37 @@ export default function Disparos() {
               ))}
             </div>
 
-            {grupoAtivo === 'instrumento' && (
-              <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
-                {INSTRUMENTOS.map((inst) => (
+            <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
+              <span className="text-xs text-gray-500 self-center mr-1">Instrumento:</span>
+              {INSTRUMENTOS.map((inst) => {
+                const ativo = instrumentosSelecionados.includes(inst)
+                return (
                   <button
                     key={inst}
-                    onClick={() => setInstrumentoFiltro(inst)}
+                    onClick={() =>
+                      setInstrumentosSelecionados((prev) =>
+                        ativo ? prev.filter((i) => i !== inst) : [...prev, inst]
+                      )
+                    }
                     className={`px-2.5 py-1 rounded-full text-xs transition-colors ${
-                      instrumentoFiltro === inst
+                      ativo
                         ? 'bg-brand-500 text-white'
                         : 'bg-brand-50 text-brand-700 hover:bg-brand-100'
                     }`}
                   >
                     {inst}
                   </button>
-                ))}
-              </div>
-            )}
+                )
+              })}
+              {instrumentosSelecionados.length > 0 && (
+                <button
+                  onClick={() => setInstrumentosSelecionados([])}
+                  className="px-2.5 py-1 rounded-full text-xs bg-red-50 text-red-500 hover:bg-red-100"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Search + Select All */}
