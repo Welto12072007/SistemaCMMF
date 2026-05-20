@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List, RefreshCw, Download, Pencil } from 'lucide-react'
+import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List, RefreshCw, Download, Pencil, Trash2 } from 'lucide-react'
 import type { AulaExperimental, Professor } from '@/types'
 import ExperimentaisSemana from './ExperimentaisSemana'
 
@@ -31,6 +31,7 @@ export default function AulasExperimentais() {
   const [novoProfId, setNovoProfId] = useState('')
   const [salvandoProf, setSalvandoProf] = useState(false)
   const [editarAula, setEditarAula] = useState<AulaExperimental | null>(null)
+  const [confirmarExcluirId, setConfirmarExcluirId] = useState<string | null>(null)
 
   useEffect(() => {
     loadAulas()
@@ -66,6 +67,12 @@ export default function AulasExperimentais() {
 
   async function remarcar(id: string) {
     await supabase.from('aulas_experimentais').update({ status: 'remarcada' }).eq('id', id)
+    loadAulas()
+  }
+
+  async function excluirAula(id: string) {
+    await supabase.from('aulas_experimentais').delete().eq('id', id)
+    setConfirmarExcluirId(null)
     loadAulas()
   }
 
@@ -292,6 +299,20 @@ export default function AulasExperimentais() {
               >
                 <Pencil className="w-3.5 h-3.5" /> Editar
               </button>
+              {confirmarExcluirId === a.id ? (
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-red-600">Confirmar exclusão?</span>
+                  <button onClick={() => excluirAula(a.id)} className="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700">Sim</button>
+                  <button onClick={() => setConfirmarExcluirId(null)} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">Não</button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmarExcluirId(a.id)}
+                  className="text-xs px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Excluir
+                </button>
+              )}
               {['agendada', 'confirmada'].includes(a.status?.toLowerCase()) && (
                 <>
                   <button
