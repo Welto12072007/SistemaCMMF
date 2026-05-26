@@ -29,6 +29,7 @@ interface Horario {
   hora_inicio: string
   status: string
   aluno_nome: string | null
+  tipo?: string
 }
 
 type Status = 'disponivel' | 'ocupado' | 'indisponivel'
@@ -60,6 +61,7 @@ export default function Horarios() {
   const [filtroProf, setFiltroProf] = useState<string>('todos')
   const [editCell, setEditCell] = useState<Horario | null>(null)
   const [editStatus, setEditStatus] = useState<Status>('disponivel')
+  const [editTipo, setEditTipo] = useState<'individual' | 'grupo'>('individual')
   const [editAluno, setEditAluno] = useState('')
   const [saving, setSaving] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -67,6 +69,7 @@ export default function Horarios() {
   const [novoDia, setNovoDia] = useState('Segunda')
   const [novaHora, setNovaHora] = useState('08:00')
   const [novoStatus, setNovoStatus] = useState<Status>('disponivel')
+  const [novoTipo, setNovoTipo] = useState<'individual' | 'grupo'>('individual')
   const [novoAluno, setNovoAluno] = useState('')
   const [novoSaving, setNovoSaving] = useState(false)
   const [bulkSaving, setBulkSaving] = useState(false)
@@ -123,6 +126,7 @@ export default function Horarios() {
       dia_semana: novoDia,
       hora_inicio: novaHora + ':00',
       status: novoStatus,
+      tipo: novoTipo,
       aluno_nome: aluno,
     }).select().single()
     if (error) {
@@ -173,6 +177,7 @@ export default function Horarios() {
     setEditCell(h)
     setEditStatus(h.status as Status)
     setEditAluno(h.aluno_nome || '')
+    setEditTipo((h.tipo as 'individual' | 'grupo') || 'individual')
   }
 
   // Multi-select: toggle cell with Shift support for range
@@ -280,13 +285,17 @@ export default function Horarios() {
       alert('Nenhum horário com aluno selecionado. Selecione horários ocupados para enviar disparo.')
       return
     }
-    // Aggregate alunos → their slots
+    // Aggregate alunos → their slots (expand group slots into individual names)
     const alunoMap = new Map<string, string[]>()
     for (const h of occupiedSelected) {
       const prof = professores.find(p => p.id === h.professor_id)
       const label = `${prof?.nome.split(' ')[0] || ''} - ${h.dia_semana} ${h.hora_inicio.slice(0, 5)}`
-      if (!alunoMap.has(h.aluno_nome!)) alunoMap.set(h.aluno_nome!, [label])
-      else alunoMap.get(h.aluno_nome!)!.push(label)
+      // For group slots, split by newline; for individual, single name
+      const nomes = (h.aluno_nome || '').split('\n').map(n => n.trim()).filter(Boolean)
+      for (const nome of nomes) {
+        if (!alunoMap.has(nome)) alunoMap.set(nome, [label])
+        else alunoMap.get(nome)!.push(label)
+      }
     }
     // Lookup phones — fetch all alunos and do fuzzy name matching
     // (horarios stores short names like "Graziela Gossler" but alunos has full names)
@@ -391,12 +400,13 @@ export default function Horarios() {
 
     await supabase.from('horarios').update({
       status: editStatus,
+      tipo: editTipo,
       aluno_nome: aluno,
     }).eq('id', editCell.id)
 
     // Update local state
     setHorarios(prev => prev.map(h =>
-      h.id === editCell.id ? { ...h, status: editStatus, aluno_nome: aluno } : h
+      h.id === editCell.id ? { ...h, status: editStatus, tipo: editTipo, aluno_nome: aluno } : h
     ))
     setSaving(false)
     setEditCell(null)
@@ -517,6 +527,7 @@ export default function Horarios() {
                       setNovoDia('Segunda')
                       setNovaHora('08:00')
                       setNovoStatus('disponivel')
+                      setNovoTipo('individual')
                       setNovoAluno('')
                     }}
                     className="flex items-center gap-1 bg-brand-500 hover:bg-brand-600 text-white px-2 py-0.5 rounded-lg text-xs font-medium transition-colors"
@@ -565,6 +576,17 @@ export default function Horarios() {
                           }
                           const st = cell.status as Status
                           const isSelected = selected.has(cell.id)
+                          const isGrupo = cell.tipo === 'grupo'
+                          const grupoCount = isGrupo
+                            ? cell.aluno_nome?.split('\n').filter(Boolean).length ?? 0
+                            : 0
+                          const cellStyle = isSelected
+                            ? isGrupo
+                              ? 'bg-purple-200 border-purple-500 text-purple-900 ring-2 ring-purple-400'
+                              : STATUS_STYLES_SELECTED[st]
+                            : isGrupo
+                              ? 'bg-purple-100 border-purple-300 text-purple-800 hover:opacity-75'
+                              : STATUS_STYLES[st] + ' hover:opacity-75'
                           return (
                             <td key={dia} className="px-0.5 py-0.5 border-r border-gray-100">
                               <button
@@ -582,11 +604,11 @@ export default function Horarios() {
                                   }
                                   openEdit(cell)
                                 }}
-                                className={`w-full h-7 px-1 rounded border text-[11px] font-medium truncate transition-all cursor-pointer select-none ${
-                                  isSelected ? STATUS_STYLES_SELECTED[st] : STATUS_STYLES[st] + ' hover:opacity-75'
-                                }`}
+                                className={`w-full h-7 px-1 rounded border text-[11px] font-medium truncate transition-all cursor-pointer select-none ${cellStyle}`}
                                 title={
-                                  st === 'ocupado'
+                                  isGrupo
+                                    ? `Grupo: ${cell.aluno_nome?.replace(/\n/g, ', ') || 'sem alunos'} — clique para selecionar, duplo-clique para editar`
+                                    : st === 'ocupado'
                                     ? `${cell.aluno_nome || 'Ocupado'} — clique para selecionar, duplo-clique para editar`
                                     : st === 'indisponivel'
                                     ? 'Indisponível — clique para selecionar'
@@ -594,7 +616,9 @@ export default function Horarios() {
                                 }
                               >
                                 {isSelected && <Check className="w-3 h-3 inline mr-0.5" />}
-                                {st === 'ocupado'
+                                {isGrupo
+                                  ? `Grupo (${grupoCount})`
+                                  : st === 'ocupado'
                                   ? cell.aluno_nome || 'Ocupado'
                                   : st === 'indisponivel'
                                   ? ''
@@ -878,17 +902,66 @@ export default function Horarios() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Nome do Aluno</label>
-                <input
-                  value={editAluno}
-                  onChange={e => {
-                    setEditAluno(e.target.value)
-                    if (e.target.value.trim()) setEditStatus('ocupado')
-                  }}
-                  placeholder="Nome do aluno (deixe vazio se disponível)"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                  autoFocus
-                />
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Tipo de Aula</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditTipo('individual')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-medium border-2 transition-colors ${
+                      editTipo === 'individual'
+                        ? 'border-brand-500 bg-brand-50 text-brand-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    Individual
+                  </button>
+                  <button
+                    onClick={() => setEditTipo('grupo')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-medium border-2 transition-colors ${
+                      editTipo === 'grupo'
+                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    Grupo
+                  </button>
+                </div>
+              </div>
+              <div>
+                {editTipo === 'individual' ? (
+                  <>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Nome do Aluno</label>
+                    <input
+                      value={editAluno}
+                      onChange={e => {
+                        setEditAluno(e.target.value)
+                        if (e.target.value.trim()) setEditStatus('ocupado')
+                      }}
+                      placeholder="Nome do aluno (deixe vazio se disponível)"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                      autoFocus
+                    />
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Alunos do Grupo <span className="text-gray-400 font-normal">(um por linha)</span>
+                    </label>
+                    <textarea
+                      value={editAluno}
+                      onChange={e => {
+                        setEditAluno(e.target.value)
+                        if (e.target.value.trim()) setEditStatus('ocupado')
+                      }}
+                      placeholder={`João Silva\nMaria Santos\nPedro Costa`}
+                      rows={4}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                      autoFocus
+                    />
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {editAluno.split('\n').filter(n => n.trim()).length} aluno(s) no grupo
+                    </p>
+                  </>
+                )}
               </div>
             </div>
             <div className="flex items-center justify-between gap-2 px-5 py-3 border-t bg-gray-50 rounded-b-xl">
@@ -977,16 +1050,64 @@ export default function Horarios() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Nome do Aluno</label>
-                <input
-                  value={novoAluno}
-                  onChange={e => {
-                    setNovoAluno(e.target.value)
-                    if (e.target.value.trim()) setNovoStatus('ocupado')
-                  }}
-                  placeholder="Nome do aluno (deixe vazio se disponível)"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                />
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Tipo de Aula</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setNovoTipo('individual')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-medium border-2 transition-colors ${
+                      novoTipo === 'individual'
+                        ? 'border-brand-500 bg-brand-50 text-brand-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    Individual
+                  </button>
+                  <button
+                    onClick={() => setNovoTipo('grupo')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-medium border-2 transition-colors ${
+                      novoTipo === 'grupo'
+                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    Grupo
+                  </button>
+                </div>
+              </div>
+              <div>
+                {novoTipo === 'individual' ? (
+                  <>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Nome do Aluno</label>
+                    <input
+                      value={novoAluno}
+                      onChange={e => {
+                        setNovoAluno(e.target.value)
+                        if (e.target.value.trim()) setNovoStatus('ocupado')
+                      }}
+                      placeholder="Nome do aluno (deixe vazio se disponível)"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Alunos do Grupo <span className="text-gray-400 font-normal">(um por linha)</span>
+                    </label>
+                    <textarea
+                      value={novoAluno}
+                      onChange={e => {
+                        setNovoAluno(e.target.value)
+                        if (e.target.value.trim()) setNovoStatus('ocupado')
+                      }}
+                      placeholder={`João Silva\nMaria Santos\nPedro Costa`}
+                      rows={4}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                    />
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {novoAluno.split('\n').filter(n => n.trim()).length} aluno(s) no grupo
+                    </p>
+                  </>
+                )}
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t bg-gray-50 rounded-b-xl">
