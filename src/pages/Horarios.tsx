@@ -22,6 +22,13 @@ interface Professor {
   ativo?: boolean
 }
 
+interface Aluno {
+  id: string
+  nome: string
+  telefone: string | null
+  modalidade_preferida?: string | null
+}
+
 interface Horario {
   id: string
   professor_id: string
@@ -30,6 +37,8 @@ interface Horario {
   status: string
   aluno_nome: string | null
   tipo?: string
+  aluno_ids?: string[] | null
+  capacidade?: number | null
 }
 
 type Status = 'disponivel' | 'ocupado' | 'indisponivel'
@@ -59,10 +68,14 @@ export default function Horarios() {
   const [professores, setProfessores] = useState<Professor[]>([])
   const [loading, setLoading] = useState(true)
   const [filtroProf, setFiltroProf] = useState<string>('todos')
+  const [alunos, setAlunos] = useState<Aluno[]>([])
   const [editCell, setEditCell] = useState<Horario | null>(null)
   const [editStatus, setEditStatus] = useState<Status>('disponivel')
   const [editTipo, setEditTipo] = useState<'individual' | 'grupo'>('individual')
-  const [editAluno, setEditAluno] = useState('')
+  const [editAlunoIds, setEditAlunoIds] = useState<string[]>([])
+  const [editAlunoSearch, setEditAlunoSearch] = useState('')
+  const [editShowSearch, setEditShowSearch] = useState(false)
+  const [editCapacidade, setEditCapacidade] = useState(1)
   const [saving, setSaving] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [novoHorario, setNovoHorario] = useState<{ profId: string } | null>(null)
@@ -70,7 +83,10 @@ export default function Horarios() {
   const [novaHora, setNovaHora] = useState('08:00')
   const [novoStatus, setNovoStatus] = useState<Status>('disponivel')
   const [novoTipo, setNovoTipo] = useState<'individual' | 'grupo'>('individual')
-  const [novoAluno, setNovoAluno] = useState('')
+  const [novoAlunoIds, setNovoAlunoIds] = useState<string[]>([])
+  const [novoAlunoSearch, setNovoAlunoSearch] = useState('')
+  const [novoShowSearch, setNovoShowSearch] = useState(false)
+  const [novoCapacidade, setNovoCapacidade] = useState(1)
   const [novoSaving, setNovoSaving] = useState(false)
   const [bulkSaving, setBulkSaving] = useState(false)
   const [lastClicked, setLastClicked] = useState<string | null>(null)
@@ -94,12 +110,14 @@ export default function Horarios() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [{ data: profs }, { data: hrs }] = await Promise.all([
+    const [{ data: profs }, { data: hrs }, { data: als }] = await Promise.all([
       supabase.from('professores').select('*').eq('ativo', true).order('nome'),
       supabase.from('horarios').select('*').order('hora_inicio'),
+      supabase.from('alunos').select('id, nome, telefone, modalidade_preferida').in('status', ['ativo', 'aluno']).order('nome'),
     ])
     setProfessores(profs || [])
     setHorarios(hrs || [])
+    setAlunos((als || []).filter(a => a.nome))
     setLoading(false)
   }, [])
 
@@ -120,14 +138,28 @@ export default function Horarios() {
   const handleSaveNovo = async () => {
     if (!novoHorario) return
     setNovoSaving(true)
-    const aluno = novoStatus === 'ocupado' ? (novoAluno.trim() || null) : null
+    let alunoNome: string | null = null
+    let alunoIds: string[] | null = null
+    if (novoStatus === 'ocupado') {
+      if (novoAlunoIds.length > 0) {
+        alunoNome = novoAlunoIds
+          .map(id => alunos.find(a => a.id === id)?.nome || '')
+          .filter(Boolean)
+          .join('\n')
+        alunoIds = novoAlunoIds
+      } else if (novoAlunoSearch.trim()) {
+        alunoNome = novoAlunoSearch.trim()
+      }
+    }
     const { data, error } = await supabase.from('horarios').insert({
       professor_id: novoHorario.profId,
       dia_semana: novoDia,
       hora_inicio: novaHora + ':00',
       status: novoStatus,
       tipo: novoTipo,
-      aluno_nome: aluno,
+      aluno_nome: alunoNome,
+      aluno_ids: alunoIds,
+      capacidade: novoTipo === 'grupo' ? novoCapacidade : 1,
     }).select().single()
     if (error) {
       alert('Erro ao criar horário: ' + error.message)
@@ -176,8 +208,17 @@ export default function Horarios() {
   const openEdit = (h: Horario) => {
     setEditCell(h)
     setEditStatus(h.status as Status)
-    setEditAluno(h.aluno_nome || '')
     setEditTipo((h.tipo as 'individual' | 'grupo') || 'individual')
+    setEditAlunoIds(h.aluno_ids || [])
+    setEditCapacidade(h.capacidade || (h.tipo === 'grupo' ? 4 : 1))
+    // Pre-fill search for individual (for display)
+    if ((h.aluno_ids || []).length === 1) {
+      // Will be populated from alunos list after render
+      setEditAlunoSearch('')
+    } else {
+      setEditAlunoSearch('')
+    }
+    setEditShowSearch(false)
   }
 
   // Multi-select: toggle cell with Shift support for range
@@ -279,63 +320,54 @@ export default function Horarios() {
 
   const openDisparo = async () => {
     const occupiedSelected = horarios.filter(
-      h => selected.has(h.id) && h.status === 'ocupado' && h.aluno_nome
+      h => selected.has(h.id) && h.status === 'ocupado' && (h.aluno_ids?.length || h.aluno_nome)
     )
     if (occupiedSelected.length === 0) {
       alert('Nenhum horário com aluno selecionado. Selecione horários ocupados para enviar disparo.')
       return
     }
-    // Aggregate alunos → their slots (expand group slots into individual names)
-    const alunoMap = new Map<string, string[]>()
+    // Aggregate: aluno nome -> { id, telefone, slots[] }
+    const alunoMap = new Map<string, { id: string | null; telefone: string | null; slots: string[] }>()
+
     for (const h of occupiedSelected) {
       const prof = professores.find(p => p.id === h.professor_id)
       const label = `${prof?.nome.split(' ')[0] || ''} - ${h.dia_semana} ${h.hora_inicio.slice(0, 5)}`
-      // For group slots, split by newline; for individual, single name
-      const nomes = (h.aluno_nome || '').split('\n').map(n => n.trim()).filter(Boolean)
-      for (const nome of nomes) {
-        if (!alunoMap.has(nome)) alunoMap.set(nome, [label])
-        else alunoMap.get(nome)!.push(label)
+
+      if (h.aluno_ids && h.aluno_ids.length > 0) {
+        // Direct ID lookup — no fuzzy matching needed
+        for (const alunoId of h.aluno_ids) {
+          const aluno = alunos.find(a => a.id === alunoId)
+          if (!aluno) continue
+          const nome = aluno.nome
+          if (!alunoMap.has(nome)) alunoMap.set(nome, { id: alunoId, telefone: aluno.telefone || null, slots: [label] })
+          else alunoMap.get(nome)!.slots.push(label)
+        }
+      } else {
+        // Fallback: split aluno_nome by \n + fuzzy match
+        const nomes = (h.aluno_nome || '').split('\n').map(n => n.trim()).filter(Boolean)
+        const normalize = (s: string) =>
+          s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+        for (const nome of nomes) {
+          const hn = normalize(nome)
+          const hWords = hn.split(/\s+/).filter(w => w.length > 2)
+          const exact = alunos.find(a => normalize(a.nome) === hn)
+          const wordMatch = !exact && hWords.length > 0
+            ? alunos.find(a => { const an = normalize(a.nome); return hWords.every(w => an.includes(w)) })
+            : null
+          const found = exact || wordMatch
+          if (!alunoMap.has(nome)) alunoMap.set(nome, { id: found?.id || null, telefone: found?.telefone || null, slots: [label] })
+          else alunoMap.get(nome)!.slots.push(label)
+        }
       }
     }
-    // Lookup phones — fetch all alunos and do fuzzy name matching
-    // (horarios stores short names like "Graziela Gossler" but alunos has full names)
-    const nomes = Array.from(alunoMap.keys())
-    const { data: alunosRows } = await supabase
-      .from('alunos')
-      .select('id, nome, telefone')
 
-    const normalize = (s: string) =>
-      s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
-
-    const alunosList = (alunosRows || []).filter(a => a.nome)
-
-    const findAluno = (horarioName: string): { telefone: string | null; id: string | null } => {
-      const hn = normalize(horarioName)
-      const hWords = hn.split(/\s+/).filter(w => w.length > 2)
-      // 1. Exact normalized match
-      const exact = alunosList.find(a => normalize(a.nome) === hn)
-      if (exact) return { telefone: exact.telefone || null, id: exact.id }
-      // 2. All significant words from horario name appear in aluno name
-      if (hWords.length > 0) {
-        const wordMatch = alunosList.find(a => {
-          const an = normalize(a.nome)
-          return hWords.every(w => an.includes(w))
-        })
-        if (wordMatch) return { telefone: wordMatch.telefone || null, id: wordMatch.id }
-      }
-      return { telefone: null, id: null }
-    }
-
-    const contatos = nomes.map(nome => {
-      const found = findAluno(nome)
-      return {
-        nome,
-        alunoId: found.id,
-        telefone: found.telefone,
-        selected: !!found.telefone,
-        slot: alunoMap.get(nome)!.join(', ')
-      }
-    })
+    const contatos = Array.from(alunoMap.entries()).map(([nome, info]) => ({
+      nome,
+      alunoId: info.id,
+      telefone: info.telefone,
+      selected: !!info.telefone,
+      slot: info.slots.join(', ')
+    }))
     setDisparoContatos(contatos)
     setDisparoMensagem('')
     setDisparoResultado(null)
@@ -396,17 +428,37 @@ export default function Horarios() {
   const handleSave = async () => {
     if (!editCell) return
     setSaving(true)
-    const aluno = editStatus === 'ocupado' ? (editAluno.trim() || null) : null
+    let alunoNome: string | null = null
+    let alunoIds: string[] | null = null
+    if (editStatus === 'ocupado') {
+      if (editAlunoIds.length > 0) {
+        alunoNome = editAlunoIds
+          .map(id => alunos.find(a => a.id === id)?.nome || '')
+          .filter(Boolean)
+          .join('\n')
+        alunoIds = editAlunoIds
+      } else if (editAlunoSearch.trim()) {
+        alunoNome = editAlunoSearch.trim()
+      } else if (editCell.aluno_nome) {
+        // Keep existing nome if nothing changed
+        alunoNome = editCell.aluno_nome
+        alunoIds = editCell.aluno_ids || null
+      }
+    }
 
     await supabase.from('horarios').update({
       status: editStatus,
       tipo: editTipo,
-      aluno_nome: aluno,
+      aluno_nome: alunoNome,
+      aluno_ids: alunoIds,
+      capacidade: editTipo === 'grupo' ? editCapacidade : 1,
     }).eq('id', editCell.id)
 
     // Update local state
     setHorarios(prev => prev.map(h =>
-      h.id === editCell.id ? { ...h, status: editStatus, tipo: editTipo, aluno_nome: aluno } : h
+      h.id === editCell.id
+        ? { ...h, status: editStatus, tipo: editTipo, aluno_nome: alunoNome, aluno_ids: alunoIds, capacidade: editTipo === 'grupo' ? editCapacidade : 1 }
+        : h
     ))
     setSaving(false)
     setEditCell(null)
@@ -528,7 +580,10 @@ export default function Horarios() {
                       setNovaHora('08:00')
                       setNovoStatus('disponivel')
                       setNovoTipo('individual')
-                      setNovoAluno('')
+                      setNovoAlunoIds([])
+                      setNovoAlunoSearch('')
+                      setNovoShowSearch(false)
+                      setNovoCapacidade(4)
                     }}
                     className="flex items-center gap-1 bg-brand-500 hover:bg-brand-600 text-white px-2 py-0.5 rounded-lg text-xs font-medium transition-colors"
                     title="Adicionar novo horário"
@@ -577,9 +632,37 @@ export default function Horarios() {
                           const st = cell.status as Status
                           const isSelected = selected.has(cell.id)
                           const isGrupo = cell.tipo === 'grupo'
-                          const grupoCount = isGrupo
-                            ? cell.aluno_nome?.split('\n').filter(Boolean).length ?? 0
-                            : 0
+                          // Resolve names: prefer aluno_ids lookup, fallback to aluno_nome text
+                          const resolvedNames: string[] = (() => {
+                            if (!isGrupo && st !== 'ocupado') return []
+                            if (cell.aluno_ids && cell.aluno_ids.length > 0) {
+                              return cell.aluno_ids
+                                .map((id): string => { const nome = alunos.find(a => a.id === id)?.nome; return nome ? nome.split(' ')[0] ?? '' : '' })
+                                .filter(n => n.length > 0)
+                            }
+                            return (cell.aluno_nome || '').split('\n').map(n => { const parts = n.trim().split(' '); return parts[0] ?? '' }).filter(n => n.length > 0)
+                          })()
+                          const cap = cell.capacidade ?? (isGrupo ? 4 : 1)
+                          const cellLabel = isGrupo
+                            ? resolvedNames.length === 0
+                              ? `Grupo (0/${cap})`
+                              : resolvedNames.length === 1
+                              ? `${resolvedNames[0]} (1/${cap})`
+                              : resolvedNames.length === 2
+                              ? `${resolvedNames[0]}, ${resolvedNames[1]}`
+                              : `${resolvedNames[0]}, ${resolvedNames[1]} +${resolvedNames.length - 2}`
+                            : st === 'ocupado'
+                            ? (cell.aluno_ids?.length === 1
+                                ? alunos.find(a => a.id === cell.aluno_ids![0])?.nome || cell.aluno_nome || 'Ocupado'
+                                : cell.aluno_nome || 'Ocupado')
+                            : ''
+                          const cellTooltip = isGrupo
+                            ? `Grupo (${resolvedNames.length}/${cap}): ${resolvedNames.join(', ') || 'sem alunos'} — duplo-clique para editar`
+                            : st === 'ocupado'
+                            ? `${cell.aluno_nome || 'Ocupado'} — duplo-clique para editar`
+                            : st === 'indisponivel'
+                            ? 'Indisponível'
+                            : 'Disponível — duplo-clique para editar'
                           const cellStyle = isSelected
                             ? isGrupo
                               ? 'bg-purple-200 border-purple-500 text-purple-900 ring-2 ring-purple-400'
@@ -605,24 +688,10 @@ export default function Horarios() {
                                   openEdit(cell)
                                 }}
                                 className={`w-full h-7 px-1 rounded border text-[11px] font-medium truncate transition-all cursor-pointer select-none ${cellStyle}`}
-                                title={
-                                  isGrupo
-                                    ? `Grupo: ${cell.aluno_nome?.replace(/\n/g, ', ') || 'sem alunos'} — clique para selecionar, duplo-clique para editar`
-                                    : st === 'ocupado'
-                                    ? `${cell.aluno_nome || 'Ocupado'} — clique para selecionar, duplo-clique para editar`
-                                    : st === 'indisponivel'
-                                    ? 'Indisponível — clique para selecionar'
-                                    : 'Disponível — clique para selecionar, duplo-clique para editar'
-                                }
+                                title={cellTooltip}
                               >
                                 {isSelected && <Check className="w-3 h-3 inline mr-0.5" />}
-                                {isGrupo
-                                  ? `Grupo (${grupoCount})`
-                                  : st === 'ocupado'
-                                  ? cell.aluno_nome || 'Ocupado'
-                                  : st === 'indisponivel'
-                                  ? ''
-                                  : ''}
+                                {cellLabel}
                               </button>
                             </td>
                           )
@@ -929,37 +998,139 @@ export default function Horarios() {
               <div>
                 {editTipo === 'individual' ? (
                   <>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Nome do Aluno</label>
-                    <input
-                      value={editAluno}
-                      onChange={e => {
-                        setEditAluno(e.target.value)
-                        if (e.target.value.trim()) setEditStatus('ocupado')
-                      }}
-                      placeholder="Nome do aluno (deixe vazio se disponível)"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                      autoFocus
-                    />
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Aluno</label>
+                    <div className="relative">
+                      <input
+                        value={editAlunoSearch || (editAlunoIds.length === 1 ? alunos.find(a => a.id === editAlunoIds[0])?.nome || '' : '')}
+                        onChange={e => {
+                          setEditAlunoSearch(e.target.value)
+                          setEditAlunoIds([])
+                          setEditShowSearch(true)
+                          if (e.target.value.trim()) setEditStatus('ocupado')
+                        }}
+                        onFocus={() => setEditShowSearch(true)}
+                        onBlur={() => setTimeout(() => setEditShowSearch(false), 150)}
+                        placeholder="Buscar aluno cadastrado..."
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                        autoFocus
+                      />
+                      {editShowSearch && (editAlunoSearch || editCell?.aluno_nome) && (
+                        <ul className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto mt-0.5">
+                          {alunos
+                            .filter(a => a.nome.toLowerCase().includes((editAlunoSearch || editCell?.aluno_nome || '').toLowerCase()))
+                            .slice(0, 8)
+                            .map(a => (
+                              <li
+                                key={a.id}
+                                onMouseDown={() => {
+                                  setEditAlunoIds([a.id])
+                                  setEditAlunoSearch(a.nome)
+                                  setEditShowSearch(false)
+                                  setEditStatus('ocupado')
+                                }}
+                                className="px-3 py-2 hover:bg-brand-50 cursor-pointer text-sm flex items-center justify-between gap-2"
+                              >
+                                <span className="truncate">{a.nome}</span>
+                                {a.telefone && <span className="text-xs text-gray-400 font-mono shrink-0">{a.telefone}</span>}
+                              </li>
+                            ))
+                          }
+                          {alunos.filter(a => a.nome.toLowerCase().includes((editAlunoSearch || '').toLowerCase())).length === 0 && (
+                            <li className="px-3 py-2 text-sm text-gray-400">Nenhum aluno encontrado — o nome será salvo como texto</li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+                    {editAlunoIds.length === 1 && (
+                      <p className="text-xs text-emerald-600 mt-0.5">✓ Vinculado ao cadastro</p>
+                    )}
+                    {editAlunoIds.length === 0 && (editAlunoSearch || editCell?.aluno_nome) && (
+                      <p className="text-xs text-amber-500 mt-0.5">⚠ Não vinculado — busque e selecione o aluno para vincular</p>
+                    )}
                   </>
                 ) : (
                   <>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Alunos do Grupo <span className="text-gray-400 font-normal">(um por linha)</span>
-                    </label>
-                    <textarea
-                      value={editAluno}
-                      onChange={e => {
-                        setEditAluno(e.target.value)
-                        if (e.target.value.trim()) setEditStatus('ocupado')
-                      }}
-                      placeholder={`João Silva\nMaria Santos\nPedro Costa`}
-                      rows={4}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                      autoFocus
-                    />
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {editAluno.split('\n').filter(n => n.trim()).length} aluno(s) no grupo
-                    </p>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-medium text-gray-600">Alunos do Grupo</label>
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <span>Vagas:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={editCapacidade}
+                          onChange={e => setEditCapacidade(Math.max(1, +e.target.value))}
+                          className="w-12 border border-gray-200 rounded px-1.5 py-0.5 text-center text-xs focus:ring-1 focus:ring-purple-400"
+                        />
+                        <span className="text-purple-600 font-medium">{editAlunoIds.length}/{editCapacidade}</span>
+                      </div>
+                    </div>
+                    {/* Selected students */}
+                    <div className="space-y-1 mb-2">
+                      {editAlunoIds.map((id, idx) => {
+                        const a = alunos.find(a => a.id === id)
+                        return (
+                          <div key={id} className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-lg px-2.5 py-1.5">
+                            <div>
+                              <span className="text-sm font-medium text-purple-900">{a?.nome || id}</span>
+                              {a?.telefone && <span className="ml-2 text-xs text-gray-400 font-mono">{a.telefone}</span>}
+                            </div>
+                            <button onClick={() => setEditAlunoIds(prev => prev.filter((_, i) => i !== idx))}>
+                              <X className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" />
+                            </button>
+                          </div>
+                        )
+                      })}
+                      {/* Empty slots */}
+                      {Array.from({ length: Math.max(0, editCapacidade - editAlunoIds.length) }).map((_, i) => (
+                        <div key={`empty-${i}`} className="border border-dashed border-gray-200 rounded-lg px-2.5 py-1 text-xs text-gray-300 italic">
+                          Vaga livre
+                        </div>
+                      ))}
+                    </div>
+                    {/* Add student search */}
+                    {editAlunoIds.length < editCapacidade && (
+                      <div className="relative">
+                        <input
+                          value={editAlunoSearch}
+                          onChange={e => { setEditAlunoSearch(e.target.value); setEditShowSearch(true) }}
+                          onFocus={() => setEditShowSearch(true)}
+                          onBlur={() => setTimeout(() => setEditShowSearch(false), 150)}
+                          placeholder="Adicionar aluno ao grupo..."
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        />
+                        {editShowSearch && editAlunoSearch && (
+                          <ul className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-36 overflow-y-auto mt-0.5">
+                            {alunos
+                              .filter(a => a.nome.toLowerCase().includes(editAlunoSearch.toLowerCase()) && !editAlunoIds.includes(a.id))
+                              .slice(0, 6)
+                              .map(a => (
+                                <li
+                                  key={a.id}
+                                  onMouseDown={() => {
+                                    setEditAlunoIds(prev => [...prev, a.id])
+                                    setEditAlunoSearch('')
+                                    setEditShowSearch(false)
+                                    setEditStatus('ocupado')
+                                  }}
+                                  className="px-3 py-1.5 hover:bg-purple-50 cursor-pointer text-sm flex items-center justify-between"
+                                >
+                                  <span>{a.nome}</span>
+                                  {a.modalidade_preferida && (
+                                    <span className={`text-xs px-1.5 py-0.5 rounded ${a.modalidade_preferida === 'grupo' ? 'bg-purple-100 text-purple-600' : 'bg-blue-50 text-blue-500'}`}>
+                                      {a.modalidade_preferida}
+                                    </span>
+                                  )}
+                                </li>
+                              ))
+                            }
+                            {alunos.filter(a => a.nome.toLowerCase().includes(editAlunoSearch.toLowerCase()) && !editAlunoIds.includes(a.id)).length === 0 && (
+                              <li className="px-3 py-2 text-sm text-gray-400">Nenhum aluno encontrado</li>
+                            )}
+                          </ul>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -1077,35 +1248,132 @@ export default function Horarios() {
               <div>
                 {novoTipo === 'individual' ? (
                   <>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Nome do Aluno</label>
-                    <input
-                      value={novoAluno}
-                      onChange={e => {
-                        setNovoAluno(e.target.value)
-                        if (e.target.value.trim()) setNovoStatus('ocupado')
-                      }}
-                      placeholder="Nome do aluno (deixe vazio se disponível)"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                    />
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Aluno</label>
+                    <div className="relative">
+                      <input
+                        value={novoAlunoSearch || (novoAlunoIds.length === 1 ? alunos.find(a => a.id === novoAlunoIds[0])?.nome || '' : '')}
+                        onChange={e => {
+                          setNovoAlunoSearch(e.target.value)
+                          setNovoAlunoIds([])
+                          setNovoShowSearch(true)
+                          if (e.target.value.trim()) setNovoStatus('ocupado')
+                        }}
+                        onFocus={() => setNovoShowSearch(true)}
+                        onBlur={() => setTimeout(() => setNovoShowSearch(false), 150)}
+                        placeholder="Buscar aluno cadastrado..."
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                      />
+                      {novoShowSearch && novoAlunoSearch && (
+                        <ul className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto mt-0.5">
+                          {alunos
+                            .filter(a => a.nome.toLowerCase().includes(novoAlunoSearch.toLowerCase()))
+                            .slice(0, 8)
+                            .map(a => (
+                              <li
+                                key={a.id}
+                                onMouseDown={() => {
+                                  setNovoAlunoIds([a.id])
+                                  setNovoAlunoSearch(a.nome)
+                                  setNovoShowSearch(false)
+                                  setNovoStatus('ocupado')
+                                }}
+                                className="px-3 py-2 hover:bg-brand-50 cursor-pointer text-sm flex items-center justify-between gap-2"
+                              >
+                                <span className="truncate">{a.nome}</span>
+                                {a.telefone && <span className="text-xs text-gray-400 font-mono shrink-0">{a.telefone}</span>}
+                              </li>
+                            ))
+                          }
+                          {alunos.filter(a => a.nome.toLowerCase().includes(novoAlunoSearch.toLowerCase())).length === 0 && (
+                            <li className="px-3 py-2 text-sm text-gray-400">Nenhum aluno encontrado</li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+                    {novoAlunoIds.length === 1 && (
+                      <p className="text-xs text-emerald-600 mt-0.5">✓ Vinculado ao cadastro</p>
+                    )}
                   </>
                 ) : (
                   <>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Alunos do Grupo <span className="text-gray-400 font-normal">(um por linha)</span>
-                    </label>
-                    <textarea
-                      value={novoAluno}
-                      onChange={e => {
-                        setNovoAluno(e.target.value)
-                        if (e.target.value.trim()) setNovoStatus('ocupado')
-                      }}
-                      placeholder={`João Silva\nMaria Santos\nPedro Costa`}
-                      rows={4}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                    />
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {novoAluno.split('\n').filter(n => n.trim()).length} aluno(s) no grupo
-                    </p>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-medium text-gray-600">Alunos do Grupo</label>
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <span>Vagas:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={novoCapacidade}
+                          onChange={e => setNovoCapacidade(Math.max(1, +e.target.value))}
+                          className="w-12 border border-gray-200 rounded px-1.5 py-0.5 text-center text-xs focus:ring-1 focus:ring-purple-400"
+                        />
+                        <span className="text-purple-600 font-medium">{novoAlunoIds.length}/{novoCapacidade}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1 mb-2">
+                      {novoAlunoIds.map((id, idx) => {
+                        const a = alunos.find(a => a.id === id)
+                        return (
+                          <div key={id} className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-lg px-2.5 py-1.5">
+                            <div>
+                              <span className="text-sm font-medium text-purple-900">{a?.nome || id}</span>
+                              {a?.telefone && <span className="ml-2 text-xs text-gray-400 font-mono">{a.telefone}</span>}
+                            </div>
+                            <button onClick={() => setNovoAlunoIds(prev => prev.filter((_, i) => i !== idx))}>
+                              <X className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" />
+                            </button>
+                          </div>
+                        )
+                      })}
+                      {Array.from({ length: Math.max(0, novoCapacidade - novoAlunoIds.length) }).map((_, i) => (
+                        <div key={`empty-${i}`} className="border border-dashed border-gray-200 rounded-lg px-2.5 py-1 text-xs text-gray-300 italic">
+                          Vaga livre
+                        </div>
+                      ))}
+                    </div>
+                    {novoAlunoIds.length < novoCapacidade && (
+                      <div className="relative">
+                        <input
+                          value={novoAlunoSearch}
+                          onChange={e => { setNovoAlunoSearch(e.target.value); setNovoShowSearch(true) }}
+                          onFocus={() => setNovoShowSearch(true)}
+                          onBlur={() => setTimeout(() => setNovoShowSearch(false), 150)}
+                          placeholder="Adicionar aluno ao grupo..."
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        />
+                        {novoShowSearch && novoAlunoSearch && (
+                          <ul className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-36 overflow-y-auto mt-0.5">
+                            {alunos
+                              .filter(a => a.nome.toLowerCase().includes(novoAlunoSearch.toLowerCase()) && !novoAlunoIds.includes(a.id))
+                              .slice(0, 6)
+                              .map(a => (
+                                <li
+                                  key={a.id}
+                                  onMouseDown={() => {
+                                    setNovoAlunoIds(prev => [...prev, a.id])
+                                    setNovoAlunoSearch('')
+                                    setNovoShowSearch(false)
+                                    setNovoStatus('ocupado')
+                                  }}
+                                  className="px-3 py-1.5 hover:bg-purple-50 cursor-pointer text-sm flex items-center justify-between"
+                                >
+                                  <span>{a.nome}</span>
+                                  {a.modalidade_preferida && (
+                                    <span className={`text-xs px-1.5 py-0.5 rounded ${a.modalidade_preferida === 'grupo' ? 'bg-purple-100 text-purple-600' : 'bg-blue-50 text-blue-500'}`}>
+                                      {a.modalidade_preferida}
+                                    </span>
+                                  )}
+                                </li>
+                              ))
+                            }
+                            {alunos.filter(a => a.nome.toLowerCase().includes(novoAlunoSearch.toLowerCase()) && !novoAlunoIds.includes(a.id)).length === 0 && (
+                              <li className="px-3 py-2 text-sm text-gray-400">Nenhum aluno encontrado</li>
+                            )}
+                          </ul>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
