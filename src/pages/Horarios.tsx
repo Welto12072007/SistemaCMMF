@@ -208,16 +208,26 @@ export default function Horarios() {
   const openEdit = (h: Horario) => {
     setEditCell(h)
     setEditStatus(h.status as Status)
-    setEditTipo((h.tipo as 'individual' | 'grupo') || 'individual')
-    setEditAlunoIds(h.aluno_ids || [])
-    setEditCapacidade(h.capacidade || (h.tipo === 'grupo' ? 4 : 1))
-    // Pre-fill search for individual (for display)
-    if ((h.aluno_ids || []).length === 1) {
-      // Will be populated from alunos list after render
-      setEditAlunoSearch('')
-    } else {
-      setEditAlunoSearch('')
+    // Auto-detect tipo: old data may have comma-separated names without tipo set
+    const hasMultipleNames = !h.tipo && !!h.aluno_nome && (h.aluno_nome.includes(',') || h.aluno_nome.includes('\n'))
+    const detectedTipo: 'individual' | 'grupo' = (h.tipo as 'individual' | 'grupo') || (hasMultipleNames ? 'grupo' : 'individual')
+    setEditTipo(detectedTipo)
+    // Auto-match aluno_ids from aluno_nome for old data that has names but no ids
+    let ids: string[] = h.aluno_ids || []
+    if (ids.length === 0 && h.aluno_nome) {
+      const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+      const nomes = h.aluno_nome.split(/[,\n]/).map(n => n.trim()).filter(Boolean)
+      ids = nomes.flatMap(nome => {
+        const hn = normalize(nome)
+        const hWords = hn.split(/\s+/).filter(w => w.length > 2)
+        const found = alunos.find(a => normalize(a.nome) === hn) ||
+          (hWords.length > 0 ? alunos.find(a => { const an = normalize(a.nome); return hWords.every(w => an.includes(w)) }) : undefined)
+        return found ? [found.id] : []
+      })
     }
+    setEditAlunoIds(ids)
+    setEditCapacidade(h.capacidade || (detectedTipo === 'grupo' ? 4 : 1))
+    setEditAlunoSearch('')
     setEditShowSearch(false)
   }
 
@@ -343,8 +353,8 @@ export default function Horarios() {
           else alunoMap.get(nome)!.slots.push(label)
         }
       } else {
-        // Fallback: split aluno_nome by \n + fuzzy match
-        const nomes = (h.aluno_nome || '').split('\n').map(n => n.trim()).filter(Boolean)
+        // Fallback: split aluno_nome by \n or , (old comma-separated data) + fuzzy match
+        const nomes = (h.aluno_nome || '').split(/[,\n]/).map(n => n.trim()).filter(Boolean)
         const normalize = (s: string) =>
           s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
         for (const nome of nomes) {
@@ -640,7 +650,7 @@ export default function Horarios() {
                                 .map((id): string => { const nome = alunos.find(a => a.id === id)?.nome; return nome ? nome.split(' ')[0] ?? '' : '' })
                                 .filter(n => n.length > 0)
                             }
-                            return (cell.aluno_nome || '').split('\n').map(n => { const parts = n.trim().split(' '); return parts[0] ?? '' }).filter(n => n.length > 0)
+                            return (cell.aluno_nome || '').split(/[,\n]/).map(n => { const parts = n.trim().split(' '); return parts[0] ?? '' }).filter(n => n.length > 0)
                           })()
                           const cap = cell.capacidade ?? (isGrupo ? 4 : 1)
                           const cellLabel = isGrupo
