@@ -120,18 +120,57 @@ export default function Usuarios() {
   })
 
   async function handleSave(data: Partial<Aluno>) {
-    const { error } = editando?.id
-      ? await supabase.from('alunos').update({ ...data, updated_at: new Date().toISOString() }).eq('id', editando.id)
-      : await supabase.from('alunos').insert({ ...data, status: 'ativo' })
-    if (error) {
-      console.error('[Usuarios] save error:', error)
-      alert(`Erro ao salvar aluno:\n${error.message}`)
+    let savedId: string | null = editando?.id ?? null
+    let saveError: { code?: string; message: string } | null = null
+
+    if (editando?.id) {
+      const { error } = await supabase
+        .from('alunos')
+        .update({ ...data, updated_at: new Date().toISOString() })
+        .eq('id', editando.id)
+      saveError = error
+    } else {
+      const { error } = await supabase.from('alunos').insert({ ...data, status: 'ativo' })
+      saveError = error
+
+      // Telefone já existe (UNIQUE constraint) → oferecer mesclagem com contato existente
+      if (saveError?.code === '23505' && saveError.message?.includes('telefone')) {
+        const tel = String(data.telefone ?? '').replace(/\D/g, '')
+        const { data: existe } = await supabase
+          .from('alunos')
+          .select('id, nome, status')
+          .eq('telefone', tel)
+          .maybeSingle()
+
+        if (existe) {
+          const confirmar = window.confirm(
+            `Já existe um contato com este telefone:\n"${existe.nome}" (${existe.status})\n\nDeseja mesclar e ativar como aluno?`
+          )
+          if (!confirmar) return
+
+          const { error: mergeErr } = await supabase
+            .from('alunos')
+            .update({ ...data, status: 'ativo', updated_at: new Date().toISOString() })
+            .eq('id', existe.id)
+          saveError = mergeErr
+          if (!mergeErr) savedId = existe.id
+        } else {
+          alert(`Erro ao salvar aluno:\n${saveError.message}`)
+          return
+        }
+      }
+    }
+
+    if (saveError) {
+      console.error('[Usuarios] save error:', saveError)
+      alert(`Erro ao salvar aluno:\n${saveError.message}`)
       return
     }
+
     // Marca experimental como convertida, se aplicável
-    if (experimentalId) {
+    if (experimentalId && savedId) {
       await supabase.from('aulas_experimentais')
-        .update({ convertido_em: new Date().toISOString(), status: 'concluida' })
+        .update({ aluno_id: savedId, convertido_em: new Date().toISOString(), status: 'concluida' })
         .eq('id', experimentalId)
       setExperimentalId(null)
     }
@@ -428,6 +467,7 @@ function AlunoForm({ aluno, onSave, onClose }: {
     payload.desconto_matricula = form.desconto_matricula ? parseFloat(form.desconto_matricula) : 0
     payload.dia_inicio_aulas = form.dia_inicio_aulas ? parseInt(form.dia_inicio_aulas) : null
     if (!form.data_matricula) delete payload.data_matricula
+    if (!form.data_nascimento) delete payload.data_nascimento
     onSave(payload as Partial<Aluno>)
   }
 

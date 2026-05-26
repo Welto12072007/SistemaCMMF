@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List, RefreshCw, Download, Pencil, Trash2 } from 'lucide-react'
 import type { AulaExperimental, Professor } from '@/types'
@@ -20,7 +19,6 @@ const statusColor: Record<string, string> = {
 }
 
 export default function AulasExperimentais() {
-  const navigate = useNavigate()
   const [aulas, setAulas] = useState<AulaExperimental[]>([])
   const [professores, setProfessores] = useState<Professor[]>([])
   const [filtro, setFiltro] = useState('Todos os status')
@@ -339,7 +337,7 @@ export default function AulasExperimentais() {
                   </span>
                 ) : (
                   <button
-                    onClick={() => navigate('/usuarios', { state: { fromExperimental: a } })}
+                    onClick={() => setConverterAula(a)}
                     className="text-xs px-3 py-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors flex items-center gap-1"
                   >
                     <UserPlus className="w-3.5 h-3.5" /> Converter em aluno
@@ -664,6 +662,19 @@ function ConverterModal({ aula, onClose, onDone }: {
   const jaAtivo = existente && existente.status?.toLowerCase() === 'ativo'
   const isReativacao = existente && !jaAtivo
 
+  async function handleVincularExistente() {
+    if (!existente) return
+    setSaving(true)
+    const { error } = await supabase
+      .from('aulas_experimentais')
+      .update({ aluno_id: existente.id, convertido_em: new Date().toISOString(), status: 'concluida' })
+      .eq('id', aula.id)
+    setSaving(false)
+    if (error) { alert(`Erro ao vincular:\n${error.message}`); return }
+    alert(`Aula vinculada ao aluno "${existente.nome}" com sucesso!`)
+    onDone()
+  }
+
   async function handleConverter() {
     if (jaAtivo) return
     setSaving(true)
@@ -713,12 +724,21 @@ function ConverterModal({ aula, onClose, onDone }: {
         {checking ? (
           <div className="text-sm text-gray-500 py-6 text-center">Verificando duplicidade...</div>
         ) : jaAtivo ? (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm">
-            <p className="font-semibold text-red-800">⛔ Já existe aluno ativo com este telefone</p>
-            <p className="text-red-700 mt-1">{existente?.nome}</p>
-            <p className="text-red-600 text-xs mt-2">Não é possível converter. Verifique o cadastro existente.</p>
-            <div className="flex justify-end mt-4">
-              <button onClick={onClose} className="px-4 py-2 text-sm bg-gray-200 rounded-lg">Fechar</button>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm">
+            <p className="font-semibold text-amber-800">⚠️ Já existe aluno ativo com este telefone</p>
+            <p className="text-amber-700 mt-1">{existente?.nome}</p>
+            <p className="text-amber-600 text-xs mt-2">
+              Este contato já é um aluno ativo. Você pode vincular a aula experimental ao cadastro existente, sem alterar os dados do aluno.
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={onClose} className="px-4 py-2 text-sm bg-gray-200 rounded-lg">Cancelar</button>
+              <button
+                onClick={handleVincularExistente}
+                disabled={saving}
+                className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50"
+              >
+                {saving ? 'Vinculando...' : 'Vincular ao aluno existente'}
+              </button>
             </div>
           </div>
         ) : (
