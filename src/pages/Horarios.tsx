@@ -209,14 +209,27 @@ export default function Horarios() {
     setEditCell(h)
     setEditStatus(h.status as Status)
     // Auto-detect tipo: old data may have comma-separated names without tipo set
-    const hasMultipleNames = !h.tipo && !!h.aluno_nome && (h.aluno_nome.includes(',') || h.aluno_nome.includes('\n'))
+    const hasMultipleNames = !h.tipo && !!h.aluno_nome && (
+      h.aluno_nome.includes(',') || h.aluno_nome.includes('\n') ||
+      // detect "A e B" pattern (Portuguese "and") — two multi-word names separated by " e "
+      /\w{2,}\s+e\s+\w{2,}/.test(h.aluno_nome)
+    )
     const detectedTipo: 'individual' | 'grupo' = (h.tipo as 'individual' | 'grupo') || (hasMultipleNames ? 'grupo' : 'individual')
     setEditTipo(detectedTipo)
     // Auto-match aluno_ids from aluno_nome for old data that has names but no ids
     let ids: string[] = h.aluno_ids || []
     if (ids.length === 0 && h.aluno_nome) {
       const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
-      const nomes = h.aluno_nome.split(/[,\n]/).map(n => n.trim()).filter(Boolean)
+      // Split on comma or newline first, then further split on " e " (Portuguese "and")
+      const rawNomes = h.aluno_nome.split(/[,\n]/).map(n => n.trim()).filter(Boolean)
+      const nomes = rawNomes.flatMap(nome => {
+        if (nome.includes(' e ')) {
+          const parts = nome.split(/\s+e\s+/).map(p => p.trim()).filter(Boolean)
+          // Only split if each part looks like a real name (at least 2 words)
+          if (parts.length >= 2 && parts.every(p => p.split(/\s+/).length >= 2)) return parts
+        }
+        return [nome]
+      })
       ids = nomes.flatMap(nome => {
         const hn = normalize(nome)
         const hWords = hn.split(/\s+/).filter(w => w.length > 2)
@@ -227,7 +240,8 @@ export default function Horarios() {
     }
     setEditAlunoIds(ids)
     setEditCapacidade(h.capacidade || (detectedTipo === 'grupo' ? 4 : 1))
-    setEditAlunoSearch('')
+    // For individual: pre-fill search with existing nome so the field isn't blank
+    setEditAlunoSearch(detectedTipo === 'individual' && ids.length === 0 ? (h.aluno_nome?.trim() || '') : '')
     setEditShowSearch(false)
   }
 
