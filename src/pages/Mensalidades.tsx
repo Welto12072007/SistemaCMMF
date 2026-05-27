@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Plus, Search, Download } from 'lucide-react'
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Plus, Search, Download, ExternalLink, Copy, Zap } from 'lucide-react'
 
 interface Mensalidade {
   id: string
@@ -18,6 +18,11 @@ interface Mensalidade {
   status: 'pendente' | 'pago' | 'atrasado' | 'isento' | 'cancelado'
   metodo_pagamento: string | null
   observacoes: string | null
+  payment_ext_id: string | null
+  payment_url: string | null
+  payment_pix_copia_cola: string | null
+  payment_method: string | null
+  payment_provider: string | null
 }
 
 const STATUS_OPTIONS = ['pendente', 'pago', 'atrasado', 'isento', 'cancelado'] as const
@@ -54,6 +59,8 @@ export default function Mensalidades() {
   const [busca, setBusca] = useState('')
   const [editando, setEditando] = useState<Mensalidade | null>(null)
   const [gerandoMes, setGerandoMes] = useState(false)
+  const [paymentLoading, setPaymentLoading] = useState<string | null>(null)
+  const [paymentModal, setPaymentModal] = useState<Mensalidade | null>(null)
 
   useEffect(() => {
     loadMensalidades()
@@ -116,6 +123,29 @@ export default function Mensalidades() {
       return
     }
     loadMensalidades()
+  }
+
+  async function criarCobrancaMP(m: Mensalidade, billing_type: 'pix' | 'boleto' = 'pix') {
+    setPaymentLoading(m.id)
+    const { data, error } = await supabase.functions.invoke('mp-create-charge', {
+      body: { mensalidade_id: m.id, billing_type },
+    })
+    setPaymentLoading(null)
+    if (error || !data?.ok) {
+      alert(`Erro ao criar cobrança:\n${error?.message ?? data?.error}`)
+      return
+    }
+    await loadMensalidades()
+    // Re-buscar item atualizado para exibir modal
+    const updated = items.find(i => i.id === m.id)
+    if (updated) setPaymentModal({
+      ...updated,
+      payment_ext_id: data.payment_ext_id,
+      payment_url: data.payment_url,
+      payment_pix_copia_cola: data.payment_pix_copia_cola,
+      payment_method: data.payment_method,
+      payment_provider: 'mp',
+    })
   }
 
   async function salvarEdicao(form: Partial<Mensalidade>) {
@@ -283,6 +313,7 @@ export default function Mensalidades() {
                 <th className="px-4 py-3">Valor</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Pagamento</th>
+                <th className="px-4 py-3">Pagamento</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -318,8 +349,52 @@ export default function Mensalidades() {
                         '-'
                       )}
                     </td>
+                    <td className="px-4 py-3">
+                      {m.payment_ext_id ? (
+                        <div className="flex flex-col gap-1">
+                          {m.payment_url && (
+                            <a
+                              href={m.payment_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                            >
+                              <ExternalLink className="w-3 h-3" /> Ver link
+                            </a>
+                          )}
+                          {m.payment_pix_copia_cola && (
+                            <button
+                              onClick={() => { navigator.clipboard.writeText(m.payment_pix_copia_cola!); alert('PIX copiado!') }}
+                              className="flex items-center gap-1 text-xs text-green-700 hover:underline"
+                            >
+                              <Copy className="w-3 h-3" /> Copiar PIX
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
+                        {m.status !== 'pago' && !m.payment_ext_id && (
+                          <button
+                            onClick={() => criarCobrancaMP(m, 'pix')}
+                            disabled={paymentLoading === m.id}
+                            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200 disabled:opacity-50"
+                          >
+                            <Zap className="w-3 h-3" />
+                            {paymentLoading === m.id ? '...' : 'Cobrar'}
+                          </button>
+                        )}
+                        {m.payment_ext_id && (
+                          <button
+                            onClick={() => setPaymentModal(m)}
+                            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200"
+                          >
+                            <Zap className="w-3 h-3" /> Pagamento
+                          </button>
+                        )}
                         {m.status !== 'pago' && (
                           <button
                             onClick={() => marcarPago(m)}
@@ -351,6 +426,127 @@ export default function Mensalidades() {
           onSave={salvarEdicao}
         />
       )}
+
+      {paymentModal && (
+        <PaymentModal
+          m={paymentModal}
+          onClose={() => setPaymentModal(null)}
+          onResetar={async () => {
+            const { error } = await supabase.rpc('resetar_cobranca', { p_mensalidade_id: paymentModal.id })
+            if (error) { alert('Erro: ' + error.message); return }
+            setPaymentModal(null)
+            loadMensalidades()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function PaymentModal({
+  m,
+  onClose,
+  onResetar,
+}: {
+  m: Mensalidade
+  onClose: () => void
+  onResetar: () => void
+}) {
+  const whatsappUrl = m.aluno_telefone && m.payment_url
+    ? `https://wa.me/55${m.aluno_telefone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá ${m.aluno_nome.split(' ')[0]}! Seu link de pagamento da mensalidade (${m.referencia?.substring(0, 7)}): ${m.payment_url}`)}`
+    : null
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="px-5 py-4 border-b flex items-center gap-2">
+          <Zap className="w-5 h-5 text-purple-600" />
+          <div>
+            <h2 className="text-lg font-semibold">Cobrança MP</h2>
+            <p className="text-sm text-gray-500">{m.aluno_nome} — {m.referencia?.substring(0, 7)}</p>
+          </div>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="rounded-lg bg-purple-50 p-4 text-sm space-y-2">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Payment ID</span>
+              <span className="font-mono text-xs text-gray-800">{m.payment_ext_id}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Método</span>
+              <span>{m.payment_method ?? '—'}</span>
+            </div>
+          </div>
+
+          {m.payment_url && (
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Link de pagamento</p>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={m.payment_url}
+                  className="flex-1 text-xs border rounded px-2 py-1.5 bg-gray-50"
+                />
+                <button
+                  onClick={() => { navigator.clipboard.writeText(m.payment_url!); alert('Link copiado!') }}
+                  className="px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-50"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+                <a
+                  href={m.payment_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-50"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+            </div>
+          )}
+
+          {m.payment_pix_copia_cola && (
+            <div>
+              <p className="text-xs text-gray-500 mb-1">PIX Copia e Cola</p>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={m.payment_pix_copia_cola}
+                  className="flex-1 text-xs border rounded px-2 py-1.5 bg-gray-50 font-mono"
+                />
+                <button
+                  onClick={() => { navigator.clipboard.writeText(m.payment_pix_copia_cola!); alert('PIX copiado!') }}
+                  className="px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {whatsappUrl && (
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-green-500 text-white hover:bg-green-600 text-sm font-medium"
+            >
+              Enviar link via WhatsApp
+            </a>
+          )}
+        </div>
+        <div className="px-5 py-3 border-t flex justify-between items-center">
+          <button
+            onClick={onResetar}
+            className="text-xs text-red-600 hover:underline"
+          >
+            Resetar cobrança
+          </button>
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">
+            Fechar
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

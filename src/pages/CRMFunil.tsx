@@ -1031,6 +1031,8 @@ export default function CRMFunil() {
                   <option value="1_lead_novo">Lead novo</option>
                   <option value="2_em_atendimento">Em atendimento</option>
                   <option value="3_horario_pre_aprovado">Horário pré-aprovado</option>
+                  <option value="4_experimental_confirmada">Experimental confirmada</option>
+                  <option value="6_aula_realizada">Aula realizada</option>
                   <option value="9_perdido">Perdido</option>
                 </select>
                 {(formEditar.etapa === '4_experimental_confirmada' || formEditar.etapa === '6_aula_realizada') && (
