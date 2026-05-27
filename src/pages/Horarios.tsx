@@ -77,8 +77,6 @@ export default function Horarios() {
   const [editShowSearch, setEditShowSearch] = useState(false)
   const [editCapacidade, setEditCapacidade] = useState(1)
   const [editGrupoUnmatchedNames, setEditGrupoUnmatchedNames] = useState<{nome: string; telefone: string}[]>([])
-  const [editLinkingIdx, setEditLinkingIdx] = useState<number | null>(null)
-  const [editLinkingSearch, setEditLinkingSearch] = useState('')
   const [saving, setSaving] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [novoHorario, setNovoHorario] = useState<{ profId: string } | null>(null)
@@ -281,8 +279,6 @@ export default function Horarios() {
 
     setEditAlunoIds(ids)
     setEditGrupoUnmatchedNames(unmatched)
-    setEditLinkingIdx(null)
-    setEditLinkingSearch('')
     // Default capacidade for old group data (previously individual with capacidade=1)
     const defaultCap = detectedTipo === 'grupo' && !h.tipo && (!h.capacidade || h.capacidade <= 1) && detectedNameCount > 0
       ? detectedNameCount
@@ -711,9 +707,13 @@ export default function Horarios() {
                           const st = cell.status as Status
                           const isSelected = selected.has(cell.id)
                           const isGrupo = cell.tipo === 'grupo'
-                          // Resolve names: prefer aluno_ids lookup, fallback to aluno_nome text
+                          // Resolve names: for groups use aluno_nome (has all names incl. unmatched); fallback to aluno_ids lookup
                           const resolvedNames: string[] = (() => {
                             if (!isGrupo && st !== 'ocupado') return []
+                            // Groups: aluno_nome always stores the full name list (linked + unmatched)
+                            if (isGrupo && cell.aluno_nome) {
+                              return cell.aluno_nome.split(/[,\n]/).map(n => { const parts = n.trim().split(' '); return parts[0] ?? '' }).filter(n => n.length > 0)
+                            }
                             if (cell.aluno_ids && cell.aluno_ids.length > 0) {
                               return cell.aluno_ids
                                 .map((id): string => { const nome = alunos.find(a => a.id === id)?.nome; return nome ? nome.split(' ')[0] ?? '' : '' })
@@ -1162,72 +1162,14 @@ export default function Horarios() {
                       })}
                       {/* Unmatched names (sem vínculo) */}
                       {editGrupoUnmatchedNames.map((item, i) => (
-                        <div key={`unmatched-${i}`} className="bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-amber-800 font-medium">{item.nome}</span>
-                            <div className="flex items-center gap-1.5">
-                              {editLinkingIdx !== i && (
-                                <button
-                                  onClick={() => { setEditLinkingIdx(i); setEditLinkingSearch('') }}
-                                  className="text-xs text-amber-500 hover:text-amber-700 underline"
-                                >
-                                  vincular
-                                </button>
-                              )}
-                              <button onClick={() => {
-                                setEditGrupoUnmatchedNames(prev => prev.filter((_, j) => j !== i))
-                                if (editLinkingIdx === i) setEditLinkingIdx(null)
-                              }}>
-                                <X className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" />
-                              </button>
-                            </div>
+                        <div key={`unmatched-${i}`} className="bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-sm text-amber-800 font-medium truncate">{item.nome}</span>
+                            <span className="text-xs text-amber-500 shrink-0">não vinculado</span>
                           </div>
-                          <input
-                            type="tel"
-                            value={item.telefone}
-                            onChange={e => setEditGrupoUnmatchedNames(prev => prev.map((u, j) => j === i ? { ...u, telefone: e.target.value } : u))}
-                            placeholder="telefone..."
-                            className="text-xs text-gray-500 font-mono mt-0.5 w-full bg-transparent border-0 p-0 focus:ring-0 outline-none placeholder-gray-300"
-                          />
-                          {editLinkingIdx === i && (
-                            <div className="relative mt-1">
-                              <input
-                                autoFocus
-                                value={editLinkingSearch}
-                                onChange={e => setEditLinkingSearch(e.target.value)}
-                                onBlur={() => setTimeout(() => setEditLinkingIdx(null), 150)}
-                                placeholder="Buscar aluno para vincular..."
-                                className="w-full border border-amber-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-amber-400 bg-white"
-                              />
-                              {editLinkingSearch && (
-                                <ul className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded shadow-lg max-h-28 overflow-y-auto mt-0.5">
-                                  {alunos
-                                    .filter(a => a.nome.toLowerCase().includes(editLinkingSearch.toLowerCase()) && !editAlunoIds.includes(a.id))
-                                    .slice(0, 5)
-                                    .map(a => (
-                                      <li
-                                        key={a.id}
-                                        onMouseDown={() => {
-                                          setEditAlunoIds(prev => [...prev, a.id])
-                                          setEditGrupoUnmatchedNames(prev => prev.filter((_, j) => j !== i))
-                                          setEditLinkingIdx(null)
-                                          setEditLinkingSearch('')
-                                          setEditStatus('ocupado')
-                                        }}
-                                        className="px-2 py-1.5 hover:bg-amber-50 cursor-pointer text-xs flex items-center justify-between gap-2"
-                                      >
-                                        <span className="truncate">{a.nome}</span>
-                                        {a.telefone && <span className="text-gray-400 font-mono shrink-0">{a.telefone}</span>}
-                                      </li>
-                                    ))
-                                  }
-                                  {alunos.filter(a => a.nome.toLowerCase().includes(editLinkingSearch.toLowerCase()) && !editAlunoIds.includes(a.id)).length === 0 && (
-                                    <li className="px-2 py-2 text-xs text-gray-400">Nenhum aluno encontrado</li>
-                                  )}
-                                </ul>
-                              )}
-                            </div>
-                          )}
+                          <button onClick={() => setEditGrupoUnmatchedNames(prev => prev.filter((_, j) => j !== i))}>
+                            <X className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" />
+                          </button>
                         </div>
                       ))}
                       {Array.from({ length: Math.max(0, editCapacidade - editAlunoIds.length - editGrupoUnmatchedNames.length) }).map((_, i) => (
