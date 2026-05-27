@@ -18,11 +18,10 @@ interface Mensalidade {
   status: 'pendente' | 'pago' | 'atrasado' | 'isento' | 'cancelado'
   metodo_pagamento: string | null
   observacoes: string | null
-  payment_ext_id: string | null
-  payment_url: string | null
-  payment_pix_copia_cola: string | null
-  payment_method: string | null
-  payment_provider: string | null
+  asaas_charge_id: string | null
+  asaas_payment_url: string | null
+  asaas_pix_copy_paste: string | null
+  asaas_billing_type: string | null
 }
 
 const STATUS_OPTIONS = ['pendente', 'pago', 'atrasado', 'isento', 'cancelado'] as const
@@ -125,10 +124,10 @@ export default function Mensalidades() {
     loadMensalidades()
   }
 
-  async function criarCobrancaMP(m: Mensalidade, billing_type: 'pix' | 'boleto' = 'pix') {
+  async function criarCobrancaAsaas(m: Mensalidade) {
     setPaymentLoading(m.id)
-    const { data, error } = await supabase.functions.invoke('mp-create-charge', {
-      body: { mensalidade_id: m.id, billing_type },
+    const { data, error } = await supabase.functions.invoke('asaas-create-charge', {
+      body: { mensalidade_id: m.id, billing_type: 'UNDEFINED' },
     })
     setPaymentLoading(null)
     if (error || !data?.ok) {
@@ -136,15 +135,12 @@ export default function Mensalidades() {
       return
     }
     await loadMensalidades()
-    // Re-buscar item atualizado para exibir modal
-    const updated = items.find(i => i.id === m.id)
-    if (updated) setPaymentModal({
-      ...updated,
-      payment_ext_id: data.payment_ext_id,
-      payment_url: data.payment_url,
-      payment_pix_copia_cola: data.payment_pix_copia_cola,
-      payment_method: data.payment_method,
-      payment_provider: 'mp',
+    setPaymentModal({
+      ...m,
+      asaas_charge_id: data.charge_id,
+      asaas_payment_url: data.payment_url,
+      asaas_pix_copy_paste: data.pix_copy_paste,
+      asaas_billing_type: 'UNDEFINED',
     })
   }
 
@@ -350,11 +346,11 @@ export default function Mensalidades() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {m.payment_ext_id ? (
+                      {m.asaas_charge_id ? (
                         <div className="flex flex-col gap-1">
-                          {m.payment_url && (
+                          {m.asaas_payment_url && (
                             <a
-                              href={m.payment_url}
+                              href={m.asaas_payment_url}
                               target="_blank"
                               rel="noreferrer"
                               className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
@@ -362,9 +358,9 @@ export default function Mensalidades() {
                               <ExternalLink className="w-3 h-3" /> Ver link
                             </a>
                           )}
-                          {m.payment_pix_copia_cola && (
+                          {m.asaas_pix_copy_paste && (
                             <button
-                              onClick={() => { navigator.clipboard.writeText(m.payment_pix_copia_cola!); alert('PIX copiado!') }}
+                              onClick={() => { navigator.clipboard.writeText(m.asaas_pix_copy_paste!); alert('PIX copiado!') }}
                               className="flex items-center gap-1 text-xs text-green-700 hover:underline"
                             >
                               <Copy className="w-3 h-3" /> Copiar PIX
@@ -377,9 +373,9 @@ export default function Mensalidades() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
-                        {m.status !== 'pago' && !m.payment_ext_id && (
+                        {m.status !== 'pago' && !m.asaas_charge_id && (
                           <button
-                            onClick={() => criarCobrancaMP(m, 'pix')}
+                            onClick={() => criarCobrancaAsaas(m)}
                             disabled={paymentLoading === m.id}
                             className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200 disabled:opacity-50"
                           >
@@ -387,7 +383,7 @@ export default function Mensalidades() {
                             {paymentLoading === m.id ? '...' : 'Cobrar'}
                           </button>
                         )}
-                        {m.payment_ext_id && (
+                        {m.asaas_charge_id && (
                           <button
                             onClick={() => setPaymentModal(m)}
                             className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200"
@@ -452,8 +448,8 @@ function PaymentModal({
   onClose: () => void
   onResetar: () => void
 }) {
-  const whatsappUrl = m.aluno_telefone && m.payment_url
-    ? `https://wa.me/55${m.aluno_telefone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá ${m.aluno_nome.split(' ')[0]}! Seu link de pagamento da mensalidade (${m.referencia?.substring(0, 7)}): ${m.payment_url}`)}`
+  const whatsappUrl = m.aluno_telefone && m.asaas_payment_url
+    ? `https://wa.me/55${m.aluno_telefone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá ${m.aluno_nome.split(' ')[0]}! Seu link de pagamento da mensalidade (${m.referencia?.substring(0, 7)}): ${m.asaas_payment_url}`)}`
     : null
 
   return (
@@ -462,39 +458,39 @@ function PaymentModal({
         <div className="px-5 py-4 border-b flex items-center gap-2">
           <Zap className="w-5 h-5 text-purple-600" />
           <div>
-            <h2 className="text-lg font-semibold">Cobrança MP</h2>
+            <h2 className="text-lg font-semibold">Cobrança Asaas</h2>
             <p className="text-sm text-gray-500">{m.aluno_nome} — {m.referencia?.substring(0, 7)}</p>
           </div>
         </div>
         <div className="p-5 space-y-4">
           <div className="rounded-lg bg-purple-50 p-4 text-sm space-y-2">
             <div className="flex justify-between">
-              <span className="text-gray-600">Payment ID</span>
-              <span className="font-mono text-xs text-gray-800">{m.payment_ext_id}</span>
+              <span className="text-gray-600">Charge ID</span>
+              <span className="font-mono text-xs text-gray-800">{m.asaas_charge_id}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Método</span>
-              <span>{m.payment_method ?? '—'}</span>
+              <span className="text-gray-600">Tipo</span>
+              <span>{m.asaas_billing_type ?? '—'}</span>
             </div>
           </div>
 
-          {m.payment_url && (
+          {m.asaas_payment_url && (
             <div>
               <p className="text-xs text-gray-500 mb-1">Link de pagamento</p>
               <div className="flex gap-2">
                 <input
                   readOnly
-                  value={m.payment_url}
+                  value={m.asaas_payment_url}
                   className="flex-1 text-xs border rounded px-2 py-1.5 bg-gray-50"
                 />
                 <button
-                  onClick={() => { navigator.clipboard.writeText(m.payment_url!); alert('Link copiado!') }}
+                  onClick={() => { navigator.clipboard.writeText(m.asaas_payment_url!); alert('Link copiado!') }}
                   className="px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-50"
                 >
                   <Copy className="w-4 h-4" />
                 </button>
                 <a
-                  href={m.payment_url}
+                  href={m.asaas_payment_url}
                   target="_blank"
                   rel="noreferrer"
                   className="px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-50"
@@ -505,17 +501,17 @@ function PaymentModal({
             </div>
           )}
 
-          {m.payment_pix_copia_cola && (
+          {m.asaas_pix_copy_paste && (
             <div>
               <p className="text-xs text-gray-500 mb-1">PIX Copia e Cola</p>
               <div className="flex gap-2">
                 <input
                   readOnly
-                  value={m.payment_pix_copia_cola}
+                  value={m.asaas_pix_copy_paste}
                   className="flex-1 text-xs border rounded px-2 py-1.5 bg-gray-50 font-mono"
                 />
                 <button
-                  onClick={() => { navigator.clipboard.writeText(m.payment_pix_copia_cola!); alert('PIX copiado!') }}
+                  onClick={() => { navigator.clipboard.writeText(m.asaas_pix_copy_paste!); alert('PIX copiado!') }}
                   className="px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200"
                 >
                   <Copy className="w-4 h-4" />
