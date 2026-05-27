@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List, RefreshCw, Download, Pencil, Trash2 } from 'lucide-react'
 import type { AulaExperimental, Professor } from '@/types'
@@ -19,11 +20,11 @@ const statusColor: Record<string, string> = {
 }
 
 export default function AulasExperimentais() {
+  const navigate = useNavigate()
   const [aulas, setAulas] = useState<AulaExperimental[]>([])
   const [professores, setProfessores] = useState<Professor[]>([])
   const [filtro, setFiltro] = useState('Todos os status')
   const [showForm, setShowForm] = useState(false)
-  const [converterAula, setConverterAula] = useState<AulaExperimental | null>(null)
   const [aba, setAba] = useState<'lista' | 'semana'>('lista')
   const [trocarProfModal, setTrocarProfModal] = useState<AulaExperimental | null>(null)
   const [novoProfId, setNovoProfId] = useState('')
@@ -337,7 +338,7 @@ export default function AulasExperimentais() {
                   </span>
                 ) : (
                   <button
-                    onClick={() => setConverterAula(a)}
+                    onClick={() => navigate('/usuarios', { state: { fromExperimental: { id: a.id, nome: a.nome, telefone: a.telefone, instrumento: a.instrumento } } })}
                     className="text-xs px-3 py-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors flex items-center gap-1"
                   >
                     <UserPlus className="w-3.5 h-3.5" /> Converter em aluno
@@ -370,14 +371,6 @@ export default function AulasExperimentais() {
           professores={professores}
           onSave={handleUpdateAula}
           onClose={() => setEditarAula(null)}
-        />
-      )}
-
-      {converterAula && (
-        <ConverterModal
-          aula={converterAula}
-          onClose={() => setConverterAula(null)}
-          onDone={() => { setConverterAula(null); loadAulas() }}
         />
       )}
 

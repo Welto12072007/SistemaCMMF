@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import {
@@ -81,18 +81,34 @@ export default function Usuarios() {
   const [experimentalId, setExperimentalId] = useState<string | null>(null)
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
   const [removendo, setRemovendo] = useState<Aluno | null>(null)
+  const [fromExperimentalReativacao, setFromExperimentalReativacao] = useState<string | null>(null)
 
   useEffect(() => { loadAlunos() }, [])
 
   // Abre formulário pré-preenchido quando vindo de AulasExperimentais
   useEffect(() => {
     const from = (location.state as { fromExperimental?: { id: string; nome: string; telefone: string; instrumento: string } } | null)?.fromExperimental
-    if (from) {
-      setEditando({ nome: from.nome, telefone: from.telefone, instrumento_interesse: from.instrumento } as Aluno)
-      setExperimentalId(from.id)
+    if (!from) return
+    setExperimentalId(from.id)
+    window.history.replaceState({}, '')
+    ;(async () => {
+      const tel = from.telefone.replace(/\D/g, '')
+      // Verifica se existe aluno inativo com esse telefone (reativação)
+      const { data: existente } = await supabase
+        .from('alunos')
+        .select('*')
+        .eq('telefone', tel)
+        .neq('status', 'ativo')
+        .maybeSingle()
+      if (existente) {
+        setEditando(existente)
+        setFromExperimentalReativacao(existente.nome)
+      } else {
+        setEditando({ nome: from.nome, telefone: from.telefone, instrumento_interesse: from.instrumento } as Aluno)
+        setFromExperimentalReativacao(null)
+      }
       setShowForm(true)
-      window.history.replaceState({}, '')
-    }
+    })()
   }, [location.state])
 
   async function loadAlunos() {
@@ -124,9 +140,13 @@ export default function Usuarios() {
     let saveError: { code?: string; message: string } | null = null
 
     if (editando?.id) {
+      // Se vier de experimental (reativação), força status ativo
+      const updateData = experimentalId
+        ? { ...data, status: 'ativo', updated_at: new Date().toISOString() }
+        : { ...data, updated_at: new Date().toISOString() }
       const { error } = await supabase
         .from('alunos')
-        .update({ ...data, updated_at: new Date().toISOString() })
+        .update(updateData)
         .eq('id', editando.id)
       saveError = error
     } else {
@@ -176,6 +196,7 @@ export default function Usuarios() {
     }
     setShowForm(false)
     setEditando(null)
+    setFromExperimentalReativacao(null)
     loadAlunos()
   }
 
@@ -290,7 +311,17 @@ export default function Usuarios() {
       </div>
 
       {showForm && (
-        <AlunoForm aluno={editando} onSave={handleSave} onClose={() => { setShowForm(false); setEditando(null) }} />
+        <AlunoForm
+          aluno={editando}
+          onSave={handleSave}
+          onClose={() => { setShowForm(false); setEditando(null); setFromExperimentalReativacao(null) }}
+          titulo={fromExperimentalReativacao ? `Reativar Aluno — ${fromExperimentalReativacao}` : undefined}
+          banner={fromExperimentalReativacao ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-sm text-amber-800">
+              ⚠️ Aluno inativo encontrado: <strong>{fromExperimentalReativacao}</strong> — cadastro completo carregado. Atualize os dados e salve para reativar.
+            </div>
+          ) : undefined}
+        />
       )}
       {removendo && (
         <SaidaModal aluno={removendo} onConfirm={confirmarSaida} onClose={() => setRemovendo(null)} />
@@ -397,10 +428,12 @@ function Detail({ label, value }: { label: string; value?: string }) {
   )
 }
 
-function AlunoForm({ aluno, onSave, onClose }: {
+function AlunoForm({ aluno, onSave, onClose, titulo, banner }: {
   aluno: Aluno | null
   onSave: (data: Partial<Aluno>) => void
   onClose: () => void
+  titulo?: string
+  banner?: React.ReactNode
 }) {
   const [form, setForm] = useState({
     nome: aluno?.nome ?? '',
@@ -474,7 +507,8 @@ function AlunoForm({ aluno, onSave, onClose }: {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-4">{aluno?.id ? 'Editar Aluno' : 'Novo Aluno'}</h2>
+        <h2 className="text-lg font-bold mb-4">{titulo ?? (aluno?.id ? 'Editar Aluno' : 'Novo Aluno')}</h2>
+        {banner}
 
         <h3 className="text-sm font-semibold text-gray-700 mb-2">Dados Principais:</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
