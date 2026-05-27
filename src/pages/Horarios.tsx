@@ -244,9 +244,9 @@ export default function Horarios() {
     let detectedNameCount = 0
 
     const getPhoneForUnmatched = (nome: string): string => {
-      const firstName = normalize(nome).split(/\s+/)[0]
+      const firstName = normalize(nome).split(/\s+/)[0] ?? ''
       if (firstName.length < 3) return ''
-      return alunos.find(a => normalize(a.nome).split(/\s+/)[0] === firstName)?.telefone || ''
+      return alunos.find(a => (normalize(a.nome).split(/\s+/)[0] ?? '') === firstName)?.telefone || ''
     }
 
     if (ids.length === 0 && h.aluno_nome) {
