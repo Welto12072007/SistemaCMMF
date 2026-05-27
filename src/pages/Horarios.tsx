@@ -76,7 +76,9 @@ export default function Horarios() {
   const [editAlunoSearch, setEditAlunoSearch] = useState('')
   const [editShowSearch, setEditShowSearch] = useState(false)
   const [editCapacidade, setEditCapacidade] = useState(1)
-  const [editGrupoUnmatchedNames, setEditGrupoUnmatchedNames] = useState<string[]>([])
+  const [editGrupoUnmatchedNames, setEditGrupoUnmatchedNames] = useState<{nome: string; telefone: string}[]>([])
+  const [editLinkingIdx, setEditLinkingIdx] = useState<number | null>(null)
+  const [editLinkingSearch, setEditLinkingSearch] = useState('')
   const [saving, setSaving] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [novoHorario, setNovoHorario] = useState<{ profId: string } | null>(null)
@@ -238,8 +240,14 @@ export default function Horarios() {
     }
 
     let ids: string[] = h.aluno_ids ? [...h.aluno_ids] : []
-    const unmatched: string[] = []
+    const unmatched: {nome: string; telefone: string}[] = []
     let detectedNameCount = 0
+
+    const getPhoneForUnmatched = (nome: string): string => {
+      const firstName = normalize(nome).split(/\s+/)[0]
+      if (firstName.length < 3) return ''
+      return alunos.find(a => normalize(a.nome).split(/\s+/)[0] === firstName)?.telefone || ''
+    }
 
     if (ids.length === 0 && h.aluno_nome) {
       // Old data: match names text → IDs
@@ -248,7 +256,7 @@ export default function Horarios() {
       for (const nome of nomes) {
         const id = matchAluno(nome)
         if (id) ids.push(id)
-        else unmatched.push(nome)
+        else unmatched.push({ nome, telefone: getPhoneForUnmatched(nome) })
       }
     } else if (ids.length > 0 && h.aluno_nome && detectedTipo === 'grupo') {
       // New data: find names in aluno_nome not yet covered by existing IDs (e.g. typos)
@@ -266,13 +274,15 @@ export default function Horarios() {
         if (!coveredById) {
           const id = matchAluno(nome)
           if (id && !ids.includes(id)) ids.push(id)
-          else if (!id) unmatched.push(nome)
+          else if (!id) unmatched.push({ nome, telefone: getPhoneForUnmatched(nome) })
         }
       }
     }
 
     setEditAlunoIds(ids)
     setEditGrupoUnmatchedNames(unmatched)
+    setEditLinkingIdx(null)
+    setEditLinkingSearch('')
     // Default capacidade for old group data (previously individual with capacidade=1)
     const defaultCap = detectedTipo === 'grupo' && !h.tipo && (!h.capacidade || h.capacidade <= 1) && detectedNameCount > 0
       ? detectedNameCount
@@ -498,7 +508,7 @@ export default function Horarios() {
           .map(id => alunos.find(a => a.id === id)?.nome || '')
           .filter(Boolean)
         // Preserve unmatched names (typos/not yet registered) to avoid data loss
-        alunoNome = [...matchedNames, ...editGrupoUnmatchedNames].join('\n')
+        alunoNome = [...matchedNames, ...editGrupoUnmatchedNames.map(u => u.nome)].join('\n')
         alunoIds = editAlunoIds
       } else if (editAlunoSearch.trim()) {
         alunoNome = editAlunoSearch.trim()
@@ -1150,16 +1160,74 @@ export default function Horarios() {
                           </div>
                         )
                       })}
-                      {/* Empty slots */}
-                      {editGrupoUnmatchedNames.map((nome, i) => (
-                        <div key={`unmatched-${i}`} className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-                          <span className="text-sm text-amber-800">{nome}</span>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-amber-500">sem vínculo</span>
-                            <button onClick={() => setEditGrupoUnmatchedNames(prev => prev.filter((_, j) => j !== i))}>
-                              <X className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" />
-                            </button>
+                      {/* Unmatched names (sem vínculo) */}
+                      {editGrupoUnmatchedNames.map((item, i) => (
+                        <div key={`unmatched-${i}`} className="bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-amber-800 font-medium">{item.nome}</span>
+                            <div className="flex items-center gap-1.5">
+                              {editLinkingIdx !== i && (
+                                <button
+                                  onClick={() => { setEditLinkingIdx(i); setEditLinkingSearch('') }}
+                                  className="text-xs text-amber-500 hover:text-amber-700 underline"
+                                >
+                                  vincular
+                                </button>
+                              )}
+                              <button onClick={() => {
+                                setEditGrupoUnmatchedNames(prev => prev.filter((_, j) => j !== i))
+                                if (editLinkingIdx === i) setEditLinkingIdx(null)
+                              }}>
+                                <X className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" />
+                              </button>
+                            </div>
                           </div>
+                          <input
+                            type="tel"
+                            value={item.telefone}
+                            onChange={e => setEditGrupoUnmatchedNames(prev => prev.map((u, j) => j === i ? { ...u, telefone: e.target.value } : u))}
+                            placeholder="telefone..."
+                            className="text-xs text-gray-500 font-mono mt-0.5 w-full bg-transparent border-0 p-0 focus:ring-0 outline-none placeholder-gray-300"
+                          />
+                          {editLinkingIdx === i && (
+                            <div className="relative mt-1">
+                              <input
+                                autoFocus
+                                value={editLinkingSearch}
+                                onChange={e => setEditLinkingSearch(e.target.value)}
+                                onBlur={() => setTimeout(() => setEditLinkingIdx(null), 150)}
+                                placeholder="Buscar aluno para vincular..."
+                                className="w-full border border-amber-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-amber-400 bg-white"
+                              />
+                              {editLinkingSearch && (
+                                <ul className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded shadow-lg max-h-28 overflow-y-auto mt-0.5">
+                                  {alunos
+                                    .filter(a => a.nome.toLowerCase().includes(editLinkingSearch.toLowerCase()) && !editAlunoIds.includes(a.id))
+                                    .slice(0, 5)
+                                    .map(a => (
+                                      <li
+                                        key={a.id}
+                                        onMouseDown={() => {
+                                          setEditAlunoIds(prev => [...prev, a.id])
+                                          setEditGrupoUnmatchedNames(prev => prev.filter((_, j) => j !== i))
+                                          setEditLinkingIdx(null)
+                                          setEditLinkingSearch('')
+                                          setEditStatus('ocupado')
+                                        }}
+                                        className="px-2 py-1.5 hover:bg-amber-50 cursor-pointer text-xs flex items-center justify-between gap-2"
+                                      >
+                                        <span className="truncate">{a.nome}</span>
+                                        {a.telefone && <span className="text-gray-400 font-mono shrink-0">{a.telefone}</span>}
+                                      </li>
+                                    ))
+                                  }
+                                  {alunos.filter(a => a.nome.toLowerCase().includes(editLinkingSearch.toLowerCase()) && !editAlunoIds.includes(a.id)).length === 0 && (
+                                    <li className="px-2 py-2 text-xs text-gray-400">Nenhum aluno encontrado</li>
+                                  )}
+                                </ul>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                       {Array.from({ length: Math.max(0, editCapacidade - editAlunoIds.length - editGrupoUnmatchedNames.length) }).map((_, i) => (
