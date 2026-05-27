@@ -196,7 +196,7 @@ export default function Disparos() {
       const segmentoId = grupoBase.replace('segmento:', '')
       const segmento = segmentos.find((s) => s.id === segmentoId)
       if (segmento) {
-        if (segmento.grupoBase === 'alunos_ativos') lista = lista.filter((c) => c.status === 'ativo')
+        if (segmento.grupoBase === 'alunos_ativos') lista = lista.filter((c) => ['ativo', 'aluno'].includes(c.status || ''))
         if (segmento.grupoBase === 'ex_alunos') lista = lista.filter((c) => ['perdido', 'cancelado', 'concluido'].includes(c.status || ''))
         if (segmento.grupoBase === 'leads') lista = lista.filter((c) => c.status === 'lead')
         if (segmento.instrumento) lista = lista.filter((c) => c.instrumento_interesse?.toLowerCase().includes(segmento.instrumento.toLowerCase()))
@@ -205,7 +205,7 @@ export default function Disparos() {
     } else {
       switch (grupoBase) {
         case 'alunos_ativos':
-          lista = lista.filter((c) => c.status === 'ativo')
+          lista = lista.filter((c) => ['ativo', 'aluno'].includes(c.status || ''))
           break
         case 'ex_alunos':
           lista = lista.filter((c) => ['perdido', 'cancelado', 'concluido'].includes(c.status || ''))

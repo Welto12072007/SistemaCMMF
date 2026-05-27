@@ -76,6 +76,7 @@ export default function Horarios() {
   const [editAlunoSearch, setEditAlunoSearch] = useState('')
   const [editShowSearch, setEditShowSearch] = useState(false)
   const [editCapacidade, setEditCapacidade] = useState(1)
+  const [editGrupoUnmatchedNames, setEditGrupoUnmatchedNames] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [novoHorario, setNovoHorario] = useState<{ profId: string } | null>(null)
@@ -216,30 +217,67 @@ export default function Horarios() {
     )
     const detectedTipo: 'individual' | 'grupo' = (h.tipo as 'individual' | 'grupo') || (hasMultipleNames ? 'grupo' : 'individual')
     setEditTipo(detectedTipo)
-    // Auto-match aluno_ids from aluno_nome for old data that has names but no ids
-    let ids: string[] = h.aluno_ids || []
-    if (ids.length === 0 && h.aluno_nome) {
-      const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
-      // Split on comma or newline first, then further split on " e " (Portuguese "and")
-      const rawNomes = h.aluno_nome.split(/[,\n]/).map(n => n.trim()).filter(Boolean)
-      const nomes = rawNomes.flatMap(nome => {
-        if (nome.includes(' e ')) {
-          const parts = nome.split(/\s+e\s+/).map(p => p.trim()).filter(Boolean)
-          // Only split if each part looks like a real name (at least 2 words)
+
+    const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+    const splitNomesHorario = (nome: string): string[] => {
+      const rawNomes = nome.split(/[,\n]/).map(n => n.trim()).filter(Boolean)
+      return rawNomes.flatMap(n => {
+        if (n.includes(' e ')) {
+          const parts = n.split(/\s+e\s+/).map(p => p.trim()).filter(Boolean)
           if (parts.length >= 2 && parts.every(p => p.split(/\s+/).length >= 2)) return parts
         }
-        return [nome]
-      })
-      ids = nomes.flatMap(nome => {
-        const hn = normalize(nome)
-        const hWords = hn.split(/\s+/).filter(w => w.length > 2)
-        const found = alunos.find(a => normalize(a.nome) === hn) ||
-          (hWords.length > 0 ? alunos.find(a => { const an = normalize(a.nome); return hWords.every(w => an.includes(w)) }) : undefined)
-        return found ? [found.id] : []
+        return [n]
       })
     }
+    const matchAluno = (nome: string): string | null => {
+      const hn = normalize(nome)
+      const hWords = hn.split(/\s+/).filter(w => w.length > 2)
+      const found = alunos.find(a => normalize(a.nome) === hn) ||
+        (hWords.length > 0 ? alunos.find(a => { const an = normalize(a.nome); return hWords.every(w => an.includes(w)) }) : undefined)
+      return found ? found.id : null
+    }
+
+    let ids: string[] = h.aluno_ids ? [...h.aluno_ids] : []
+    const unmatched: string[] = []
+    let detectedNameCount = 0
+
+    if (ids.length === 0 && h.aluno_nome) {
+      // Old data: match names text → IDs
+      const nomes = splitNomesHorario(h.aluno_nome)
+      detectedNameCount = nomes.length
+      for (const nome of nomes) {
+        const id = matchAluno(nome)
+        if (id) ids.push(id)
+        else unmatched.push(nome)
+      }
+    } else if (ids.length > 0 && h.aluno_nome && detectedTipo === 'grupo') {
+      // New data: find names in aluno_nome not yet covered by existing IDs (e.g. typos)
+      const nomes = splitNomesHorario(h.aluno_nome)
+      detectedNameCount = nomes.length
+      for (const nome of nomes) {
+        const hn = normalize(nome)
+        const hWords = hn.split(/\s+/).filter(w => w.length > 2)
+        const coveredById = ids.some(id => {
+          const a = alunos.find(a => a.id === id)
+          if (!a) return false
+          const an = normalize(a.nome)
+          return an === hn || (hWords.length > 0 && hWords.every(w => an.includes(w)))
+        })
+        if (!coveredById) {
+          const id = matchAluno(nome)
+          if (id && !ids.includes(id)) ids.push(id)
+          else if (!id) unmatched.push(nome)
+        }
+      }
+    }
+
     setEditAlunoIds(ids)
-    setEditCapacidade(h.capacidade || (detectedTipo === 'grupo' ? 4 : 1))
+    setEditGrupoUnmatchedNames(unmatched)
+    // Default capacidade for old group data (previously individual with capacidade=1)
+    const defaultCap = detectedTipo === 'grupo' && !h.tipo && (!h.capacidade || h.capacidade <= 1) && detectedNameCount > 0
+      ? detectedNameCount
+      : (h.capacidade || (detectedTipo === 'grupo' ? 4 : 1))
+    setEditCapacidade(defaultCap)
     // For individual: pre-fill search with existing nome so the field isn't blank
     setEditAlunoSearch(detectedTipo === 'individual' && ids.length === 0 ? (h.aluno_nome?.trim() || '') : '')
     setEditShowSearch(false)
@@ -456,10 +494,11 @@ export default function Horarios() {
     let alunoIds: string[] | null = null
     if (editStatus === 'ocupado') {
       if (editAlunoIds.length > 0) {
-        alunoNome = editAlunoIds
+        const matchedNames = editAlunoIds
           .map(id => alunos.find(a => a.id === id)?.nome || '')
           .filter(Boolean)
-          .join('\n')
+        // Preserve unmatched names (typos/not yet registered) to avoid data loss
+        alunoNome = [...matchedNames, ...editGrupoUnmatchedNames].join('\n')
         alunoIds = editAlunoIds
       } else if (editAlunoSearch.trim()) {
         alunoNome = editAlunoSearch.trim()
@@ -470,13 +509,19 @@ export default function Horarios() {
       }
     }
 
-    await supabase.from('horarios').update({
+    const { error: saveError } = await supabase.from('horarios').update({
       status: editStatus,
       tipo: editTipo,
       aluno_nome: alunoNome,
       aluno_ids: alunoIds,
       capacidade: editTipo === 'grupo' ? editCapacidade : 1,
     }).eq('id', editCell.id)
+
+    if (saveError) {
+      alert('Erro ao salvar horário:\n' + saveError.message)
+      setSaving(false)
+      return
+    }
 
     // Update local state
     setHorarios(prev => prev.map(h =>
@@ -1086,7 +1131,7 @@ export default function Horarios() {
                           onChange={e => setEditCapacidade(Math.max(1, +e.target.value))}
                           className="w-12 border border-gray-200 rounded px-1.5 py-0.5 text-center text-xs focus:ring-1 focus:ring-purple-400"
                         />
-                        <span className="text-purple-600 font-medium">{editAlunoIds.length}/{editCapacidade}</span>
+                        <span className="text-purple-600 font-medium">{editAlunoIds.length + editGrupoUnmatchedNames.length}/{editCapacidade}</span>
                       </div>
                     </div>
                     {/* Selected students */}
@@ -1106,7 +1151,18 @@ export default function Horarios() {
                         )
                       })}
                       {/* Empty slots */}
-                      {Array.from({ length: Math.max(0, editCapacidade - editAlunoIds.length) }).map((_, i) => (
+                      {editGrupoUnmatchedNames.map((nome, i) => (
+                        <div key={`unmatched-${i}`} className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                          <span className="text-sm text-amber-800">{nome}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-amber-500">sem vínculo</span>
+                            <button onClick={() => setEditGrupoUnmatchedNames(prev => prev.filter((_, j) => j !== i))}>
+                              <X className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {Array.from({ length: Math.max(0, editCapacidade - editAlunoIds.length - editGrupoUnmatchedNames.length) }).map((_, i) => (
                         <div key={`empty-${i}`} className="border border-dashed border-gray-200 rounded-lg px-2.5 py-1 text-xs text-gray-300 italic">
                           Vaga livre
                         </div>

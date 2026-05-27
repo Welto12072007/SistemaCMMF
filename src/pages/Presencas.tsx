@@ -21,6 +21,7 @@ interface Professor {
 
 interface AlunoPresenca {
   id: string
+  horario_id: string
   aluno_id: string
   aluno_nome: string
   professor_id: string
@@ -32,6 +33,7 @@ interface AlunoPresenca {
   tipo_falta?: string
   observacoes?: string
   presenca_id?: string // existing presenca record id
+  tipo_aula: 'individual' | 'grupo'
 }
 
 interface AlertaFalta {
@@ -97,7 +99,7 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
     // Buscar horarios ocupados para este dia da semana
     let query = supabase
       .from('horarios')
-      .select('id, professor_id, dia_semana, hora_inicio, hora_fim, status, aluno_nome, instrumento, professor:professores(nome)')
+      .select('id, professor_id, dia_semana, hora_inicio, hora_fim, status, aluno_nome, aluno_ids, tipo, instrumento, professor:professores(nome)')
       .eq('dia_semana', diaSemana)
       .eq('status', 'ocupado')
 
@@ -113,27 +115,71 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
       .select('*')
       .eq('data', dataAtual)
 
-    const lista: AlunoPresenca[] = (horariosOcupados || [])
-      .filter((h: any) => h.aluno_nome)
-      .map((h: any) => {
+    const splitNomesGrupo = (nome: string): string[] => {
+      const rawNomes = nome.split(/[,\n]/).map((n: string) => n.trim()).filter(Boolean)
+      return rawNomes.flatMap((n: string) => {
+        if (n.includes(' e ')) {
+          const parts = n.split(/\s+e\s+/).map((p: string) => p.trim()).filter(Boolean)
+          if (parts.length >= 2 && parts.every((p: string) => p.split(/\s+/).length >= 2)) return parts
+        }
+        return [n]
+      })
+    }
+
+    const lista: AlunoPresenca[] = []
+    for (const h of (horariosOcupados || [])) {
+      if (!h.aluno_nome) continue
+      const isGrupo = (h as any).tipo === 'grupo' || (
+        !(h as any).tipo && (
+          h.aluno_nome.includes(',') ||
+          h.aluno_nome.includes('\n') ||
+          /\w{2,}\s+e\s+\w{2,}/.test(h.aluno_nome)
+        )
+      )
+      if (isGrupo) {
+        for (const nome of splitNomesGrupo(h.aluno_nome)) {
+          const presExistente = (presencasExistentes || []).find(
+            (p: any) => p.horario_id === h.id && p.aluno_nome === nome
+          )
+          lista.push({
+            id: h.id + '_' + nome,
+            horario_id: h.id,
+            aluno_id: '',
+            aluno_nome: nome,
+            professor_id: h.professor_id,
+            professor_nome: (h.professor as any)?.nome || '',
+            instrumento: (h as any).instrumento || '',
+            hora_inicio: (h as any).hora_inicio || '',
+            hora_fim: (h as any).hora_fim || '',
+            presente: presExistente ? presExistente.presente : null,
+            tipo_falta: presExistente?.tipo_falta || '',
+            observacoes: presExistente?.observacoes || '',
+            presenca_id: presExistente?.id,
+            tipo_aula: 'grupo',
+          })
+        }
+      } else {
         const presExistente = (presencasExistentes || []).find(
           (p: any) => p.horario_id === h.id && p.data === dataAtual
         )
-        return {
+        lista.push({
           id: h.id,
+          horario_id: h.id,
           aluno_id: '',
           aluno_nome: h.aluno_nome || '',
           professor_id: h.professor_id,
           professor_nome: (h.professor as any)?.nome || '',
-          instrumento: h.instrumento || '',
-          hora_inicio: h.hora_inicio || '',
-          hora_fim: h.hora_fim || '',
+          instrumento: (h as any).instrumento || '',
+          hora_inicio: (h as any).hora_inicio || '',
+          hora_fim: (h as any).hora_fim || '',
           presente: presExistente ? presExistente.presente : null,
           tipo_falta: presExistente?.tipo_falta || '',
           observacoes: presExistente?.observacoes || '',
           presenca_id: presExistente?.id,
-        }
-      })
+          tipo_aula: 'individual',
+        })
+      }
+    }
 
     setPresencas(lista)
     setLoading(false)
@@ -309,7 +355,7 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
       await supabase.from('presencas').insert({
         aluno_id: alunoId,
         professor_id: item.professor_id,
-        horario_id: item.id,
+        horario_id: item.horario_id,
         data: dataAtual,
         hora_inicio: item.hora_inicio,
         hora_fim: item.hora_fim,
@@ -601,23 +647,32 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        {item.presente === false && (
-                          <select
-                            value={item.tipo_falta || 'falta_injustificada'}
-                            onChange={(e) => registrarPresenca(item, false, e.target.value)}
-                            className="text-xs border rounded px-2 py-1"
-                          >
-                            <option value="falta_injustificada">Injustificada</option>
-                            <option value="falta_justificada">Justificada</option>
-                            <option value="remarcada">Remarcada</option>
-                          </select>
-                        )}
-                        {item.presente === true && (
-                          <span className="text-xs text-green-600 font-medium">Presente</span>
-                        )}
-                        {item.presente === null && (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
+                        <div className="space-y-1">
+                          <span className={`inline-flex text-xs px-2 py-0.5 rounded-full font-medium ${
+                            item.tipo_aula === 'grupo'
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-sky-50 text-sky-600'
+                          }`}>
+                            {item.tipo_aula === 'grupo' ? 'Grupo' : 'Individual'}
+                          </span>
+                          {item.presente === false && (
+                            <select
+                              value={item.tipo_falta || 'falta_injustificada'}
+                              onChange={(e) => registrarPresenca(item, false, e.target.value)}
+                              className="text-xs border rounded px-2 py-1 block"
+                            >
+                              <option value="falta_injustificada">Injustificada</option>
+                              <option value="falta_justificada">Justificada</option>
+                              <option value="remarcada">Remarcada</option>
+                            </select>
+                          )}
+                          {item.presente === true && (
+                            <span className="text-xs text-green-600 font-medium block">Presente</span>
+                          )}
+                          {item.presente === null && (
+                            <span className="text-xs text-gray-400 block">—</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500 max-w-[160px]">
                         {item.observacoes
