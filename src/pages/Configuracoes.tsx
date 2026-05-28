@@ -144,8 +144,10 @@ function AcessosTab() {
 
   async function handleResendInvite(perfil: Perfil) {
     setErro('')
-    const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(perfil.email, {
-      redirectTo: `${window.location.origin}/definir-senha`,
+    const { error } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'invite',
+      email: perfil.email,
+      options: { redirectTo: `${window.location.origin}/definir-senha` },
     })
     if (error) {
       setErro(error.message)
