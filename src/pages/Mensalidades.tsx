@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Plus, Search, Download, ExternalLink, Copy, Zap, CreditCard } from 'lucide-react'
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Plus, Search, Download, ExternalLink, Copy, Zap, CreditCard, QrCode, UserPlus } from 'lucide-react'
 
 interface Mensalidade {
   id: string
@@ -21,6 +21,7 @@ interface Mensalidade {
   asaas_charge_id: string | null
   asaas_payment_url: string | null
   asaas_billing_type: string | null
+  asaas_pix_copy_paste: string | null
 }
 
 const STATUS_OPTIONS = ['pendente', 'pago', 'atrasado', 'isento', 'cancelado'] as const
@@ -59,6 +60,9 @@ export default function Mensalidades() {
   const [gerandoMes, setGerandoMes] = useState(false)
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null)
   const [paymentModal, setPaymentModal] = useState<Mensalidade | null>(null)
+  const [billingModal, setBillingModal] = useState<Mensalidade | null>(null)
+  const [avulsaModal, setAvulsaModal] = useState(false)
+  const [aba, setAba] = useState<'mensalidades' | 'inadimplentes'>('mensalidades')
 
   useEffect(() => {
     loadMensalidades()
@@ -123,10 +127,11 @@ export default function Mensalidades() {
     loadMensalidades()
   }
 
-  async function criarCobrancaAsaas(m: Mensalidade) {
+  async function criarCobrancaAsaas(m: Mensalidade, billing_type: 'CREDIT_CARD' | 'PIX') {
+    setBillingModal(null)
     setPaymentLoading(m.id)
     const { data, error } = await supabase.functions.invoke('asaas-create-charge', {
-      body: { mensalidade_id: m.id },
+      body: { mensalidade_id: m.id, billing_type },
     })
     setPaymentLoading(null)
     if (error || !data?.ok) {
@@ -138,7 +143,7 @@ export default function Mensalidades() {
       ...m,
       asaas_charge_id: data.charge_id,
       asaas_payment_url: data.payment_url,
-      asaas_billing_type: 'CREDIT_CARD',
+      asaas_billing_type: billing_type,
     })
   }
 
@@ -180,6 +185,11 @@ export default function Mensalidades() {
       return true
     })
   }, [items, filtroStatus, busca])
+
+  const inadimplentes = useMemo(() => {
+    const hoje = new Date().toISOString().slice(0, 10)
+    return items.filter((m) => m.status !== 'pago' && m.status !== 'isento' && m.status !== 'cancelado' && m.data_vencimento < hoje)
+  }, [items])
 
   const kpis = useMemo(() => {
     const total = items.length
@@ -236,6 +246,13 @@ export default function Mensalidades() {
             Exportar CSV
           </button>
           <button
+            onClick={() => setAvulsaModal(true)}
+            className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2.5 rounded-lg hover:bg-gray-50"
+          >
+            <UserPlus className="w-4 h-4" />
+            Cobrança Avulsa
+          </button>
+          <button
             onClick={gerarMensalidadesDoMes}
             disabled={gerandoMes}
             className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 disabled:opacity-50"
@@ -244,6 +261,15 @@ export default function Mensalidades() {
             {gerandoMes ? 'Gerando...' : `Gerar mês ${filtroMes}`}
           </button>
         </div>
+      </div>
+
+      {/* Abas */}
+      <div className="flex gap-1 border-b">
+        <button onClick={() => setAba('mensalidades')} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${ aba === 'mensalidades' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700' }`}>Mensalidades</button>
+        <button onClick={() => setAba('inadimplentes')} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px flex items-center gap-1.5 ${ aba === 'inadimplentes' ? 'border-red-500 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700' }`}>
+          Inadimplentes
+          {inadimplentes.length > 0 && <span className="bg-red-100 text-red-700 text-xs font-bold px-1.5 py-0.5 rounded-full">{inadimplentes.length}</span>}
+        </button>
       </div>
 
       {/* KPIs */}
@@ -255,6 +281,52 @@ export default function Mensalidades() {
         <KpiCard label="Recebido" value={brl(kpis.recebido)} icon={<DollarSign className="w-4 h-4 text-green-600" />} color="text-green-700" />
       </div>
 
+      {aba === 'inadimplentes' && (
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+          {inadimplentes.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">Nenhum inadimplente neste mês. 🎉</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-red-50 text-left text-xs text-gray-500 uppercase">
+                <tr>
+                  <th className="px-4 py-3">Aluno</th>
+                  <th className="px-4 py-3">Vencimento</th>
+                  <th className="px-4 py-3">Valor</th>
+                  <th className="px-4 py-3">Dias em atraso</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {inadimplentes.map((m) => {
+                  const dias = Math.floor((Date.now() - new Date(m.data_vencimento).getTime()) / 86400000)
+                  return (
+                    <tr key={m.id} className="hover:bg-red-50">
+                      <td className="px-4 py-3"><div className="font-medium">{m.aluno_nome}</div><div className="text-xs text-gray-500">{m.aluno_telefone || ''}</div></td>
+                      <td className="px-4 py-3 text-gray-700">{formatBR(m.data_vencimento)}</td>
+                      <td className="px-4 py-3 font-medium text-red-700">{brl(m.valor - m.desconto)}</td>
+                      <td className="px-4 py-3"><span className="bg-red-100 text-red-800 text-xs font-bold px-2 py-1 rounded-full">{dias}d</span></td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          {!m.asaas_charge_id
+                            ? <button onClick={() => setBillingModal(m)} disabled={paymentLoading === m.id} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200"><Zap className="w-3 h-3" /> Cobrar</button>
+                            : <button onClick={() => setPaymentModal(m)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200"><Zap className="w-3 h-3" /> Link</button>
+                          }
+                          {m.aluno_telefone && (
+                            <a href={`https://wa.me/55${m.aluno_telefone.replace(/\D/g,'')}?text=${encodeURIComponent(`Olá ${m.aluno_nome.split(' ')[0]}! Sua mensalidade de ${brl(m.valor-m.desconto)} venceu em ${formatBR(m.data_vencimento)}. Entre em contato para regularizar.`)}`} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200">WhatsApp</a>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {aba === 'mensalidades' && (
+      <>
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-3">
         <input
@@ -361,7 +433,7 @@ export default function Mensalidades() {
                       <div className="flex justify-end gap-2">
                         {m.status !== 'pago' && !m.asaas_charge_id && (
                           <button
-                            onClick={() => criarCobrancaAsaas(m)}
+                            onClick={() => setBillingModal(m)}
                             disabled={paymentLoading === m.id}
                             className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200 disabled:opacity-50"
                           >
@@ -401,12 +473,28 @@ export default function Mensalidades() {
         )}
       </div>
 
+      </>
+      )}
+
       {editando && (
         <EditarMensalidadeModal
           m={editando}
           onClose={() => setEditando(null)}
           onSave={salvarEdicao}
         />
+      )}
+
+      {billingModal && (
+        <BillingTypeModal
+          nome={billingModal.aluno_nome}
+          loading={paymentLoading === billingModal.id}
+          onClose={() => setBillingModal(null)}
+          onSelect={(type) => criarCobrancaAsaas(billingModal, type)}
+        />
+      )}
+
+      {avulsaModal && (
+        <AvulsaModal onClose={() => setAvulsaModal(false)} />
       )}
 
       {paymentModal && (
@@ -488,6 +576,18 @@ function PaymentModal({
           )}
 
 
+
+          {m.asaas_billing_type === 'PIX' && m.asaas_pix_copy_paste && (
+            <div>
+              <p className="text-xs text-gray-500 mb-1">PIX Copia e Cola</p>
+              <div className="flex gap-2">
+                <input readOnly value={m.asaas_pix_copy_paste} className="flex-1 text-xs border rounded px-2 py-1.5 bg-gray-50 font-mono" />
+                <button onClick={() => { navigator.clipboard.writeText(m.asaas_pix_copy_paste!); alert('Código PIX copiado!') }} className="px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-50">
+                  <QrCode className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
 
           {whatsappUrl && (
             <a
@@ -665,5 +765,115 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="block text-xs text-gray-600 mb-1">{label}</span>
       {children}
     </label>
+  )
+}
+
+function BillingTypeModal({
+  nome,
+  loading,
+  onClose,
+  onSelect,
+}: {
+  nome: string
+  loading: boolean
+  onClose: () => void
+  onSelect: (type: 'CREDIT_CARD' | 'PIX') => void
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+        <div className="px-5 py-4 border-b">
+          <h2 className="text-lg font-semibold">Tipo de cobrança</h2>
+          <p className="text-sm text-gray-500">{nome}</p>
+        </div>
+        <div className="p-5 grid grid-cols-2 gap-3">
+          <button
+            disabled={loading}
+            onClick={() => onSelect('CREDIT_CARD')}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 hover:border-purple-400 hover:bg-purple-50 disabled:opacity-50"
+          >
+            <CreditCard className="w-8 h-8 text-purple-600" />
+            <span className="text-sm font-medium">Cartão de crédito</span>
+          </button>
+          <button
+            disabled={loading}
+            onClick={() => onSelect('PIX')}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 hover:border-green-400 hover:bg-green-50 disabled:opacity-50"
+          >
+            <QrCode className="w-8 h-8 text-green-600" />
+            <span className="text-sm font-medium">PIX</span>
+          </button>
+        </div>
+        <div className="px-5 py-3 border-t flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AvulsaModal({ onClose }: { onClose: () => void }) {
+  const [form, setForm] = useState({ nome: '', telefone: '', email: '', valor: '', vencimento: new Date().toISOString().slice(0,10), billing_type: 'PIX' as 'PIX' | 'CREDIT_CARD', descricao: '' })
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<{payment_url?: string; pix_copy_paste?: string} | null>(null)
+
+  async function enviar() {
+    if (!form.nome || !form.telefone || !form.valor) { alert('Preencha nome, telefone e valor'); return }
+    setLoading(true)
+    const { data, error } = await supabase.functions.invoke('asaas-create-charge', {
+      body: { avulsa: true, nome: form.nome, telefone: form.telefone, email: form.email || undefined, valor: parseFloat(form.valor), vencimento: form.vencimento, billing_type: form.billing_type, descricao: form.descricao || undefined },
+    })
+    setLoading(false)
+    if (error || !data?.ok) { alert(`Erro: ${error?.message ?? data?.error}`); return }
+    setResult({ payment_url: data.payment_url, pix_copy_paste: data.pix_copy_paste })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="px-5 py-4 border-b flex items-center gap-2">
+          <UserPlus className="w-5 h-5 text-blue-600" />
+          <h2 className="text-lg font-semibold">Cobrança Avulsa</h2>
+        </div>
+        {result ? (
+          <div className="p-5 space-y-4">
+            <p className="text-green-700 font-medium">Cobrança criada com sucesso!</p>
+            {result.pix_copy_paste && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">PIX Copia e Cola</p>
+                <div className="flex gap-2">
+                  <input readOnly value={result.pix_copy_paste} className="flex-1 text-xs border rounded px-2 py-1.5 bg-gray-50 font-mono" />
+                  <button onClick={() => { navigator.clipboard.writeText(result.pix_copy_paste!); alert('Copiado!') }} className="px-3 py-1.5 rounded border hover:bg-gray-50"><QrCode className="w-4 h-4" /></button>
+                </div>
+              </div>
+            )}
+            {result.payment_url && (
+              <a href={result.payment_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline"><ExternalLink className="w-4 h-4" /> Abrir link de pagamento</a>
+            )}
+          </div>
+        ) : (
+          <div className="p-5 space-y-3">
+            <Field label="Nome"><input value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full px-3 py-2 border rounded" placeholder="Nome completo" /></Field>
+            <Field label="Telefone"><input value={form.telefone} onChange={e => setForm({...form, telefone: e.target.value})} className="w-full px-3 py-2 border rounded" placeholder="51999999999" /></Field>
+            <Field label="E-mail (opcional)"><input value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full px-3 py-2 border rounded" placeholder="email@exemplo.com" /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Valor (R$)"><input type="number" step="0.01" value={form.valor} onChange={e => setForm({...form, valor: e.target.value})} className="w-full px-3 py-2 border rounded" /></Field>
+              <Field label="Vencimento"><input type="date" value={form.vencimento} onChange={e => setForm({...form, vencimento: e.target.value})} className="w-full px-3 py-2 border rounded" /></Field>
+            </div>
+            <Field label="Tipo">
+              <select value={form.billing_type} onChange={e => setForm({...form, billing_type: e.target.value as 'PIX'|'CREDIT_CARD'})} className="w-full px-3 py-2 border rounded">
+                <option value="PIX">PIX</option>
+                <option value="CREDIT_CARD">Cartão de crédito</option>
+              </select>
+            </Field>
+            <Field label="Descrição (opcional)"><input value={form.descricao} onChange={e => setForm({...form, descricao: e.target.value})} className="w-full px-3 py-2 border rounded" /></Field>
+          </div>
+        )}
+        <div className="px-5 py-3 border-t flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">Fechar</button>
+          {!result && <button onClick={enviar} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{loading ? 'Gerando...' : 'Gerar cobrança'}</button>}
+        </div>
+      </div>
+    </div>
   )
 }

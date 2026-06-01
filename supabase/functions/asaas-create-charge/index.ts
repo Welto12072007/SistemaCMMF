@@ -20,19 +20,93 @@ function jsonResp(data: unknown, status = 200) {
   })
 }
 
+async function getOrCreateCustomer(name: string, phone: string, email: string, externalRef: string): Promise<string> {
+  const customerBody: Record<string, string> = { name, externalReference: externalRef }
+  const cleaned = phone.replace(/\D/g, '')
+  if (email) customerBody.email = email
+  if (cleaned.length >= 10) customerBody.mobilePhone = cleaned
+
+  const searchResp = await fetch(`${ASAAS_BASE}/customers?externalReference=${externalRef}`, {
+    headers: { access_token: ASAAS_KEY },
+  })
+  const searchData = await searchResp.json()
+  if (searchData?.data?.length > 0) return searchData.data[0].id
+
+  const custResp = await fetch(`${ASAAS_BASE}/customers`, {
+    method: 'POST',
+    headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(customerBody),
+  })
+  const custData = await custResp.json()
+  if (!custResp.ok) throw new Error('Asaas customer error: ' + JSON.stringify(custData))
+  return custData.id
+}
+
+async function fetchPixPayload(chargeId: string): Promise<string | null> {
+  try {
+    const pixResp = await fetch(`${ASAAS_BASE}/payments/${chargeId}/pixQrCode`, {
+      headers: { access_token: ASAAS_KEY },
+    })
+    if (pixResp.ok) {
+      const pixData = await pixResp.json()
+      return pixData.payload ?? null
+    }
+  } catch (_) { /* PIX pode não estar disponível imediatamente */ }
+  return null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   try {
     const body = await req.json()
+    const billing_type: string = (body.billing_type ?? 'CREDIT_CARD').toUpperCase()
+    const isPix = billing_type === 'PIX'
+
+    // ══════════════════════════════════════════════════════════════════
+    // MODO AVULSO — cobrança para pessoa não cadastrada no sistema
+    // ══════════════════════════════════════════════════════════════════
+    if (body.avulsa) {
+      const { nome, telefone, email = '', valor, vencimento, descricao = 'Cobrança CMMF' } = body
+      if (!nome || !valor || !vencimento) throw new Error('nome, valor e vencimento são obrigatórios')
+
+      const extRef = `avulsa_${telefone.replace(/\D/g, '')}_${Date.now()}`
+      const customerId = await getOrCreateCustomer(nome, telefone ?? '', email, extRef)
+
+      const chargeResp = await fetch(`${ASAAS_BASE}/payments`, {
+        method: 'POST',
+        headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer: customerId,
+          billingType: billing_type,
+          value: Number(valor),
+          dueDate: vencimento,
+          description: descricao,
+          externalReference: extRef,
+        }),
+      })
+      const chargeData = await chargeResp.json()
+      if (!chargeResp.ok) throw new Error('Asaas charge error: ' + JSON.stringify(chargeData))
+
+      const pix_copy_paste = isPix ? await fetchPixPayload(chargeData.id) : null
+
+      return jsonResp({
+        ok: true,
+        charge_id: chargeData.id,
+        payment_url: chargeData.invoiceUrl,
+        pix_copy_paste,
+        valor: Number(valor),
+      })
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // MODO MENSALIDADE — aluno cadastrado no sistema
+    // ══════════════════════════════════════════════════════════════════
     const { mensalidade_id } = body
-    if (!mensalidade_id) throw new Error('mensalidade_id obrigatório')
+    if (!mensalidade_id) throw new Error('mensalidade_id ou avulsa=true é obrigatório')
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-    // ------------------------------------------------------------------
-    // 1. Buscar mensalidade + aluno
-    // ------------------------------------------------------------------
     const { data: mensa, error: mensaErr } = await supabase
       .from('mensalidades')
       .select(`
@@ -45,7 +119,6 @@ Deno.serve(async (req) => {
 
     if (mensaErr || !mensa) throw new Error('Mensalidade não encontrada: ' + mensaErr?.message)
 
-    // Se já tem cobrança ativa, retornar os links existentes
     if (mensa.asaas_charge_id) {
       return jsonResp({
         ok: true,
@@ -56,61 +129,26 @@ Deno.serve(async (req) => {
       })
     }
 
-    // ------------------------------------------------------------------
-    // 2. Criar / recuperar customer Asaas
-    // ------------------------------------------------------------------
     const aluno = (mensa as any).alunos
     let asaas_customer_id: string = aluno.asaas_customer_id ?? ''
 
     if (!asaas_customer_id) {
-      const phone = (aluno.telefone ?? '').replace(/\D/g, '')
-      const customerBody: Record<string, string> = {
-        name: aluno.nome,
-        externalReference: aluno.id,
-      }
-      if (aluno.email)                      customerBody.email = aluno.email
-      if (aluno.cpf)                         customerBody.cpfCnpj = aluno.cpf.replace(/\D/g, '')
-      if (phone.length >= 10)               customerBody.mobilePhone = phone
-
-      // Verificar se já existe no Asaas pelo externalReference
-      const searchResp = await fetch(
-        `${ASAAS_BASE}/customers?externalReference=${aluno.id}`,
-        { headers: { access_token: ASAAS_KEY } },
-      )
-      const searchData = await searchResp.json()
-
-      if (searchData?.data?.length > 0) {
-        asaas_customer_id = searchData.data[0].id
-      } else {
-        const custResp = await fetch(`${ASAAS_BASE}/customers`, {
-          method: 'POST',
-          headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json' },
-          body: JSON.stringify(customerBody),
-        })
-        const custData = await custResp.json()
-        if (!custResp.ok) throw new Error('Asaas customer error: ' + JSON.stringify(custData))
-        asaas_customer_id = custData.id
-      }
-
-      // Persistir no banco
+      asaas_customer_id = await getOrCreateCustomer(aluno.nome, aluno.telefone ?? '', aluno.email ?? '', aluno.id)
       await supabase.from('alunos').update({ asaas_customer_id }).eq('id', aluno.id)
     }
 
-    // ------------------------------------------------------------------
-    // 3. Criar cobrança
-    // ------------------------------------------------------------------
     const valor = Number(mensa.valor) - Number(mensa.desconto ?? 0)
     const installmentCount: number = body.installment_count ?? 1
 
     const chargeBody: Record<string, unknown> = {
       customer: asaas_customer_id,
-      billingType: 'CREDIT_CARD',
+      billingType: billing_type,
       value: valor,
       dueDate: mensa.data_vencimento,
       description: `Mensalidade ${mensa.referencia.substring(0, 7)} — CMMF`,
       externalReference: mensa.id,
     }
-    if (installmentCount > 1) {
+    if (!isPix && installmentCount > 1) {
       chargeBody.installmentCount = installmentCount
       chargeBody.installmentValue = parseFloat((valor / installmentCount).toFixed(2))
     }
@@ -123,20 +161,21 @@ Deno.serve(async (req) => {
     const chargeData = await chargeResp.json()
     if (!chargeResp.ok) throw new Error('Asaas charge error: ' + JSON.stringify(chargeData))
 
-    // ------------------------------------------------------------------
-    // 4. Salvar IDs na mensalidade
-    // ------------------------------------------------------------------
+    const pix_copy_paste = isPix ? await fetchPixPayload(chargeData.id) : null
+
     await supabase.from('mensalidades').update({
-      asaas_charge_id:    chargeData.id,
-      asaas_payment_url:  chargeData.invoiceUrl,
-      asaas_billing_type: 'CREDIT_CARD',
-      asaas_created_at:   new Date().toISOString(),
+      asaas_charge_id:      chargeData.id,
+      asaas_payment_url:    chargeData.invoiceUrl,
+      asaas_pix_copy_paste: pix_copy_paste,
+      asaas_billing_type:   billing_type,
+      asaas_created_at:     new Date().toISOString(),
     }).eq('id', mensalidade_id)
 
     return jsonResp({
       ok: true,
       charge_id: chargeData.id,
       payment_url: chargeData.invoiceUrl,
+      pix_copy_paste,
       valor,
     })
   } catch (err: unknown) {
