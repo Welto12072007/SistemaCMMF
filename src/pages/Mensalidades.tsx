@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Plus, Search, Download, ExternalLink, Copy, Zap } from 'lucide-react'
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Plus, Search, Download, ExternalLink, Copy, Zap, CreditCard } from 'lucide-react'
 
 interface Mensalidade {
   id: string
@@ -20,7 +20,6 @@ interface Mensalidade {
   observacoes: string | null
   asaas_charge_id: string | null
   asaas_payment_url: string | null
-  asaas_pix_copy_paste: string | null
   asaas_billing_type: string | null
 }
 
@@ -127,7 +126,7 @@ export default function Mensalidades() {
   async function criarCobrancaAsaas(m: Mensalidade) {
     setPaymentLoading(m.id)
     const { data, error } = await supabase.functions.invoke('asaas-create-charge', {
-      body: { mensalidade_id: m.id, billing_type: 'UNDEFINED' },
+      body: { mensalidade_id: m.id },
     })
     setPaymentLoading(null)
     if (error || !data?.ok) {
@@ -139,8 +138,7 @@ export default function Mensalidades() {
       ...m,
       asaas_charge_id: data.charge_id,
       asaas_payment_url: data.payment_url,
-      asaas_pix_copy_paste: data.pix_copy_paste,
-      asaas_billing_type: 'UNDEFINED',
+      asaas_billing_type: 'CREDIT_CARD',
     })
   }
 
@@ -346,27 +344,15 @@ export default function Mensalidades() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {m.asaas_charge_id ? (
-                        <div className="flex flex-col gap-1">
-                          {m.asaas_payment_url && (
-                            <a
-                              href={m.asaas_payment_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                            >
-                              <ExternalLink className="w-3 h-3" /> Ver link
-                            </a>
-                          )}
-                          {m.asaas_pix_copy_paste && (
-                            <button
-                              onClick={() => { navigator.clipboard.writeText(m.asaas_pix_copy_paste!); alert('PIX copiado!') }}
-                              className="flex items-center gap-1 text-xs text-green-700 hover:underline"
-                            >
-                              <Copy className="w-3 h-3" /> Copiar PIX
-                            </button>
-                          )}
-                        </div>
+                      {m.asaas_charge_id && m.asaas_payment_url ? (
+                        <a
+                          href={m.asaas_payment_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                        >
+                          <CreditCard className="w-3 h-3" /> Link cartão
+                        </a>
                       ) : (
                         <span className="text-xs text-gray-400">—</span>
                       )}
@@ -501,24 +487,7 @@ function PaymentModal({
             </div>
           )}
 
-          {m.asaas_pix_copy_paste && (
-            <div>
-              <p className="text-xs text-gray-500 mb-1">PIX Copia e Cola</p>
-              <div className="flex gap-2">
-                <input
-                  readOnly
-                  value={m.asaas_pix_copy_paste}
-                  className="flex-1 text-xs border rounded px-2 py-1.5 bg-gray-50 font-mono"
-                />
-                <button
-                  onClick={() => { navigator.clipboard.writeText(m.asaas_pix_copy_paste!); alert('PIX copiado!') }}
-                  className="px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
+
 
           {whatsappUrl && (
             <a

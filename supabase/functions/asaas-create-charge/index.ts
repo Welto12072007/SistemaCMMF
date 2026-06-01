@@ -24,7 +24,8 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   try {
-    const { mensalidade_id, billing_type = 'UNDEFINED' } = await req.json()
+    const body = await req.json()
+    const { mensalidade_id } = body
     if (!mensalidade_id) throw new Error('mensalidade_id obrigatório')
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
@@ -99,13 +100,19 @@ Deno.serve(async (req) => {
     // 3. Criar cobrança
     // ------------------------------------------------------------------
     const valor = Number(mensa.valor) - Number(mensa.desconto ?? 0)
-    const chargeBody = {
+    const installmentCount: number = body.installment_count ?? 1
+
+    const chargeBody: Record<string, unknown> = {
       customer: asaas_customer_id,
-      billingType: billing_type,   // UNDEFINED = aluno escolhe PIX/boleto no link
+      billingType: 'CREDIT_CARD',
       value: valor,
       dueDate: mensa.data_vencimento,
       description: `Mensalidade ${mensa.referencia.substring(0, 7)} — CMMF`,
       externalReference: mensa.id,
+    }
+    if (installmentCount > 1) {
+      chargeBody.installmentCount = installmentCount
+      chargeBody.installmentValue = parseFloat((valor / installmentCount).toFixed(2))
     }
 
     const chargeResp = await fetch(`${ASAAS_BASE}/payments`, {
@@ -117,36 +124,19 @@ Deno.serve(async (req) => {
     if (!chargeResp.ok) throw new Error('Asaas charge error: ' + JSON.stringify(chargeData))
 
     // ------------------------------------------------------------------
-    // 4. Buscar QR Code PIX (funciona para UNDEFINED e PIX)
-    // ------------------------------------------------------------------
-    let pix_copy_paste: string | null = null
-    try {
-      const pixResp = await fetch(
-        `${ASAAS_BASE}/payments/${chargeData.id}/pixQrCode`,
-        { headers: { access_token: ASAAS_KEY } },
-      )
-      if (pixResp.ok) {
-        const pixData = await pixResp.json()
-        pix_copy_paste = pixData.payload ?? null
-      }
-    } catch (_) { /* PIX pode não estar disponível imediatamente */ }
-
-    // ------------------------------------------------------------------
-    // 5. Salvar IDs na mensalidade
+    // 4. Salvar IDs na mensalidade
     // ------------------------------------------------------------------
     await supabase.from('mensalidades').update({
-      asaas_charge_id:      chargeData.id,
-      asaas_payment_url:    chargeData.invoiceUrl,
-      asaas_pix_copy_paste: pix_copy_paste,
-      asaas_billing_type:   billing_type,
-      asaas_created_at:     new Date().toISOString(),
+      asaas_charge_id:    chargeData.id,
+      asaas_payment_url:  chargeData.invoiceUrl,
+      asaas_billing_type: 'CREDIT_CARD',
+      asaas_created_at:   new Date().toISOString(),
     }).eq('id', mensalidade_id)
 
     return jsonResp({
       ok: true,
       charge_id: chargeData.id,
       payment_url: chargeData.invoiceUrl,
-      pix_copy_paste,
       valor,
     })
   } catch (err: unknown) {
