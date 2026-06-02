@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
 import {
   CheckCircle2,
   XCircle,
@@ -58,9 +59,13 @@ interface AlertaFila {
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 
 export default function Presencas({ embedded = false }: { embedded?: boolean } = {}) {
+  const { perfil } = useAuth()
+  const isProfessor = perfil?.role === 'professor'
+  const myProfessorId = perfil?.professor_id ?? null
+
   const [dataAtual, setDataAtual] = useState(new Date().toISOString().slice(0, 10))
   const [professores, setProfessores] = useState<Professor[]>([])
-  const [filtroProfessor, setFiltroProfessor] = useState('todos')
+  const [filtroProfessor, setFiltroProfessor] = useState(() => myProfessorId ?? 'todos')
   const [presencas, setPresencas] = useState<AlunoPresenca[]>([])
   const [alertas, setAlertas] = useState<AlertaFalta[]>([])
   const [filaAlertas, setFilaAlertas] = useState<AlertaFila[]>([])
@@ -524,16 +529,18 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
               Hoje
             </button>
 
-            <select
-              value={filtroProfessor}
-              onChange={(e) => setFiltroProfessor(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="todos">Todos professores</option>
-              {professores.map(p => (
-                <option key={p.id} value={p.id}>{p.nome}</option>
-              ))}
-            </select>
+            {!isProfessor && (
+              <select
+                value={filtroProfessor}
+                onChange={(e) => setFiltroProfessor(e.target.value)}
+                className="border rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="todos">Todos professores</option>
+                {professores.map(p => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+                ))}
+              </select>
+            )}
 
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
@@ -716,6 +723,8 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
               value={filtroProfessor}
               onChange={(e) => setFiltroProfessor(e.target.value)}
               className="border rounded-lg px-3 py-2 text-sm"
+              disabled={isProfessor}
+              style={isProfessor ? { display: 'none' } : {}}
             >
               <option value="todos">Todos professores</option>
               {professores.map(p => (

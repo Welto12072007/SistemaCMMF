@@ -30,6 +30,7 @@ import {
   ArrowLeftRight,
   UsersRound,
   Star,
+  Home,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -47,6 +48,7 @@ const sections: NavSection[] = [
     roles: ['admin', 'recepcao', 'professor', 'aluno'],
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'recepcao', 'professor'] },
+      { to: '/portal-professor', label: 'Meu Portal', icon: Home, roles: ['professor'] },
       { to: '/contatos', label: 'Contatos', icon: Users, roles: ['admin', 'recepcao'] },
       { to: '/crm-funil', label: 'CRM — Funil', icon: TrendingUp, roles: ['admin', 'recepcao'] },
       { to: '/aulas-experimentais', label: 'Aulas Experimentais', icon: GraduationCap, roles: ['admin', 'recepcao'] },
