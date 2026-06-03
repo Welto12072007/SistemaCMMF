@@ -102,25 +102,22 @@ function AcessosTab() {
         telefone: telNorm,
       }).eq('id', editando.id)
     } else {
-      // Gera link de convite sem depender de SMTP (admin envia manualmente)
-      const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'invite',
+      // 1. Cria o usuário com email confirmado
+      const { data: created, error: errCreate } = await supabaseAdmin.auth.admin.createUser({
         email: form.email,
-        options: {
-          data: { nome: form.nome, role: form.role },
-          redirectTo: `${window.location.origin}/definir-senha`,
-        },
+        email_confirm: true,
+        user_metadata: { nome: form.nome, role: form.role },
       })
 
-      if (error) {
-        setErro(error.message)
+      if (errCreate || !created.user) {
+        setErro(errCreate?.message ?? 'Erro ao criar usuário')
         setLoading(false)
         return
       }
 
-      // Create perfil record
+      // 2. Cria perfil
       await supabase.from('perfis').insert({
-        user_id: data.user.id,
+        user_id: created.user.id,
         nome: form.nome,
         email: form.email,
         role: form.role,
@@ -129,11 +126,20 @@ function AcessosTab() {
         ativo: true,
       })
 
+      // 3. Gera link de recovery (dispara DefinirSenha.tsx corretamente)
+      const { data: linkData, error: errLink } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'recovery',
+        email: form.email,
+        options: { redirectTo: window.location.origin },
+      })
+
       setShowForm(false)
       setEditando(null)
       setLoading(false)
       load()
-      setLinkConvite((data.properties as any).action_link ?? null)
+      if (!errLink && linkData) {
+        setLinkConvite((linkData.properties as any).action_link ?? null)
+      }
       return
     }
 
@@ -158,9 +164,9 @@ function AcessosTab() {
   async function handleResendInvite(perfil: Perfil) {
     setErro('')
     const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'invite',
+      type: 'recovery',
       email: perfil.email,
-      options: { redirectTo: `${window.location.origin}/definir-senha` },
+      options: { redirectTo: window.location.origin },
     })
     if (error) {
       setErro(error.message)
