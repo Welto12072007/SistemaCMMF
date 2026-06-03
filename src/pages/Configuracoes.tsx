@@ -127,12 +127,20 @@ function AcessosTab() {
         ativo: true,
       })
 
+      // 3. Gera link de primeiro acesso (recovery)
+      const { data: linkData, error: errLink } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'recovery',
+        email: form.email,
+        options: { redirectTo: window.location.origin },
+      })
+
       setShowForm(false)
       setEditando(null)
       setLoading(false)
       load()
-      setSuccessMsg(`Acesso criado para ${form.email}. Oriente o usuário a clicar em "Esqueci minha senha" na tela de login para definir a senha.`)
-      setTimeout(() => setSuccessMsg(''), 8000)
+      if (!errLink && linkData) {
+        setLinkConvite((linkData.properties as any).action_link ?? null)
+      }
       return
     }
 
@@ -251,16 +259,16 @@ function AcessosTab() {
         </div>
       )}
 
-      {/* Modal reiniciar senha (link manual) */}
+      {/* Modal link de acesso */}
       {linkConvite && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
             <div className="flex items-center gap-3">
               <Link className="w-6 h-6 text-brand-500" />
-              <h3 className="text-lg font-semibold text-gray-900">Reiniciar senha — link gerado</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Link de primeiro acesso</h3>
             </div>
             <p className="text-sm text-gray-600">
-              Copie o link abaixo e envie para o usuário via WhatsApp ou outro canal. <strong>O link expira em 1h — use imediatamente.</strong>
+              Copie e envie ao usuário via WhatsApp. Ao clicar, ele vai direto para definir a própria senha. <strong>Válido por 1 hora.</strong>
             </p>
             <div className="bg-gray-50 border rounded-lg px-3 py-2 text-xs text-gray-700 break-all select-all">
               {linkConvite}
