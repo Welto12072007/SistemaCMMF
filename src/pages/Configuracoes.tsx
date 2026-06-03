@@ -76,6 +76,7 @@ function AcessosTab() {
   const [erro, setErro] = useState('')
   const [linkConvite, setLinkConvite] = useState<string | null>(null)
   const [copiado, setCopiado] = useState(false)
+  const [successMsg, setSuccessMsg] = useState('')
 
   useEffect(() => { load() }, [])
 
@@ -126,20 +127,12 @@ function AcessosTab() {
         ativo: true,
       })
 
-      // 3. Gera link de recovery (dispara DefinirSenha.tsx corretamente)
-      const { data: linkData, error: errLink } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'recovery',
-        email: form.email,
-        options: { redirectTo: window.location.origin },
-      })
-
       setShowForm(false)
       setEditando(null)
       setLoading(false)
       load()
-      if (!errLink && linkData) {
-        setLinkConvite((linkData.properties as any).action_link ?? null)
-      }
+      setSuccessMsg(`Acesso criado para ${form.email}. Oriente o usuário a clicar em "Esqueci minha senha" na tela de login para definir a senha.`)
+      setTimeout(() => setSuccessMsg(''), 8000)
       return
     }
 
@@ -227,7 +220,7 @@ function AcessosTab() {
               </td>
               <td className="px-4 py-3">
                 <div className="flex gap-2">
-                  <button onClick={() => handleResendInvite(p)} title="Reenviar convite" className="text-gray-400 hover:text-brand-600"><Mail className="w-4 h-4" /></button>
+                  <button onClick={() => handleResendInvite(p)} title="Reiniciar senha (gera link manual)" className="text-gray-400 hover:text-brand-600"><Mail className="w-4 h-4" /></button>
                   <button onClick={() => { setEditando(p); setShowForm(true); setErro('') }} className="text-gray-400 hover:text-blue-600"><Pencil className="w-4 h-4" /></button>
                   <button onClick={() => handleToggleAtivo(p)} className={`text-xs px-2 py-1 rounded ${p.ativo ? 'text-orange-600 hover:bg-orange-50' : 'text-green-600 hover:bg-green-50'}`}>
                     {p.ativo ? 'Desativar' : 'Ativar'}
@@ -251,16 +244,23 @@ function AcessosTab() {
         />
       )}
 
-      {/* Modal link de convite */}
+      {/* Banner de sucesso */}
+      {successMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-green-600 text-white text-sm rounded-xl px-5 py-3 shadow-lg max-w-md text-center">
+          {successMsg}
+        </div>
+      )}
+
+      {/* Modal reiniciar senha (link manual) */}
       {linkConvite && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
             <div className="flex items-center gap-3">
               <Link className="w-6 h-6 text-brand-500" />
-              <h3 className="text-lg font-semibold text-gray-900">Link de acesso gerado</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Reiniciar senha — link gerado</h3>
             </div>
             <p className="text-sm text-gray-600">
-              O email não pôde ser enviado automaticamente. Copie o link abaixo e envie para a pessoa via WhatsApp ou outro canal. <strong>O link expira em 24h.</strong>
+              Copie o link abaixo e envie para o usuário via WhatsApp ou outro canal. <strong>O link expira em 1h — use imediatamente.</strong>
             </p>
             <div className="bg-gray-50 border rounded-lg px-3 py-2 text-xs text-gray-700 break-all select-all">
               {linkConvite}
