@@ -120,7 +120,7 @@ export default function MinhaGrade() {
   const porDia = useMemo(() => {
     const g: Record<string, Horario[]> = {}
     DIAS_ORDEM.forEach(d => { g[d] = [] })
-    horarios.forEach(h => { if (g[h.dia_semana]) g[h.dia_semana].push(h) })
+    horarios.forEach(h => { if (g[h.dia_semana]) g[h.dia_semana]!.push(h) })
     return g
   }, [horarios])
 
@@ -134,7 +134,7 @@ export default function MinhaGrade() {
   const hojeStr = DIAS_ORDEM[
     // Segunda=0 ... Sábado=5 (ajuste do índice JS: dom=0,seg=1,...sab=6)
     [1, 2, 3, 4, 5, 6].indexOf(new Date().getDay())
-  ]
+  ] ?? ''
 
   if (!professor_id) return (
     <div className="flex flex-col items-center justify-center py-24 text-center gap-3">

@@ -205,14 +205,14 @@ export default function PortalProfessor() {
   const gradeAgrupadaPorDia = useMemo(()=>{
     const g:Record<string,HorarioGrade[]>={}
     DIAS_ORDEM.forEach(d=>{g[d]=[]})
-    grade.forEach(h=>{ if(g[h.dia_semana]) g[h.dia_semana].push(h) })
+    grade.forEach(h=>{ if(g[h.dia_semana]) g[h.dia_semana]!.push(h) })
     return g
   },[grade])
 
   const meusAlunos = useMemo(()=>{
     const map=new Map<string,{instrumento:string;horarios:string[]}>()
     grade.forEach(h=>{
-      const isG=h.tipo==='grupo'||h.aluno_nome.includes(',')||h.aluno_nome.includes('\n')||/\w{2,}\s+e\s+\w{2,}/.test(h.aluno_nome)
+      const isG=h.tipo==='grupo'||(h.aluno_nome??'').includes(',')||(h.aluno_nome??'').includes('\n')||/\w{2,}\s+e\s+\w{2,}/.test(h.aluno_nome??'')
       const nomes=isG?splitNomesGrupo(h.aluno_nome):[h.aluno_nome]
       nomes.forEach(n=>{
         if(!map.has(n)) map.set(n,{instrumento:h.instrumento||'',horarios:[]})
