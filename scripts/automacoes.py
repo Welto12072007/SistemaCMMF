@@ -230,7 +230,7 @@ def alertas_faltas() -> None:
     rpc("detectar_alertas_faltas")
     alertas = sb_get(
         "alertas_faltas_fila",
-        {"status": "eq.aprovado", "enviado": "eq.false", "limit": "50"},
+        {"status": "eq.aprovado", "limit": "50"},
     )
     log.info(f"Alertas faltas aprovados: {len(alertas)}")
     for a in alertas:
@@ -238,7 +238,7 @@ def alertas_faltas() -> None:
         if not tel:
             continue
         if send_whatsapp(tel, a.get("mensagem", "")):
-            sb_patch("alertas_faltas_fila", {"id": f"eq.{a['id']}"}, {"enviado": True})
+            sb_patch("alertas_faltas_fila", {"id": f"eq.{a['id']}"}, {"status": "enviado"})
             log.info(f"Alerta falta → {tel}")
 
 
