@@ -47,7 +47,7 @@ const sections: NavSection[] = [
     title: 'Menu Principal',
     roles: ['admin', 'recepcao', 'professor', 'aluno'],
     items: [
-      { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'recepcao', 'professor'] },
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'recepcao'] },
       { to: '/portal-professor', label: 'Meu Portal', icon: Home, roles: ['professor'] },
       { to: '/contatos', label: 'Contatos', icon: Users, roles: ['admin', 'recepcao'] },
       { to: '/crm-funil', label: 'CRM — Funil', icon: TrendingUp, roles: ['admin', 'recepcao'] },

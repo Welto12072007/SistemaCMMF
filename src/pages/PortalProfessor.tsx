@@ -5,7 +5,8 @@ import {
   CheckCircle2, XCircle, Clock, ChevronLeft, ChevronRight,
   BookOpen, DollarSign, CalendarCheck, Loader2, AlertCircle,
   ClipboardCheck, MinusCircle, CalendarDays, Users, KeyRound,
-  Music2, Eye, EyeOff,
+  Music2, Eye, EyeOff, StickyNote, CalendarRange, Sparkles,
+  ChevronDown, ChevronUp, Plus, Send,
 } from 'lucide-react'
 
 interface AulaItem {
@@ -19,7 +20,10 @@ interface RegistroMes {
 }
 interface HorarioGrade {
   id: string; dia_semana: string; hora_inicio: string; hora_fim: string
-  aluno_nome: string; instrumento: string; tipo: string | null
+  aluno_nome: string; instrumento: string; tipo: string | null; created_at: string
+}
+interface Anotacao {
+  id: string; aluno_nome: string; conteudo: string; criado_em: string
 }
 
 const DIAS_SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
@@ -47,7 +51,7 @@ function splitNomesGrupo(nome: string): string[] {
   })
 }
 
-type TabKey = 'chamada'|'grade'|'alunos'|'mes'
+type TabKey = 'chamada'|'agenda'|'alunos'|'mes'
 
 export default function PortalProfessor() {
   const { perfil } = useAuth()
@@ -85,6 +89,16 @@ export default function PortalProfessor() {
   const [salvandoSenha, setSalvandoSenha] = useState(false)
   const [senhaSucesso, setSenhaSucesso] = useState(false)
   const [senhaErro, setSenhaErro] = useState('')
+
+  // agenda
+  const [semanaOffset, setSemanaOffset] = useState(0)
+
+  // anotações
+  const [anotacoes, setAnotacoes] = useState<Anotacao[]>([])
+  const [loadingAnotacoes, setLoadingAnotacoes] = useState(false)
+  const [alunoExpandido, setAlunoExpandido] = useState<string|null>(null)
+  const [novaAnotacao, setNovaAnotacao] = useState('')
+  const [salvandoNota, setSalvandoNota] = useState(false)
 
   useEffect(() => {
     if (!professor_id) return
@@ -125,12 +139,13 @@ export default function PortalProfessor() {
     setLoadingChamada(false)
   }
 
-  useEffect(() => { if ((tab==='grade'||tab==='alunos')&&professor_id&&grade.length===0) loadGrade() }, [tab,professor_id])
+  useEffect(() => { if ((tab==='alunos'||tab==='agenda')&&professor_id&&grade.length===0) loadGrade() }, [tab,professor_id])
+  useEffect(() => { if (tab==='alunos'&&professor_id) loadAnotacoes() }, [tab,professor_id])
 
   async function loadGrade() {
     if (!professor_id) return
     setLoadingGrade(true)
-    const {data} = await supabase.from('horarios').select('id,dia_semana,hora_inicio,hora_fim,aluno_nome,instrumento,tipo')
+    const {data} = await supabase.from('horarios').select('id,dia_semana,hora_inicio,hora_fim,aluno_nome,instrumento,tipo,created_at')
       .eq('professor_id',professor_id).eq('status','ocupado').order('hora_inicio')
     setGrade((data||[]) as HorarioGrade[])
     setLoadingGrade(false)
@@ -167,6 +182,26 @@ export default function PortalProfessor() {
       await supabase.from('presencas').insert({aluno_id:ad?.id||null,professor_id,horario_id:item.horario_id,data:dataAtual,hora_inicio:item.hora_inicio,hora_fim:item.hora_fim,instrumento:item.instrumento,presente,tipo_falta:presente?null:(tipoFalta||'falta_injustificada'),aluno_nome:item.aluno_nome,observacoes:obs})
     }
     setSalvando(false); setModal(null); setObsTexto(''); loadChamada()
+  }
+
+  async function loadAnotacoes() {
+    if (!professor_id) return
+    setLoadingAnotacoes(true)
+    const {data} = await supabase.from('anotacoes_alunos')
+      .select('id,aluno_nome,conteudo,criado_em')
+      .eq('professor_id',professor_id)
+      .order('criado_em',{ascending:false})
+    setAnotacoes((data||[]) as Anotacao[])
+    setLoadingAnotacoes(false)
+  }
+
+  async function addAnotacao(aluno_nome: string) {
+    if (!professor_id||!novaAnotacao.trim()) return
+    setSalvandoNota(true)
+    await supabase.from('anotacoes_alunos').insert({professor_id,aluno_nome,conteudo:novaAnotacao.trim()})
+    setNovaAnotacao('')
+    await loadAnotacoes()
+    setSalvandoNota(false)
   }
 
   async function salvarSenha() {
@@ -226,9 +261,36 @@ export default function PortalProfessor() {
   const diaSemanaLabel = DIAS_SEMANA[new Date(dataAtual+'T12:00:00').getDay()]
   const diaSemanaHoje = DIAS_SEMANA[new Date().getDay()]
 
+  // Alunos adicionados nos últimos 30 dias (slot criado recentemente)
+  const alunosNovos = useMemo(()=>{
+    const threshold = new Date(Date.now()-30*24*60*60*1000).toISOString()
+    const s = new Set<string>()
+    grade.forEach(h=>{
+      if ((h.created_at||'') >= threshold) {
+        const isG = h.tipo==='grupo'||(h.aluno_nome??'').includes(',')||(h.aluno_nome??'').includes('\n')||/\w{2,}\s+e\s+\w{2,}/.test(h.aluno_nome??'')
+        const ns = isG ? splitNomesGrupo(h.aluno_nome) : [h.aluno_nome]
+        ns.forEach(n=>s.add(n))
+      }
+    })
+    return s
+  },[grade])
+
+  // Semana da Agenda: segunda-feira da semana atual + offset
+  const semanaAtual = useMemo(()=>{
+    const hoje = new Date(); hoje.setHours(12,0,0,0)
+    const dow = hoje.getDay()
+    const diff = dow===0 ? -6 : 1-dow
+    const segunda = new Date(hoje)
+    segunda.setDate(hoje.getDate()+diff+semanaOffset*7)
+    return DIAS_ORDEM.map((dia,i)=>{
+      const d = new Date(segunda); d.setDate(segunda.getDate()+i)
+      return { dia, date: d.toISOString().slice(0,10), label:`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}` }
+    })
+  },[semanaOffset])
+
   const TABS=[
     {key:'chamada' as TabKey, label:'Chamada', icon:<ClipboardCheck className="w-4 h-4"/>},
-    {key:'grade'   as TabKey, label:'Minha Grade', icon:<CalendarDays className="w-4 h-4"/>},
+    {key:'agenda'  as TabKey, label:'Agenda', icon:<CalendarRange className="w-4 h-4"/>, badge: alunosNovos.size},
     {key:'alunos'  as TabKey, label:'Meus Alunos', icon:<Users className="w-4 h-4"/>},
     {key:'mes'     as TabKey, label:'Meu Mês', icon:<DollarSign className="w-4 h-4"/>},
   ]
@@ -275,9 +337,12 @@ export default function PortalProfessor() {
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto">
         {TABS.map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-1 justify-center ${tab===t.key?'bg-white text-brand-600 shadow-sm':'text-gray-600 hover:text-gray-800'}`}
+            className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-1 justify-center ${tab===t.key?'bg-white text-brand-600 shadow-sm':'text-gray-600 hover:text-gray-800'}`}
           >
             {t.icon}{t.label}
+            {'badge' in t && (t.badge??0)>0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-400 text-white text-xs rounded-full flex items-center justify-center font-bold">{t.badge}</span>
+            )}
           </button>
         ))}
       </div>
@@ -353,49 +418,65 @@ export default function PortalProfessor() {
         </div>
       )}
 
-      {/* ── MINHA GRADE ── */}
-      {tab==='grade' && (
+      {/* ── AGENDA ── */}
+      {tab==='agenda' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-              <p className="text-2xl font-bold text-brand-600">{grade.length}</p>
-              <p className="text-xs text-gray-500 mt-1">Horários/semana</p>
+          {/* Navegação de semana */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
+            <button onClick={()=>setSemanaOffset(o=>o-1)} className="p-2 rounded-lg hover:bg-gray-100"><ChevronLeft className="w-5 h-5"/></button>
+            <div className="text-center">
+              <p className="text-sm font-semibold text-gray-900">
+                {semanaAtual[0]?.label} – {semanaAtual[semanaAtual.length-1]?.label}
+              </p>
+              {semanaOffset===0 && <span className="text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-medium">Esta semana</span>}
+              {semanaOffset!==0 && (
+                <button onClick={()=>setSemanaOffset(0)} className="text-xs text-brand-600 underline">Ir para hoje</button>
+              )}
             </div>
-            <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-              <p className="text-2xl font-bold text-brand-600">{meusAlunos.length}</p>
-              <p className="text-xs text-gray-500 mt-1">Alunos</p>
-            </div>
+            <button onClick={()=>setSemanaOffset(o=>o+1)} className="p-2 rounded-lg hover:bg-gray-100"><ChevronRight className="w-5 h-5"/></button>
           </div>
 
           {loadingGrade ? (
             <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-brand-500"/></div>
           ) : (
             <div className="space-y-3">
-              {DIAS_ORDEM.map(dia=>{
-                const auls=gradeAgrupadaPorDia[dia]||[]
-                if (auls.length===0) return null
-                const isHoje=dia===diaSemanaHoje
+              {semanaAtual.map(({dia,date,label})=>{
+                const auls = (gradeAgrupadaPorDia[dia]||[])
+                const isHoje = date===hojeStr
+                const isPast = date<hojeStr
                 return (
-                  <div key={dia} className={`bg-white rounded-xl border-2 overflow-hidden ${isHoje?'border-brand-300':'border-gray-200'}`}>
-                    <div className={`px-4 py-2.5 flex items-center justify-between ${isHoje?'bg-brand-50':'bg-gray-50'}`}>
-                      <span className={`font-semibold text-sm ${isHoje?'text-brand-700':'text-gray-700'}`}>
-                        {dia}
-                        {isHoje && <span className="ml-2 text-xs bg-brand-500 text-white px-1.5 py-0.5 rounded-full">Hoje</span>}
-                      </span>
-                      <span className="text-xs text-gray-400">{auls.length} aula{auls.length!==1?'s':''}</span>
+                  <div key={dia} className={`bg-white rounded-xl border-2 overflow-hidden ${isHoje?'border-brand-300':isPast?'border-gray-100':'border-gray-200'}`}>
+                    <div className={`px-4 py-2.5 flex items-center justify-between ${isHoje?'bg-brand-50':isPast?'bg-gray-50/50':'bg-gray-50'}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-semibold text-sm ${isHoje?'text-brand-700':isPast?'text-gray-400':'text-gray-700'}`}>{dia}</span>
+                        <span className={`text-xs ${isHoje?'text-brand-500':isPast?'text-gray-400':'text-gray-500'}`}>{label}</span>
+                        {isHoje && <span className="text-xs bg-brand-500 text-white px-1.5 py-0.5 rounded-full font-medium">Hoje</span>}
+                      </div>
+                      {auls.length>0
+                        ? <span className="text-xs text-gray-400">{auls.length} aula{auls.length!==1?'s':''}</span>
+                        : <span className="text-xs text-gray-300">Sem aulas</span>}
                     </div>
-                    <div className="divide-y divide-gray-100">
-                      {auls.map(h=>(
-                        <div key={h.id} className="px-4 py-2.5 flex items-center gap-3">
-                          <span className="text-sm font-mono text-gray-500 w-11 shrink-0">{fmtHora(h.hora_inicio)}</span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-gray-900 truncate">{h.aluno_nome}</p>
-                            {h.instrumento && <p className="text-xs text-gray-400">{h.instrumento}</p>}
-                          </div>
-                          {h.tipo==='grupo' && <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full shrink-0">Grupo</span>}
-                        </div>
-                      ))}
-                    </div>
+                    {auls.length>0 && (
+                      <div className="divide-y divide-gray-100">
+                        {auls.map(h=>{
+                          const isNovo = alunosNovos.has(h.aluno_nome)
+                          return (
+                            <div key={h.id} className={`px-4 py-2.5 flex items-center gap-3 ${isPast?'opacity-60':''}`}>
+                              <span className="text-sm font-mono text-gray-500 w-11 shrink-0">{fmtHora(h.hora_inicio)}</span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-medium text-gray-900 truncate">{h.aluno_nome}</p>
+                                  {isNovo && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5 shrink-0"><Sparkles className="w-3 h-3"/>Novo</span>}
+                                </div>
+                                {h.instrumento && <p className="text-xs text-gray-400">{h.instrumento}</p>}
+                              </div>
+                              {h.tipo==='grupo' && <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full shrink-0">Grupo</span>}
+                              {h.hora_fim && <span className="text-xs text-gray-400 shrink-0">{fmtHora(h.hora_inicio)}–{fmtHora(h.hora_fim)}</span>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -413,7 +494,7 @@ export default function PortalProfessor() {
             </div>
             <div>
               <p className="text-lg font-bold text-gray-900">{meusAlunos.length} alunos</p>
-              <p className="text-sm text-gray-500">em sua grade atual</p>
+              <p className="text-sm text-gray-500">em sua grade atual{alunosNovos.size>0&&<span className="ml-2 text-amber-600 font-medium">· {alunosNovos.size} novo{alunosNovos.size!==1?'s':''}</span>}</p>
             </div>
           </div>
 
@@ -422,22 +503,74 @@ export default function PortalProfessor() {
           ) : (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="divide-y divide-gray-100">
-                {meusAlunos.map((a,i)=>(
-                  <div key={i} className="flex items-center gap-3 px-4 py-3">
-                    <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-600 shrink-0">
-                      {iniciais(a.nome)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 truncate">{a.nome}</p>
-                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
-                        {a.instrumento && <span className="text-xs text-gray-400 flex items-center gap-1"><Music2 className="w-3 h-3"/>{a.instrumento}</span>}
-                        {a.horarios.map((h,j)=>(
-                          <span key={j} className="text-xs text-gray-400 flex items-center gap-1"><Clock className="w-3 h-3"/>{h}</span>
-                        ))}
+                {meusAlunos.map((a,i)=>{
+                  const isNovo=alunosNovos.has(a.nome)
+                  const expanded=alunoExpandido===a.nome
+                  const notasAluno=anotacoes.filter(n=>n.aluno_nome===a.nome)
+                  return (
+                    <div key={i}>
+                      <div
+                        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                        onClick={()=>setAlunoExpandido(expanded?null:a.nome)}
+                      >
+                        <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-600 shrink-0">
+                          {iniciais(a.nome)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-gray-900 truncate">{a.nome}</p>
+                            {isNovo && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5 shrink-0"><Sparkles className="w-3 h-3"/>Novo</span>}
+                          </div>
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                            {a.instrumento && <span className="text-xs text-gray-400 flex items-center gap-1"><Music2 className="w-3 h-3"/>{a.instrumento}</span>}
+                            {a.horarios.map((h,j)=>(
+                              <span key={j} className="text-xs text-gray-400 flex items-center gap-1"><Clock className="w-3 h-3"/>{h}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {notasAluno.length>0 && <span className="text-xs text-gray-400 flex items-center gap-0.5"><StickyNote className="w-3.5 h-3.5"/>{notasAluno.length}</span>}
+                          {expanded ? <ChevronUp className="w-4 h-4 text-gray-400"/> : <ChevronDown className="w-4 h-4 text-gray-400"/>}
+                        </div>
                       </div>
+                      {expanded && (
+                        <div className="bg-amber-50/50 border-t border-amber-100 px-4 py-3 space-y-3">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5"><StickyNote className="w-3.5 h-3.5"/>Anotações Pedagógicas</p>
+                          {loadingAnotacoes ? (
+                            <div className="flex justify-center py-3"><Loader2 className="w-4 h-4 animate-spin text-brand-400"/></div>
+                          ) : notasAluno.length===0 ? (
+                            <p className="text-xs text-gray-400 italic">Nenhuma anotação ainda.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {notasAluno.map(n=>(
+                                <div key={n.id} className="bg-white rounded-lg border border-amber-100 px-3 py-2">
+                                  <p className="text-sm text-gray-700">{n.conteudo}</p>
+                                  <p className="text-xs text-gray-400 mt-1">{new Date(n.criado_em).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <input
+                              value={novaAnotacao}
+                              onChange={e=>setNovaAnotacao(e.target.value)}
+                              onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addAnotacao(a.nome)} }}
+                              placeholder="Nova anotação sobre este aluno..."
+                              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                            />
+                            <button
+                              onClick={()=>addAnotacao(a.nome)}
+                              disabled={salvandoNota||!novaAnotacao.trim()}
+                              className="px-3 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm disabled:opacity-50 flex items-center gap-1"
+                            >
+                              {salvandoNota?<Loader2 className="w-4 h-4 animate-spin"/>:<Send className="w-4 h-4"/>}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
