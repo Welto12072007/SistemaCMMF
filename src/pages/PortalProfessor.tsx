@@ -322,8 +322,8 @@ export default function PortalProfessor() {
 
   const TABS=[
     {key:'chamada' as TabKey, label:'Chamada', icon:<ClipboardCheck className="w-4 h-4"/>},
-    {key:'agenda'  as TabKey, label:'Agenda', icon:<CalendarRange className="w-4 h-4"/>, badge: alunosNovos.size},
-    {key:'alunos'  as TabKey, label:'Meus Alunos', icon:<Users className="w-4 h-4"/>},
+    {key:'agenda'  as TabKey, label:'Agenda', icon:<CalendarRange className="w-4 h-4"/>},
+    {key:'alunos'  as TabKey, label:'Meus Alunos', icon:<Users className="w-4 h-4"/>, badge: alunosNovos.size},
     {key:'mes'     as TabKey, label:'Meu Mês', icon:<DollarSign className="w-4 h-4"/>},
   ]
 
