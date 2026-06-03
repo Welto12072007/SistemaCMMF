@@ -77,6 +77,9 @@ function AcessosTab() {
   const [linkConvite, setLinkConvite] = useState<string | null>(null)
   const [copiado, setCopiado] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
+  const [tempCreds, setTempCreds] = useState<{ email: string; senha: string } | null>(null)
+  const [copiadoEmail, setCopiadoEmail] = useState(false)
+  const [copiadoSenha, setCopiadoSenha] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -103,9 +106,11 @@ function AcessosTab() {
         telefone: telNorm,
       }).eq('id', editando.id)
     } else {
-      // 1. Cria o usuário com email confirmado
+      // 1. Cria o usuário com senha temporária
+      const tempSenha = 'CMMF' + Math.floor(1000 + Math.random() * 9000)
       const { data: created, error: errCreate } = await supabaseAdmin.auth.admin.createUser({
         email: form.email,
+        password: tempSenha,
         email_confirm: true,
         user_metadata: { nome: form.nome, role: form.role },
       })
@@ -164,15 +169,13 @@ function AcessosTab() {
 
   async function handleResendInvite(perfil: Perfil) {
     setErro('')
-    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'recovery',
-      email: perfil.email,
-      options: { redirectTo: window.location.origin },
-    })
+    // Gera nova senha temporária e atualiza o usuário
+    const novaSenha = 'CMMF' + Math.floor(1000 + Math.random() * 9000)
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(perfil.user_id, { password: novaSenha })
     if (error) {
       setErro(error.message)
     } else {
-      setLinkConvite((data.properties as any).action_link ?? null)
+      setTempCreds({ email: perfil.email, senha: novaSenha })
     }
   }
 
@@ -252,44 +255,45 @@ function AcessosTab() {
         />
       )}
 
-      {/* Banner de sucesso */}
-      {successMsg && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-green-600 text-white text-sm rounded-xl px-5 py-3 shadow-lg max-w-md text-center">
-          {successMsg}
-        </div>
-      )}
-
-      {/* Modal link de acesso */}
-      {linkConvite && (
+      {/* Modal credenciais temporárias */}
+      {tempCreds && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center gap-3">
-              <Link className="w-6 h-6 text-brand-500" />
-              <h3 className="text-lg font-semibold text-gray-900">Link de primeiro acesso</h3>
+              <CheckCircle2 className="w-6 h-6 text-green-500" />
+              <h3 className="text-lg font-semibold text-gray-900">Acesso criado!</h3>
             </div>
             <p className="text-sm text-gray-600">
-              Copie e envie ao usuário via WhatsApp. Ao clicar, ele vai direto para definir a própria senha. <strong>Válido por 1 hora.</strong>
+              Envie estas credenciais ao usuário via WhatsApp. Ele pode alterar a senha depois no portal.
             </p>
-            <div className="bg-gray-50 border rounded-lg px-3 py-2 text-xs text-gray-700 break-all select-all">
-              {linkConvite}
+            {/* Email */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+              <div className="flex items-center gap-2 bg-gray-50 border rounded-lg px-3 py-2">
+                <span className="flex-1 text-sm text-gray-800 select-all">{tempCreds.email}</span>
+                <button onClick={() => { navigator.clipboard.writeText(tempCreds.email); setCopiadoEmail(true); setTimeout(() => setCopiadoEmail(false), 2000) }}
+                  className={`shrink-0 p-1 rounded ${copiadoEmail ? 'text-green-600' : 'text-gray-400 hover:text-brand-600'}`}>
+                  {copiadoEmail ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
-            <div className="flex gap-3">
-              <button
-                onClick={copiarLink}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                  copiado ? 'bg-green-600 text-white' : 'bg-brand-500 hover:bg-brand-600 text-white'
-                }`}
-              >
-                {copiado ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                {copiado ? 'Copiado!' : 'Copiar link'}
-              </button>
-              <button
-                onClick={() => setLinkConvite(null)}
-                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Fechar
-              </button>
+            {/* Senha */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Senha temporária</label>
+              <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
+                <span className="flex-1 text-sm font-mono font-bold text-gray-800 select-all tracking-wider">{tempCreds.senha}</span>
+                <button onClick={() => { navigator.clipboard.writeText(tempCreds.senha); setCopiadoSenha(true); setTimeout(() => setCopiadoSenha(false), 2000) }}
+                  className={`shrink-0 p-1 rounded ${copiadoSenha ? 'text-green-600' : 'text-gray-400 hover:text-brand-600'}`}>
+                  {copiadoSenha ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
+            <button
+              onClick={() => { setTempCreds(null); setCopiadoEmail(false); setCopiadoSenha(false) }}
+              className="w-full px-4 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-sm font-medium"
+            >
+              Fechar
+            </button>
           </div>
         </div>
       )}
