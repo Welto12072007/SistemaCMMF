@@ -13,6 +13,7 @@ interface AulaItem {
   id: string; horario_id: string; aluno_nome: string; instrumento: string
   hora_inicio: string; hora_fim: string; presente: boolean | null
   tipo_falta: string; observacoes: string; presenca_id?: string
+  is_experimental?: boolean; experimental_id?: string
 }
 interface RegistroMes {
   data: string; aluno_nome: string; instrumento: string
@@ -92,6 +93,7 @@ export default function PortalProfessor() {
 
   // agenda
   const [semanaOffset, setSemanaOffset] = useState(0)
+  const [experimentaisAgenda, setExperimentaisAgenda] = useState<{id:string;nome:string;instrumento:string;hora_inicio:string;hora_fim:string;data_aula:string;status:string}[]>([])
 
   // anotações
   const [anotacoes, setAnotacoes] = useState<Anotacao[]>([])
@@ -114,16 +116,20 @@ export default function PortalProfessor() {
   }, [professor_id])
 
   useEffect(() => { if (tab==='chamada'&&professor_id) loadChamada() }, [dataAtual,tab,professor_id])
+  useEffect(() => { if (tab==='agenda'&&professor_id) { loadExperimentaisAgenda() } }, [tab,professor_id,semanaOffset])
 
   async function loadChamada() {
     if (!professor_id) return
     setLoadingChamada(true)
     const date = new Date(dataAtual+'T12:00:00')
     const diaSemana = DIAS_SEMANA[date.getDay()]
-    const [{data:horarios},{data:presencasExistentes}] = await Promise.all([
+    const [{data:horarios},{data:presencasExistentes},{data:experimentais}] = await Promise.all([
       supabase.from('horarios').select('id,dia_semana,hora_inicio,hora_fim,status,aluno_nome,tipo,instrumento')
         .eq('professor_id',professor_id).eq('dia_semana',diaSemana).eq('status','ocupado').order('hora_inicio'),
       supabase.from('presencas').select('*').eq('professor_id',professor_id).eq('data',dataAtual),
+      supabase.from('aulas_experimentais').select('id,nome,instrumento,hora_inicio,hora_fim,status')
+        .eq('professor_id',professor_id).eq('data_aula',dataAtual)
+        .not('status','in','(cancelada,remarcada)').order('hora_inicio'),
     ])
     const lista: AulaItem[] = []
     for (const h of (horarios||[])) {
@@ -135,6 +141,11 @@ export default function PortalProfessor() {
         lista.push({ id:isGrupo?h.id+'_'+nome:h.id, horario_id:h.id, aluno_nome:nome, instrumento:h.instrumento||'', hora_inicio:h.hora_inicio||'', hora_fim:h.hora_fim||'', presente:px?px.presente:null, tipo_falta:px?.tipo_falta||'', observacoes:px?.observacoes||'', presenca_id:px?.id })
       }
     }
+    for (const exp of (experimentais||[])) {
+      const realizada = exp.status==='realizada'||exp.status==='concluida'
+      lista.push({ id:'exp_'+exp.id, horario_id:'', aluno_nome:exp.nome||'', instrumento:exp.instrumento||'', hora_inicio:exp.hora_inicio||'', hora_fim:exp.hora_fim||'', presente:realizada?true:null, tipo_falta:'', observacoes:'', is_experimental:true, experimental_id:exp.id })
+    }
+    lista.sort((a,b)=>a.hora_inicio.localeCompare(b.hora_inicio))
     setAulas(lista)
     setLoadingChamada(false)
   }
@@ -182,6 +193,27 @@ export default function PortalProfessor() {
       await supabase.from('presencas').insert({aluno_id:ad?.id||null,professor_id,horario_id:item.horario_id,data:dataAtual,hora_inicio:item.hora_inicio,hora_fim:item.hora_fim,instrumento:item.instrumento,presente,tipo_falta:presente?null:(tipoFalta||'falta_injustificada'),aluno_nome:item.aluno_nome,observacoes:obs})
     }
     setSalvando(false); setModal(null); setObsTexto(''); loadChamada()
+  }
+
+  async function loadExperimentaisAgenda() {
+    if (!professor_id) return
+    const hoje = new Date(); hoje.setHours(12,0,0,0)
+    const dow = hoje.getDay()
+    const diff = dow===0?-6:1-dow
+    const segunda = new Date(hoje); segunda.setDate(hoje.getDate()+diff+semanaOffset*7)
+    const sabado = new Date(segunda); sabado.setDate(segunda.getDate()+5)
+    const from = segunda.toISOString().slice(0,10)
+    const to = sabado.toISOString().slice(0,10)
+    const {data} = await supabase.from('aulas_experimentais')
+      .select('id,nome,instrumento,hora_inicio,hora_fim,data_aula,status')
+      .eq('professor_id',professor_id).gte('data_aula',from).lte('data_aula',to)
+      .not('status','in','(cancelada,remarcada)').order('hora_inicio')
+    setExperimentaisAgenda((data||[]) as any)
+  }
+
+  async function confirmarExperimental(expId: string, realizada: boolean) {
+    await supabase.from('aulas_experimentais').update({status:realizada?'realizada':'cancelada'}).eq('id',expId)
+    loadChamada()
   }
 
   async function loadAnotacoes() {
@@ -386,29 +418,48 @@ export default function PortalProfessor() {
           ) : (
             <div className="space-y-3">
               {aulas.map(item=>(
-                <div key={item.id} className={`bg-white rounded-xl border-2 p-4 transition-colors ${item.presente===true?'border-green-200 bg-green-50':item.presente===false?'border-red-100 bg-red-50':'border-gray-200'}`}>
+                <div key={item.id} className={`bg-white rounded-xl border-2 p-4 transition-colors ${
+                  item.is_experimental
+                    ? item.presente===true ? 'border-purple-200 bg-purple-50' : 'border-purple-200'
+                    : item.presente===true?'border-green-200 bg-green-50':item.presente===false?'border-red-100 bg-red-50':'border-gray-200'
+                }`}>
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 min-w-0">
                       {item.presente===true ? <CheckCircle2 className="w-6 h-6 text-green-500 shrink-0"/>
                        :item.presente===false ? <XCircle className="w-6 h-6 text-red-400 shrink-0"/>
                        :<MinusCircle className="w-6 h-6 text-gray-300 shrink-0"/>}
                       <div className="min-w-0">
-                        <p className="font-semibold text-gray-900 truncate">{item.aluno_nome}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-gray-900 truncate">{item.aluno_nome}</p>
+                          {item.is_experimental && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-medium shrink-0">Experimental</span>}
+                        </div>
                         <div className="flex items-center gap-3 text-sm text-gray-500">
                           <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5"/>{fmtHora(item.hora_inicio)}{item.hora_fim?` – ${fmtHora(item.hora_fim)}`:''}</span>
                           {item.instrumento && <span className="flex items-center gap-1"><BookOpen className="w-3.5 h-3.5"/>{item.instrumento}</span>}
                         </div>
-                        {item.presente!==null&&item.observacoes && <p className="text-xs text-gray-400 mt-1 italic truncate">{item.observacoes}</p>}
-                        {item.presente===false&&item.tipo_falta && <p className="text-xs text-red-400 mt-0.5">{TIPOS_FALTA.find(t=>t.value===item.tipo_falta)?.label??item.tipo_falta}</p>}
+                        {!item.is_experimental&&item.presente!==null&&item.observacoes && <p className="text-xs text-gray-400 mt-1 italic truncate">{item.observacoes}</p>}
+                        {!item.is_experimental&&item.presente===false&&item.tipo_falta && <p className="text-xs text-red-400 mt-0.5">{TIPOS_FALTA.find(t=>t.value===item.tipo_falta)?.label??item.tipo_falta}</p>}
+                        {item.is_experimental&&item.presente===true && <p className="text-xs text-purple-500 mt-0.5 font-medium">Aula realizada ✓</p>}
                       </div>
                     </div>
                     <div className="flex gap-2 shrink-0">
-                      <button onClick={()=>abrirModal(item,true)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${item.presente===true?'bg-green-100 text-green-700 border border-green-200':'bg-gray-100 hover:bg-green-100 hover:text-green-700 text-gray-600'}`}>
-                        <CheckCircle2 className="w-4 h-4"/><span className="hidden sm:inline">Presente</span>
-                      </button>
-                      <button onClick={()=>abrirModal(item,false)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${item.presente===false?'bg-red-100 text-red-600 border border-red-200':'bg-gray-100 hover:bg-red-100 hover:text-red-600 text-gray-600'}`}>
-                        <XCircle className="w-4 h-4"/><span className="hidden sm:inline">Faltou</span>
-                      </button>
+                      {item.is_experimental ? (
+                        item.presente===true ? null : (
+                          <button onClick={()=>confirmarExperimental(item.experimental_id!,true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-100 hover:bg-purple-200 text-purple-700 transition-colors">
+                            <CheckCircle2 className="w-4 h-4"/><span className="hidden sm:inline">Realizada</span>
+                          </button>
+                        )
+                      ) : (
+                        <>
+                          <button onClick={()=>abrirModal(item,true)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${item.presente===true?'bg-green-100 text-green-700 border border-green-200':'bg-gray-100 hover:bg-green-100 hover:text-green-700 text-gray-600'}`}>
+                            <CheckCircle2 className="w-4 h-4"/><span className="hidden sm:inline">Presente</span>
+                          </button>
+                          <button onClick={()=>abrirModal(item,false)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${item.presente===false?'bg-red-100 text-red-600 border border-red-200':'bg-gray-100 hover:bg-red-100 hover:text-red-600 text-gray-600'}`}>
+                            <XCircle className="w-4 h-4"/><span className="hidden sm:inline">Faltou</span>
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -442,6 +493,8 @@ export default function PortalProfessor() {
             <div className="space-y-3">
               {semanaAtual.map(({dia,date,label})=>{
                 const auls = (gradeAgrupadaPorDia[dia]||[])
+                const exps = experimentaisAgenda.filter(e=>e.data_aula===date)
+                const total = auls.length + exps.length
                 const isHoje = date===hojeStr
                 const isPast = date<hojeStr
                 return (
@@ -451,12 +504,13 @@ export default function PortalProfessor() {
                         <span className={`font-semibold text-sm ${isHoje?'text-brand-700':isPast?'text-gray-400':'text-gray-700'}`}>{dia}</span>
                         <span className={`text-xs ${isHoje?'text-brand-500':isPast?'text-gray-400':'text-gray-500'}`}>{label}</span>
                         {isHoje && <span className="text-xs bg-brand-500 text-white px-1.5 py-0.5 rounded-full font-medium">Hoje</span>}
+                        {exps.length>0 && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full font-medium">{exps.length} exp.</span>}
                       </div>
-                      {auls.length>0
-                        ? <span className="text-xs text-gray-400">{auls.length} aula{auls.length!==1?'s':''}</span>
+                      {total>0
+                        ? <span className="text-xs text-gray-400">{total} aula{total!==1?'s':''}</span>
                         : <span className="text-xs text-gray-300">Sem aulas</span>}
                     </div>
-                    {auls.length>0 && (
+                    {(auls.length>0||exps.length>0) && (
                       <div className="divide-y divide-gray-100">
                         {auls.map(h=>{
                           const isNovo = alunosNovos.has(h.aluno_nome)
@@ -471,10 +525,22 @@ export default function PortalProfessor() {
                                 {h.instrumento && <p className="text-xs text-gray-400">{h.instrumento}</p>}
                               </div>
                               {h.tipo==='grupo' && <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full shrink-0">Grupo</span>}
-                              {h.hora_fim && <span className="text-xs text-gray-400 shrink-0">{fmtHora(h.hora_inicio)}–{fmtHora(h.hora_fim)}</span>}
                             </div>
                           )
                         })}
+                        {exps.map(exp=>(
+                          <div key={exp.id} className={`px-4 py-2.5 flex items-center gap-3 bg-purple-50/40 ${isPast?'opacity-60':''}`}>
+                            <span className="text-sm font-mono text-gray-500 w-11 shrink-0">{fmtHora(exp.hora_inicio)}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium text-gray-900 truncate">{exp.nome}</p>
+                                <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-medium shrink-0">Experimental</span>
+                              </div>
+                              {exp.instrumento && <p className="text-xs text-gray-400">{exp.instrumento}</p>}
+                            </div>
+                            {(exp.status==='realizada'||exp.status==='concluida') && <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0"/>}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
