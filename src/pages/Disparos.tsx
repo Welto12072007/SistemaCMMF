@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
 import { MEDIA_ACCEPT, uploadDisparoMedia, listDisparoMedia, deleteDisparoMedia } from '@/lib/disparosMedia'
@@ -72,6 +72,28 @@ export default function Disparos() {
   const [uploadingMedia, setUploadingMedia] = useState(false)
   const [mediaLibrary, setMediaLibrary] = useState<Array<{ name: string; path: string; url: string }>>([])
   const [mediaError, setMediaError] = useState('')
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  function insertVar(v: string) {
+    const el = textareaRef.current
+    if (!el) { setMensagem(m => m + v); return }
+    const start = el.selectionStart
+    const end = el.selectionEnd
+    const before = mensagem.slice(0, start)
+    const after = mensagem.slice(end)
+    const novo = before + v + after
+    setMensagem(novo)
+    setTimeout(() => { el.focus(); el.setSelectionRange(start+v.length, start+v.length) }, 0)
+  }
+
+  function interpolate(texto: string, dest: Destinatario): string {
+    const primeiroNome = dest.nome.trim().split(/\s+/)[0] ?? dest.nome
+    return texto
+      .replace(/\{nome\}/gi, primeiroNome)
+      .replace(/\{nome_completo\}/gi, dest.nome)
+      .replace(/\{instrumento\}/gi, dest.instrumento_interesse ?? '')
+  }
 
   useEffect(() => {
     void loadContatos()
@@ -301,7 +323,7 @@ export default function Disparos() {
                 number: tel,
                 mediatype: mediaType,
                 media: mediaUrl.trim(),
-                caption: mensagem || undefined,
+                caption: interpolate(mensagem, dest) || undefined,
               }),
             }
           )
@@ -317,7 +339,7 @@ export default function Disparos() {
               },
               body: JSON.stringify({
                 number: tel,
-                text: mensagem,
+                text: interpolate(mensagem, dest),
               }),
             }
           )
@@ -591,13 +613,42 @@ export default function Disparos() {
               </div>
             )}
 
+            {/* Chips de variáveis */}
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              <span className="text-xs text-gray-400 self-center">Inserir:</span>
+              {[
+                { label: '{nome}', desc: 'Primeiro nome' },
+                { label: '{nome_completo}', desc: 'Nome completo' },
+                { label: '{instrumento}', desc: 'Instrumento' },
+              ].map(v => (
+                <button key={v.label} type="button" onClick={() => insertVar(v.label)}
+                  title={v.desc}
+                  className="text-xs px-2 py-0.5 rounded-full bg-brand-50 text-brand-600 border border-brand-200 hover:bg-brand-100 transition-colors font-mono"
+                >{v.label}</button>
+              ))}
+            </div>
+
             <textarea
+              ref={textareaRef}
               value={mensagem}
               onChange={(e) => setMensagem(e.target.value)}
-              placeholder="Digite a mensagem que será enviada..."
+              placeholder="Ex: Olá {nome}, tudo bem? Lembramos que sua aula de {instrumento} está confirmada!"
               rows={6}
               className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 resize-none"
             />
+
+            {/* Preview personalizado */}
+            {mensagem.includes('{') && selecionados.length > 0 && (() => {
+              const primeiro = selecionados[0]!
+              const preview = interpolate(mensagem, primeiro)
+              return (
+                <div className="mt-1.5 p-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                  <p className="text-xs text-gray-400 mb-1">Preview para <strong className="text-gray-600">{primeiro.nome}</strong>:</p>
+                  <p className="text-xs text-gray-700 whitespace-pre-wrap">{preview}</p>
+                </div>
+              )
+            })()}
+
             <p className="text-xs text-gray-400 mt-1">
               {mensagem.length} caracteres
               {mediaType !== 'text' && mediaUrl && ' • com mídia'}
