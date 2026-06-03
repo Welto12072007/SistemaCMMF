@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
-import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard, Shield, Mail, Target } from 'lucide-react'
+import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard, Shield, Mail, Target, Copy, CheckCircle2, Link } from 'lucide-react'
 import { maskPhone, normalizePhone, formatPhoneDisplay, maskPixKey, normalizePixKey } from '@/lib/utils'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
 import type { Professor, Curso, Sala, Plano, Perfil, UserRole } from '@/types'
@@ -74,6 +74,8 @@ function AcessosTab() {
   const [editando, setEditando] = useState<Perfil | null>(null)
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
+  const [linkConvite, setLinkConvite] = useState<string | null>(null)
+  const [copiado, setCopiado] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -100,10 +102,14 @@ function AcessosTab() {
         telefone: telNorm,
       }).eq('id', editando.id)
     } else {
-      // Create new user via Supabase Admin API
-      const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(form.email, {
-        data: { nome: form.nome, role: form.role },
-        redirectTo: `${window.location.origin}/definir-senha`,
+      // Gera link de convite sem depender de SMTP (admin envia manualmente)
+      const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'invite',
+        email: form.email,
+        options: {
+          data: { nome: form.nome, role: form.role },
+          redirectTo: `${window.location.origin}/definir-senha`,
+        },
       })
 
       if (error) {
@@ -122,6 +128,13 @@ function AcessosTab() {
         telefone: telNorm,
         ativo: true,
       })
+
+      setShowForm(false)
+      setEditando(null)
+      setLoading(false)
+      load()
+      setLinkConvite((data.properties as any).action_link ?? null)
+      return
     }
 
     setShowForm(false)
@@ -144,7 +157,7 @@ function AcessosTab() {
 
   async function handleResendInvite(perfil: Perfil) {
     setErro('')
-    const { error } = await supabaseAdmin.auth.admin.generateLink({
+    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
       type: 'invite',
       email: perfil.email,
       options: { redirectTo: `${window.location.origin}/definir-senha` },
@@ -152,8 +165,16 @@ function AcessosTab() {
     if (error) {
       setErro(error.message)
     } else {
-      alert(`Convite reenviado para ${perfil.email}`)
+      setLinkConvite((data.properties as any).action_link ?? null)
     }
+  }
+
+  function copiarLink() {
+    if (!linkConvite) return
+    navigator.clipboard.writeText(linkConvite).then(() => {
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2000)
+    })
   }
 
   return (
@@ -222,6 +243,41 @@ function AcessosTab() {
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditando(null) }}
         />
+      )}
+
+      {/* Modal link de convite */}
+      {linkConvite && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <Link className="w-6 h-6 text-brand-500" />
+              <h3 className="text-lg font-semibold text-gray-900">Link de acesso gerado</h3>
+            </div>
+            <p className="text-sm text-gray-600">
+              O email não pôde ser enviado automaticamente. Copie o link abaixo e envie para a pessoa via WhatsApp ou outro canal. <strong>O link expira em 24h.</strong>
+            </p>
+            <div className="bg-gray-50 border rounded-lg px-3 py-2 text-xs text-gray-700 break-all select-all">
+              {linkConvite}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={copiarLink}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                  copiado ? 'bg-green-600 text-white' : 'bg-brand-500 hover:bg-brand-600 text-white'
+                }`}
+              >
+                {copiado ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copiado ? 'Copiado!' : 'Copiar link'}
+              </button>
+              <button
+                onClick={() => setLinkConvite(null)}
+                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
