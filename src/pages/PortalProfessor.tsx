@@ -370,18 +370,6 @@ export default function PortalProfessor() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto">
-        {TABS.map(t=>(
-          <button key={t.key} onClick={()=>setTab(t.key)}
-            className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-1 justify-center ${tab===t.key?'bg-white text-brand-600 shadow-sm':'text-gray-600 hover:text-gray-800'}`}
-          >
-            {t.icon}{t.label}
-            {'badge' in t && (t.badge??0)>0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-400 text-white text-xs rounded-full flex items-center justify-center font-bold">{t.badge}</span>
-            )}
-          </button>
-        ))}
-      </div>
 
       {/* ── CHAMADA ── */}
       {tab==='chamada' && (
