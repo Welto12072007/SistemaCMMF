@@ -110,7 +110,7 @@ export default function CRMFunil() {
 
   function abrirEditar(c: FunilContato) {
     setFormEditar({
-      nome: c.nome,
+      nome: c.nome ?? '',
       telefone: c.telefone ?? '',
       instrumento: c.instrumento_interesse ?? '',
       etapa: c.etapa_funil,
@@ -445,7 +445,9 @@ export default function CRMFunil() {
                           </span>
                         </td>
                         <td className="px-3 py-2">
-                          <div className="font-medium text-gray-800">{c.nome}</div>
+                          <div className={`font-medium ${c.nome ? 'text-gray-800' : 'text-gray-400 italic'}`}>
+                            {c.nome || 'Sem nome'}
+                          </div>
                           {c.telefone && <div className="text-xs text-gray-400">{c.telefone}</div>}
                         </td>
                         <td className="px-3 py-2">
@@ -467,19 +469,20 @@ export default function CRMFunil() {
                         </td>
                         <td className="px-3 py-2 text-gray-600 text-xs">{c.exp_professor_nome ?? '—'}</td>
                         <td className="px-3 py-2 text-center">
-                          {c.telefone && (
-                            <button
-                              onClick={() => togglePausarAntonia(c)}
-                              title={c.chatbot_pausado ? 'Retomar Antonia' : 'Pausar Antonia'}
-                              className={`p-1.5 rounded transition-colors ${
-                                c.chatbot_pausado
+                          <button
+                            onClick={() => c.telefone ? togglePausarAntonia(c) : undefined}
+                            title={!c.telefone ? 'Sem telefone' : c.chatbot_pausado ? 'Retomar Antonia' : 'Pausar Antonia'}
+                            disabled={!c.telefone}
+                            className={`p-1.5 rounded transition-colors ${
+                              !c.telefone
+                                ? 'text-gray-200 cursor-not-allowed'
+                                : c.chatbot_pausado
                                   ? 'text-orange-600 bg-orange-100 hover:bg-orange-200'
                                   : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
-                              }`}
-                            >
-                              {c.chatbot_pausado ? <BotOff className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
-                            </button>
-                          )}
+                            }`}
+                          >
+                            {c.chatbot_pausado ? <BotOff className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
+                          </button>
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex justify-center gap-1">
@@ -1046,8 +1049,7 @@ export default function CRMFunil() {
               <button onClick={() => setModalEditar(null)} className="text-sm text-gray-500 px-4 py-2">Cancelar</button>
               <button
                 onClick={salvarEdicao}
-                disabled={!formEditar.nome.trim()}
-                className="text-sm bg-brand-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 hover:bg-brand-700"
+                className="text-sm bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700"
               >
                 Salvar
               </button>
