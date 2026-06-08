@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   Users,
@@ -31,6 +31,7 @@ import {
   UsersRound,
   Star,
   Home,
+  CalendarRange,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -39,7 +40,7 @@ import logoHorizontal from '../../assets/logos/cmmf-logo-horizontal-branco.png'
 interface NavSection {
   title: string
   roles: UserRole[]
-  items: { to: string; label: string; icon: typeof LayoutDashboard; roles: UserRole[] }[]
+  items: { to: string; label: string; icon: typeof LayoutDashboard; roles: UserRole[]; query?: string }[]
 }
 
 const sections: NavSection[] = [
@@ -48,13 +49,17 @@ const sections: NavSection[] = [
     roles: ['admin', 'recepcao', 'professor', 'aluno'],
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'recepcao'] },
-      { to: '/portal-professor', label: 'Meu Portal', icon: Home, roles: ['professor'] },
+      { to: '/portal-professor', label: 'Meu Portal', icon: Home, roles: ['admin', 'recepcao'] },
+      { to: '/portal-professor', label: 'Chamada', icon: ClipboardCheck, roles: ['professor'], query: '?tab=chamada' },
+      { to: '/portal-professor', label: 'Agenda', icon: CalendarRange, roles: ['professor'], query: '?tab=agenda' },
+      { to: '/portal-professor', label: 'Meus Alunos', icon: UsersRound, roles: ['professor'], query: '?tab=alunos' },
+      { to: '/portal-professor', label: 'Meu Mês', icon: DollarSign, roles: ['professor'], query: '?tab=mes' },
       { to: '/contatos', label: 'Contatos', icon: Users, roles: ['admin', 'recepcao'] },
       { to: '/crm-funil', label: 'CRM — Funil', icon: TrendingUp, roles: ['admin', 'recepcao'] },
       { to: '/aulas-experimentais', label: 'Aulas Experimentais', icon: GraduationCap, roles: ['admin', 'recepcao'] },
       { to: '/usuarios', label: 'Usuários', icon: UserCheck, roles: ['admin', 'recepcao'] },
       { to: '/horarios', label: 'Horários', icon: CalendarClock, roles: ['admin', 'recepcao'] },
-      { to: '/minha-grade', label: 'Minha Grade', icon: CalendarClock, roles: ['professor'] },
+      { to: '/minha-grade', label: 'Minha Grade', icon: CalendarClock, roles: ['professor', 'admin', 'recepcao'] },
       { to: '/presencas', label: 'Presenças & Faltas', icon: ClipboardCheck, roles: ['admin', 'recepcao'] },
       { to: '/portal-aluno', label: 'Minhas Aulas', icon: Calendar, roles: ['aluno'] },
     ],
@@ -105,6 +110,7 @@ interface SidebarProps {
 export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
   const { perfil, signOut, hasRole } = useAuth()
   const userRole = perfil?.role ?? 'aluno'
+  const location = useLocation()
 
   return (
     <aside
@@ -143,18 +149,21 @@ export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
                 {collapsed ? '•' : section.title}
               </p>
               <ul className="space-y-0.5">
-                {visibleItems.map(({ to, label, icon: Icon }) => (
-                  <li key={to}>
+                {visibleItems.map(({ to, label, icon: Icon, query }) => (
+                  <li key={to + (query ?? '')}>
                     <NavLink
-                      to={to}
+                      to={query ? to + query : to}
                       end={to === '/'}
-                      className={({ isActive }) =>
-                        `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                      className={() => {
+                        const isActive = query
+                          ? location.pathname === to && location.search === query
+                          : location.pathname === to || (to !== '/' && location.pathname.startsWith(to) && !location.search)
+                        return `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                           isActive
                             ? 'bg-brand-500 text-white'
                             : 'text-white/70 hover:bg-sidebar-hover hover:text-white'
                         } ${collapsed ? 'justify-center' : ''}`
-                      }
+                      }}
                       title={label}
                     >
                       <Icon className="w-5 h-5 flex-shrink-0" />

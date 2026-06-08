@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -58,7 +59,10 @@ export default function PortalProfessor() {
   const { perfil } = useAuth()
   const professor_id = perfil?.professor_id ?? null
 
-  const [tab, setTab] = useState<TabKey>('chamada')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = (searchParams.get('tab') ?? 'chamada') as TabKey
+  function setTab(t: TabKey) { setSearchParams({ tab: t }) }
+
   const [nomeProfessor, setNomeProfessor] = useState('')
   const [instrumentosProfessor, setInstrumentosProfessor] = useState<string[]>([])
   const [valorHoraAula, setValorHoraAula] = useState(0)
