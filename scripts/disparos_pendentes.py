@@ -9,6 +9,7 @@ envia via Evolution API e marca enviado/erro.
 import os
 import re
 import logging
+import datetime as dt
 import requests
 
 logging.basicConfig(
@@ -42,12 +43,15 @@ def normalizar_tel(tel: str) -> str | None:
 
 
 def buscar_pendentes() -> list:
+    # Só busca disparos criados nas últimas 24h — evita processar backlog histórico
+    cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)).isoformat()
     r = requests.get(
         f"{SB_URL}/rest/v1/disparos_pendentes",
         params={
             "select": "id,aluno_id,tipo,canal,mensagem,telefone_destinatario,agendado_para",
             "status": "eq.pendente",
             "or": "(agendado_para.is.null,agendado_para.lte.now())",
+            "criado_em": f"gte.{cutoff}",
             "order": "criado_em.asc",
             "limit": "30",
         },
@@ -62,7 +66,7 @@ def buscar_tel_aluno(aluno_id: str) -> str | None:
     r = requests.get(
         f"{SB_URL}/rest/v1/alunos",
         params={
-            "select": "telefone,whatsapp,contato_invalido",
+            "select": "telefone,contato_invalido",
             "id": f"eq.{aluno_id}",
         },
         headers=SB_HEADERS,
@@ -75,7 +79,7 @@ def buscar_tel_aluno(aluno_id: str) -> str | None:
     row = rows[0]
     if row.get("contato_invalido"):
         return None
-    return row.get("whatsapp") or row.get("telefone")
+    return row.get("telefone")
 
 
 def enviar_whatsapp(number: str, text: str) -> bool:
@@ -95,7 +99,7 @@ def enviar_whatsapp(number: str, text: str) -> bool:
 def marcar(disparo_id: str, status: str, motivo: str | None = None) -> None:
     body: dict = {"status": status}
     if motivo:
-        body["motivo_erro"] = motivo[:200]
+        body["erro"] = motivo[:200]
     requests.patch(
         f"{SB_URL}/rest/v1/disparos_pendentes",
         params={"id": f"eq.{disparo_id}"},
