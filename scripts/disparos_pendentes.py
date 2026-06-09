@@ -45,21 +45,31 @@ def normalizar_tel(tel: str) -> str | None:
 def buscar_pendentes() -> list:
     # Só busca disparos criados nas últimas 24h — evita processar backlog histórico
     cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)).isoformat()
-    r = requests.get(
-        f"{SB_URL}/rest/v1/disparos_pendentes",
-        params={
-            "select": "id,aluno_id,tipo,canal,mensagem,telefone_destinatario,agendado_para",
-            "status": "eq.pendente",
-            "or": "(agendado_para.is.null,agendado_para.lte.now())",
-            "criado_em": f"gte.{cutoff}",
-            "order": "criado_em.asc",
-            "limit": "30",
-        },
-        headers=SB_HEADERS,
-        timeout=10,
-    )
-    r.raise_for_status()
-    return r.json()
+    try:
+        r = requests.get(
+            f"{SB_URL}/rest/v1/disparos_pendentes",
+            params={
+                "select": "id,aluno_id,tipo,canal,mensagem,telefone_destinatario,agendado_para",
+                "status": "eq.pendente",
+                "criado_em": f"gte.{cutoff}",
+                "order": "criado_em.asc",
+                "limit": "50",
+            },
+            headers=SB_HEADERS,
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json() or []
+    except Exception as e:
+        log.error(f"buscar_pendentes erro: {e}")
+        return []
+
+    # Filtrar: só enviar se agendado_para é nulo ou já passou
+    now_utc = dt.datetime.now(dt.timezone.utc).isoformat()
+    return [
+        row for row in rows
+        if not row.get("agendado_para") or row["agendado_para"] <= now_utc
+    ]
 
 
 def buscar_tel_aluno(aluno_id: str) -> str | None:
@@ -100,13 +110,16 @@ def marcar(disparo_id: str, status: str, motivo: str | None = None) -> None:
     body: dict = {"status": status}
     if motivo:
         body["erro"] = motivo[:200]
-    requests.patch(
-        f"{SB_URL}/rest/v1/disparos_pendentes",
-        params={"id": f"eq.{disparo_id}"},
-        json=body,
-        headers=SB_HEADERS,
-        timeout=10,
-    )
+    try:
+        requests.patch(
+            f"{SB_URL}/rest/v1/disparos_pendentes",
+            params={"id": f"eq.{disparo_id}"},
+            json=body,
+            headers=SB_HEADERS,
+            timeout=10,
+        )
+    except Exception as e:
+        log.error(f"marcar {disparo_id} erro: {e}")
 
 
 def main() -> None:
@@ -143,4 +156,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        log.error(f"Erro fatal: {e}")

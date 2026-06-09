@@ -67,9 +67,9 @@ export default function Contatos() {
 
   // Segmentação por tipo
   const todosContatos = contatos
-  const somenteLeads = contatos.filter(c => !['ativo', 'matriculado', 'inativo', 'cancelado', 'ex_aluno'].includes(c.status || ''))
+  const somenteLeads = contatos.filter(c => !['ativo', 'matriculado', 'inativo', 'cancelado', 'ex_aluno', 'perdido'].includes(c.status || ''))
   const somenteAlunos = contatos.filter(c => ['ativo', 'matriculado'].includes(c.status || ''))
-  const somenteExAlunos = contatos.filter(c => ['inativo', 'cancelado', 'ex_aluno'].includes(c.status || ''))
+  const somenteExAlunos = contatos.filter(c => ['inativo', 'cancelado', 'ex_aluno', 'perdido'].includes(c.status || ''))
 
   const baseAba = abaContatos === 'leads' ? somenteLeads
     : abaContatos === 'alunos' ? somenteAlunos
