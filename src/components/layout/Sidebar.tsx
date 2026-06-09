@@ -49,7 +49,7 @@ const sections: NavSection[] = [
     roles: ['admin', 'recepcao', 'professor', 'aluno'],
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'recepcao'] },
-      { to: '/portal-professor', label: 'Meu Portal', icon: Home, roles: ['admin', 'recepcao'] },
+      { to: '/portal-professor', label: 'Meu Portal', icon: Home, roles: ['professor'] },
       { to: '/portal-professor', label: 'Chamada', icon: ClipboardCheck, roles: ['professor'], query: '?tab=chamada' },
       { to: '/portal-professor', label: 'Agenda', icon: CalendarRange, roles: ['professor'], query: '?tab=agenda' },
       { to: '/portal-professor', label: 'Meus Alunos', icon: UsersRound, roles: ['professor'], query: '?tab=alunos' },
@@ -59,7 +59,7 @@ const sections: NavSection[] = [
       { to: '/aulas-experimentais', label: 'Aulas Experimentais', icon: GraduationCap, roles: ['admin', 'recepcao'] },
       { to: '/usuarios', label: 'Usuários', icon: UserCheck, roles: ['admin', 'recepcao'] },
       { to: '/horarios', label: 'Horários', icon: CalendarClock, roles: ['admin', 'recepcao'] },
-      { to: '/minha-grade', label: 'Minha Grade', icon: CalendarClock, roles: ['professor', 'admin', 'recepcao'] },
+      { to: '/minha-grade', label: 'Minha Grade', icon: CalendarClock, roles: ['professor'] },
       { to: '/presencas', label: 'Presenças & Faltas', icon: ClipboardCheck, roles: ['admin', 'recepcao'] },
       { to: '/portal-aluno', label: 'Minhas Aulas', icon: Calendar, roles: ['aluno'] },
     ],
