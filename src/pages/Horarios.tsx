@@ -88,6 +88,7 @@ export default function Horarios() {
   const [novoAlunoSearch, setNovoAlunoSearch] = useState('')
   const [novoShowSearch, setNovoShowSearch] = useState(false)
   const [novoCapacidade, setNovoCapacidade] = useState(1)
+  const [novoGrupoUnmatchedNames, setNovoGrupoUnmatchedNames] = useState<{nome: string; telefone: string}[]>([])
   const [novoSaving, setNovoSaving] = useState(false)
   const [bulkSaving, setBulkSaving] = useState(false)
   const [lastClicked, setLastClicked] = useState<string | null>(null)
@@ -114,7 +115,7 @@ export default function Horarios() {
     const [{ data: profs }, { data: hrs }, { data: als }] = await Promise.all([
       supabase.from('professores').select('*').eq('ativo', true).order('nome'),
       supabase.from('horarios').select('*').order('hora_inicio'),
-      supabase.from('alunos').select('id, nome, telefone, modalidade_preferida').in('status', ['ativo', 'aluno']).order('nome'),
+      supabase.from('alunos').select('id, nome, telefone, modalidade_preferida').in('status', ['ativo', 'aluno', 'agendado']).order('nome'),
     ])
     setProfessores(profs || [])
     setHorarios(hrs || [])
@@ -142,12 +143,12 @@ export default function Horarios() {
     let alunoNome: string | null = null
     let alunoIds: string[] | null = null
     if (novoStatus === 'ocupado') {
-      if (novoAlunoIds.length > 0) {
-        alunoNome = novoAlunoIds
+      if (novoAlunoIds.length > 0 || novoGrupoUnmatchedNames.length > 0) {
+        const matchedNames = novoAlunoIds
           .map(id => alunos.find(a => a.id === id)?.nome || '')
           .filter(Boolean)
-          .join('\n')
-        alunoIds = novoAlunoIds
+        alunoNome = [...matchedNames, ...novoGrupoUnmatchedNames.map(u => u.nome)].join('\n') || null
+        alunoIds = novoAlunoIds.length > 0 ? novoAlunoIds : null
       } else if (novoAlunoSearch.trim()) {
         alunoNome = novoAlunoSearch.trim()
       }
@@ -504,7 +505,8 @@ export default function Horarios() {
           .map(id => alunos.find(a => a.id === id)?.nome || '')
           .filter(Boolean)
         // Preserve unmatched names (typos/not yet registered) to avoid data loss
-        alunoNome = [...matchedNames, ...editGrupoUnmatchedNames.map(u => u.nome)].join('\n')
+        // Fallback to editCell.aluno_nome if none matched (e.g. aluno status changed)
+        alunoNome = [...matchedNames, ...editGrupoUnmatchedNames.map(u => u.nome)].join('\n') || editCell.aluno_nome
         alunoIds = editAlunoIds
       } else if (editAlunoSearch.trim()) {
         alunoNome = editAlunoSearch.trim()
@@ -659,6 +661,7 @@ export default function Horarios() {
                       setNovoAlunoSearch('')
                       setNovoShowSearch(false)
                       setNovoCapacidade(4)
+                      setNovoGrupoUnmatchedNames([])
                     }}
                     className="flex items-center gap-1 bg-brand-500 hover:bg-brand-600 text-white px-2 py-0.5 rounded-lg text-xs font-medium transition-colors"
                     title="Adicionar novo horário"
@@ -1215,7 +1218,17 @@ export default function Horarios() {
                               ))
                             }
                             {alunos.filter(a => a.nome.toLowerCase().includes(editAlunoSearch.toLowerCase()) && !editAlunoIds.includes(a.id)).length === 0 && (
-                              <li className="px-3 py-2 text-sm text-gray-400">Nenhum aluno encontrado</li>
+                              <li
+                                onMouseDown={() => {
+                                  setEditGrupoUnmatchedNames(prev => [...prev, { nome: editAlunoSearch.trim(), telefone: '' }])
+                                  setEditAlunoSearch('')
+                                  setEditShowSearch(false)
+                                  setEditStatus('ocupado')
+                                }}
+                                className="px-3 py-1.5 cursor-pointer text-sm text-brand-600 hover:bg-brand-50"
+                              >
+                                + Adicionar "{editAlunoSearch}" sem vínculo
+                              </li>
                             )}
                           </ul>
                         )}
@@ -1398,7 +1411,7 @@ export default function Horarios() {
                           onChange={e => setNovoCapacidade(Math.max(1, +e.target.value))}
                           className="w-12 border border-gray-200 rounded px-1.5 py-0.5 text-center text-xs focus:ring-1 focus:ring-purple-400"
                         />
-                        <span className="text-purple-600 font-medium">{novoAlunoIds.length}/{novoCapacidade}</span>
+                        <span className="text-purple-600 font-medium">{novoAlunoIds.length + novoGrupoUnmatchedNames.length}/{novoCapacidade}</span>
                       </div>
                     </div>
                     <div className="space-y-1 mb-2">
@@ -1416,13 +1429,24 @@ export default function Horarios() {
                           </div>
                         )
                       })}
-                      {Array.from({ length: Math.max(0, novoCapacidade - novoAlunoIds.length) }).map((_, i) => (
+                      {novoGrupoUnmatchedNames.map((item, i) => (
+                        <div key={`unmatched-${i}`} className="bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-sm text-amber-800 font-medium truncate">{item.nome}</span>
+                            <span className="text-xs text-amber-500 shrink-0">não vinculado</span>
+                          </div>
+                          <button onClick={() => setNovoGrupoUnmatchedNames(prev => prev.filter((_, j) => j !== i))}>
+                            <X className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" />
+                          </button>
+                        </div>
+                      ))}
+                      {Array.from({ length: Math.max(0, novoCapacidade - novoAlunoIds.length - novoGrupoUnmatchedNames.length) }).map((_, i) => (
                         <div key={`empty-${i}`} className="border border-dashed border-gray-200 rounded-lg px-2.5 py-1 text-xs text-gray-300 italic">
                           Vaga livre
                         </div>
                       ))}
                     </div>
-                    {novoAlunoIds.length < novoCapacidade && (
+                    {novoAlunoIds.length + novoGrupoUnmatchedNames.length < novoCapacidade && (
                       <div className="relative">
                         <input
                           value={novoAlunoSearch}
@@ -1458,7 +1482,17 @@ export default function Horarios() {
                               ))
                             }
                             {alunos.filter(a => a.nome.toLowerCase().includes(novoAlunoSearch.toLowerCase()) && !novoAlunoIds.includes(a.id)).length === 0 && (
-                              <li className="px-3 py-2 text-sm text-gray-400">Nenhum aluno encontrado</li>
+                              <li
+                                onMouseDown={() => {
+                                  setNovoGrupoUnmatchedNames(prev => [...prev, { nome: novoAlunoSearch.trim(), telefone: '' }])
+                                  setNovoAlunoSearch('')
+                                  setNovoShowSearch(false)
+                                  setNovoStatus('ocupado')
+                                }}
+                                className="px-3 py-1.5 cursor-pointer text-sm text-brand-600 hover:bg-brand-50"
+                              >
+                                + Adicionar "{novoAlunoSearch}" sem vínculo
+                              </li>
                             )}
                           </ul>
                         )}
