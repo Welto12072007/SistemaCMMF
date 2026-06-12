@@ -47,6 +47,7 @@ interface Aluno {
   forma_pagamento?: string
   dia_inicio_aulas?: number
   desconto_matricula?: number
+  desconto_plano?: number
   motivo_saida?: string
   motivo_saida_detalhe?: string
   data_saida?: string
@@ -471,6 +472,7 @@ function AlunoForm({ aluno, onSave, onClose, titulo, banner }: {
     valor_plano: aluno?.valor_plano?.toString() ?? '',
     taxa_matricula: aluno?.taxa_matricula?.toString() ?? '',
     desconto_matricula: aluno?.desconto_matricula?.toString() ?? '',
+    desconto_plano: aluno?.desconto_plano?.toString() ?? '',
     forma_pagamento: aluno?.forma_pagamento ?? '',
     dia_inicio_aulas: aluno?.dia_inicio_aulas?.toString() ?? '',
   })
@@ -498,6 +500,7 @@ function AlunoForm({ aluno, onSave, onClose, titulo, banner }: {
     payload.valor_plano = form.valor_plano ? parseFloat(form.valor_plano) : null
     payload.taxa_matricula = form.taxa_matricula ? parseFloat(form.taxa_matricula) : null
     payload.desconto_matricula = form.desconto_matricula ? parseFloat(form.desconto_matricula) : 0
+    payload.desconto_plano = form.desconto_plano ? parseFloat(form.desconto_plano) : 0
     payload.dia_inicio_aulas = form.dia_inicio_aulas ? parseInt(form.dia_inicio_aulas) : null
     if (!form.data_matricula) delete payload.data_matricula
     if (!form.data_nascimento) delete payload.data_nascimento
@@ -602,8 +605,30 @@ function AlunoForm({ aluno, onSave, onClose, titulo, banner }: {
           <FormInput label="Dia início das aulas" type="number" value={form.dia_inicio_aulas} onChange={(v) => setForm({ ...form, dia_inicio_aulas: v })} placeholder="Ex: 15 (cobrado proporcional)" />
           <FormSelect label="Forma de Pagamento" value={form.forma_pagamento} onChange={(v) => setForm({ ...form, forma_pagamento: v })} options={['PIX', 'Cartão de Crédito', 'Cartão de Débito', 'Boleto', 'Dinheiro', 'Transferência']} />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-          <FormInput label="Valor Plano (R$/mês)" type="number" value={form.valor_plano} onChange={(v) => setForm({ ...form, valor_plano: v })} placeholder="320.00" />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+          <div>
+            <FormInput label="Valor Plano (R$/mês)" type="number" value={form.valor_plano} onChange={(v) => setForm({ ...form, valor_plano: v })} placeholder="320.00" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Desconto no Plano (%)</label>
+            <div className="relative">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                value={form.desconto_plano}
+                onChange={(e) => setForm({ ...form, desconto_plano: e.target.value })}
+                placeholder="Ex: 10"
+              />
+            </div>
+            {form.desconto_plano && form.valor_plano && parseFloat(form.desconto_plano) > 0 && (
+              <p className="text-xs text-emerald-600 mt-0.5">
+                Final: R$ {(parseFloat(form.valor_plano) * (1 - parseFloat(form.desconto_plano) / 100)).toFixed(2).replace('.', ',')}/mês
+              </p>
+            )}
+          </div>
           <FormInput label="Taxa Matrícula (R$)" type="number" value={form.taxa_matricula} onChange={(v) => setForm({ ...form, taxa_matricula: v })} placeholder="100.00" />
           <FormInput label="Desconto Matrícula (R$)" type="number" value={form.desconto_matricula} onChange={(v) => setForm({ ...form, desconto_matricula: v })} placeholder="0.00" />
         </div>
