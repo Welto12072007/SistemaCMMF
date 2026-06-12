@@ -32,6 +32,7 @@ import {
   Star,
   Home,
   CalendarRange,
+  Gift,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -98,6 +99,13 @@ const sections: NavSection[] = [
     roles: ['admin'],
     items: [
       { to: '/logs', label: 'Controle de Logs', icon: ScrollText, roles: ['admin'] },
+    ],
+  },
+  {
+    title: 'Pós-Venda',
+    roles: ['admin', 'recepcao'],
+    items: [
+      { to: '/pos-venda', label: 'Brindes & Marcos', icon: Gift, roles: ['admin', 'recepcao'] },
     ],
   },
 ]
