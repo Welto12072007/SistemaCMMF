@@ -7,7 +7,7 @@ import {
   BookOpen, DollarSign, CalendarCheck, Loader2, AlertCircle,
   ClipboardCheck, MinusCircle, CalendarDays, Users, KeyRound,
   Music2, Eye, EyeOff, StickyNote, CalendarRange, Sparkles,
-  ChevronDown, ChevronUp, Plus, Send,
+  ChevronDown, ChevronUp, Plus, Send, PlusCircle, X, FileText,
 } from 'lucide-react'
 
 interface AulaItem {
@@ -55,6 +55,20 @@ function splitNomesGrupo(nome: string): string[] {
 
 type TabKey = 'chamada'|'agenda'|'alunos'|'mes'
 
+interface PropostaExtra {
+  id: string
+  data_aula: string
+  hora_inicio: string
+  hora_fim: string
+  aluno_nome: string
+  instrumento?: string
+  justificativa: string
+  valor_extra: number
+  status: 'pendente' | 'aprovada' | 'rejeitada'
+  observacao_admin?: string
+  criado_em: string
+}
+
 export default function PortalProfessor() {
   const { perfil } = useAuth()
   const professor_id = perfil?.professor_id ?? null
@@ -98,6 +112,20 @@ export default function PortalProfessor() {
   // agenda
   const [semanaOffset, setSemanaOffset] = useState(0)
   const [experimentaisAgenda, setExperimentaisAgenda] = useState<{id:string;nome:string;instrumento:string;hora_inicio:string;hora_fim:string;data_aula:string;status:string}[]>([])
+
+  // propostas de horário extra
+  const [propostas, setPropostas] = useState<PropostaExtra[]>([])
+  const [showPropostaModal, setShowPropostaModal] = useState(false)
+  const [salvandoProposta, setSalvandoProposta] = useState(false)
+  const [formProposta, setFormProposta] = useState({
+    data_aula: '',
+    hora_inicio: '',
+    hora_fim: '',
+    aluno_nome: '',
+    instrumento: '',
+    justificativa: '',
+    valor_extra: '',
+  })
 
   // anotações
   const [anotacoes, setAnotacoes] = useState<Anotacao[]>([])
@@ -166,7 +194,7 @@ export default function PortalProfessor() {
     setLoadingGrade(false)
   }
 
-  useEffect(() => { if (tab==='mes'&&professor_id) loadMes() }, [tab,mesSel,anoSel,professor_id])
+  useEffect(() => { if (tab==='mes'&&professor_id) { loadMes(); loadPropostas() } }, [tab,mesSel,anoSel,professor_id])
 
   async function loadMes() {
     if (!professor_id) return
@@ -177,6 +205,37 @@ export default function PortalProfessor() {
       .eq('professor_id',professor_id).gte('data',p1).lte('data',p2).order('data',{ascending:false})
     setRegistrosMes((data||[]) as RegistroMes[])
     setLoadingMes(false)
+  }
+
+  async function loadPropostas() {
+    if (!professor_id) return
+    const {data} = await supabase.from('propostas_horario_extra')
+      .select('*').eq('professor_id', professor_id).order('criado_em', {ascending:false})
+    setPropostas((data||[]) as PropostaExtra[])
+  }
+
+  async function salvarProposta() {
+    if (!professor_id) return
+    const f = formProposta
+    if (!f.data_aula||!f.hora_inicio||!f.hora_fim||!f.aluno_nome.trim()||!f.justificativa.trim()) {
+      alert('Preencha todos os campos obrigatórios.'); return
+    }
+    setSalvandoProposta(true)
+    const {error} = await supabase.from('propostas_horario_extra').insert({
+      professor_id,
+      data_aula: f.data_aula,
+      hora_inicio: f.hora_inicio,
+      hora_fim: f.hora_fim,
+      aluno_nome: f.aluno_nome.trim(),
+      instrumento: f.instrumento.trim()||null,
+      justificativa: f.justificativa.trim(),
+      valor_extra: parseFloat(f.valor_extra)||0,
+    })
+    setSalvandoProposta(false)
+    if (error) { alert('Erro: '+error.message); return }
+    setShowPropostaModal(false)
+    setFormProposta({data_aula:'',hora_inicio:'',hora_fim:'',aluno_nome:'',instrumento:'',justificativa:'',valor_extra:''})
+    loadPropostas()
   }
 
   function abrirModal(item:AulaItem,presente:boolean) {
@@ -370,6 +429,21 @@ export default function PortalProfessor() {
       </div>
 
       {/* Tabs */}
+      <div className="flex bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto">
+        {TABS.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors relative ${
+              tab === t.key ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            {t.icon}
+            {t.label}
+            {t.badge ? <span className="absolute -top-1 -right-1 w-4 h-4 bg-brand-500 text-white text-xs rounded-full flex items-center justify-center">{t.badge}</span> : null}
+          </button>
+        ))}
+      </div>
 
       {/* ── CHAMADA ── */}
       {tab==='chamada' && (
@@ -703,6 +777,113 @@ export default function PortalProfessor() {
               </table>
             </div>
           )}
+
+          {/* ── Propostas de Horário Extra ── */}
+          <div className="bg-white rounded-xl border border-gray-200">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-brand-500"/>
+                <h3 className="font-semibold text-gray-900 text-sm">Propostas de Aula Extra</h3>
+                <span className="text-xs text-gray-400">(solicita aprovação para receber extra)</span>
+              </div>
+              <button
+                onClick={() => setShowPropostaModal(true)}
+                className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium"
+              >
+                <PlusCircle className="w-3.5 h-3.5"/>
+                Nova proposta
+              </button>
+            </div>
+            {propostas.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">Nenhuma proposta enviada ainda.</p>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {propostas.map(p => (
+                  <div key={p.id} className="px-5 py-3 flex items-start gap-3">
+                    <span className={`mt-0.5 flex-shrink-0 w-2 h-2 rounded-full ${p.status==='aprovada'?'bg-green-500':p.status==='rejeitada'?'bg-red-400':'bg-amber-400'}`}/>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-gray-900 text-sm">{fmtData(p.data_aula)}</span>
+                        <span className="text-xs text-gray-500">{fmtHora(p.hora_inicio)}–{fmtHora(p.hora_fim)}</span>
+                        <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{p.aluno_nome}</span>
+                        {p.instrumento && <span className="text-xs text-gray-400">{p.instrumento}</span>}
+                        {p.valor_extra > 0 && <span className="text-xs font-semibold text-green-700">{fmtMoeda(p.valor_extra)}</span>}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5 truncate">{p.justificativa}</p>
+                      {p.observacao_admin && <p className="text-xs text-brand-600 mt-0.5 italic">{p.observacao_admin}</p>}
+                    </div>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                      p.status==='aprovada' ? 'bg-green-100 text-green-700' :
+                      p.status==='rejeitada' ? 'bg-red-100 text-red-600' :
+                      'bg-amber-100 text-amber-700'
+                    }`}>
+                      {p.status==='aprovada'?'Aprovada':p.status==='rejeitada'?'Rejeitada':'Pendente'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL PROPOSTA AULA EXTRA ── */}
+      {showPropostaModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="font-semibold text-gray-900">Propor Aula Extra</h3>
+              <button onClick={()=>setShowPropostaModal(false)}><X className="w-4 h-4 text-gray-400"/></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-3">
+                  <label className="text-xs text-gray-500 block mb-1">Data da aula *</label>
+                  <input type="date" value={formProposta.data_aula} onChange={e=>setFormProposta(f=>({...f,data_aula:e.target.value}))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Início *</label>
+                  <input type="time" value={formProposta.hora_inicio} onChange={e=>setFormProposta(f=>({...f,hora_inicio:e.target.value}))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Fim *</label>
+                  <input type="time" value={formProposta.hora_fim} onChange={e=>setFormProposta(f=>({...f,hora_fim:e.target.value}))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Valor extra (R$)</label>
+                  <input type="number" step="0.01" value={formProposta.valor_extra} onChange={e=>setFormProposta(f=>({...f,valor_extra:e.target.value}))}
+                    placeholder="0,00" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Aluno(s) *</label>
+                <input value={formProposta.aluno_nome} onChange={e=>setFormProposta(f=>({...f,aluno_nome:e.target.value}))}
+                  placeholder="Nome do aluno" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Instrumento</label>
+                <input value={formProposta.instrumento} onChange={e=>setFormProposta(f=>({...f,instrumento:e.target.value}))}
+                  placeholder="Ex: violão, teclado..." className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Justificativa *</label>
+                <textarea value={formProposta.justificativa} onChange={e=>setFormProposta(f=>({...f,justificativa:e.target.value}))}
+                  rows={3} placeholder="Por que esta aula é extra? (reposição especial, preparação para recital, etc.)"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"/>
+              </div>
+              <p className="text-xs text-gray-400">A proposta será enviada para aprovação do administrador antes de gerar pagamento extra.</p>
+            </div>
+            <div className="flex gap-3 px-5 py-3 border-t">
+              <button onClick={()=>setShowPropostaModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl text-sm text-gray-700">Cancelar</button>
+              <button onClick={salvarProposta} disabled={salvandoProposta} className="flex-1 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
+                {salvandoProposta&&<Loader2 className="w-4 h-4 animate-spin"/>}
+                Enviar proposta
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

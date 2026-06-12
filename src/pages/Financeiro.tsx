@@ -77,6 +77,21 @@ interface TrabalhoExtra {
   aprovado: boolean
 }
 
+interface PropostaHorarioExtra {
+  id: string
+  professor_id: string
+  professor_nome?: string
+  data_aula: string
+  hora_inicio: string
+  hora_fim: string
+  aluno_nome: string
+  instrumento?: string
+  justificativa: string
+  valor_extra: number
+  status: 'pendente' | 'aprovada' | 'rejeitada'
+  observacao_admin?: string
+}
+
 export default function Financeiro() {
   const [tab, setTab] = useState<'fluxo' | 'professores'>('fluxo')
   const [mesAtual, setMesAtual] = useState(new Date().getMonth() + 1)
@@ -94,6 +109,8 @@ export default function Financeiro() {
   const [showExtraForm, setShowExtraForm] = useState(false)
   const [professores, setProfessores] = useState<{ id: string; nome: string; tipo_professor: string; valor_hora_aula: number }[]>([])
   const [reciboProf, setReciboProf] = useState<ProfPagamento | null>(null)
+  const [propostasExtras, setPropostasExtras] = useState<PropostaHorarioExtra[]>([])
+  const [obsAdmin, setObsAdmin] = useState<Record<string, string>>({})
 
   useEffect(() => {
     loadFluxo()
@@ -102,6 +119,7 @@ export default function Financeiro() {
     loadProfPagamentos()
     loadExtras()
     loadProfessores()
+    loadPropostasExtras()
   }, [mesAtual, anoAtual])
 
   async function loadProfessores() {
@@ -245,6 +263,28 @@ export default function Financeiro() {
     await supabase.from('trabalhos_extras').delete().eq('id', id)
     loadExtras()
     loadProfPagamentos()
+  }
+
+  async function loadPropostasExtras() {
+    const { data } = await supabase
+      .from('propostas_horario_extra')
+      .select('*, professor:professores(nome)')
+      .eq('status', 'pendente')
+      .order('criado_em', { ascending: true })
+    if (data) {
+      setPropostasExtras(data.map((p: any) => ({
+        ...p,
+        professor_nome: p.professor?.nome || '—',
+        valor_extra: Number(p.valor_extra),
+      })))
+    }
+  }
+
+  async function handleAprovarProposta(id: string, status: 'aprovada' | 'rejeitada') {
+    const obs = obsAdmin[id]?.trim() || null
+    await supabase.from('propostas_horario_extra').update({ status, observacao_admin: obs }).eq('id', id)
+    loadPropostasExtras()
+    if (status === 'aprovada') loadProfPagamentos()
   }
 
   function exportarCSV() {
@@ -732,6 +772,51 @@ export default function Financeiro() {
               onSave={handleAddExtra}
               onClose={() => setShowExtraForm(false)}
             />
+          )}
+
+          {/* Propostas de Aula Extra dos Professores */}
+          {propostasExtras.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+              <div className="bg-brand-700 text-white px-4 py-3 flex items-center gap-2">
+                <span className="text-sm font-bold uppercase tracking-wider">Propostas de Aula Extra — Pendentes</span>
+                <span className="bg-white/20 text-white text-xs font-bold px-2 py-0.5 rounded-full">{propostasExtras.length}</span>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {propostasExtras.map(p => (
+                  <div key={p.id} className="px-5 py-3 space-y-2">
+                    <div className="flex flex-wrap items-center gap-3 text-sm">
+                      <span className="font-semibold text-gray-900">{p.professor_nome}</span>
+                      <span className="text-gray-500">{new Date(p.data_aula+'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                      <span className="text-gray-500">{p.hora_inicio?.slice(0,5)}–{p.hora_fim?.slice(0,5)}</span>
+                      <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs">{p.aluno_nome}</span>
+                      {p.instrumento && <span className="text-gray-400 text-xs">{p.instrumento}</span>}
+                      {p.valor_extra > 0 && <span className="text-green-700 font-semibold text-xs">+R$ {p.valor_extra.toFixed(2)}</span>}
+                    </div>
+                    <p className="text-xs text-gray-600 italic">{p.justificativa}</p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={obsAdmin[p.id] ?? ''}
+                        onChange={e => setObsAdmin(o => ({...o, [p.id]: e.target.value}))}
+                        placeholder="Observação (opcional)"
+                        className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs"
+                      />
+                      <button
+                        onClick={() => handleAprovarProposta(p.id, 'aprovada')}
+                        className="text-xs font-semibold text-green-700 bg-green-100 hover:bg-green-200 px-3 py-1.5 rounded-lg"
+                      >
+                        Aprovar
+                      </button>
+                      <button
+                        onClick={() => handleAprovarProposta(p.id, 'rejeitada')}
+                        className="text-xs font-semibold text-red-700 bg-red-100 hover:bg-red-200 px-3 py-1.5 rounded-lg"
+                      >
+                        Rejeitar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Recibo Modal */}

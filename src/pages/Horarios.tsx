@@ -26,6 +26,7 @@ interface Aluno {
   id: string
   nome: string
   telefone: string | null
+  instrumento_interesse?: string | null
   modalidade_preferida?: string | null
 }
 
@@ -36,6 +37,7 @@ interface Horario {
   hora_inicio: string
   status: string
   aluno_nome: string | null
+  instrumento?: string | null
   tipo?: string
   aluno_ids?: string[] | null
   capacidade?: number | null
@@ -97,6 +99,7 @@ export default function Horarios() {
     nome: string
     alunoId: string | null
     telefone: string | null
+    instrumento?: string
     selected: boolean
     slot: string
   }[]>([])
@@ -396,7 +399,7 @@ export default function Horarios() {
       return
     }
     // Aggregate: aluno nome -> { id, telefone, slots[] }
-    const alunoMap = new Map<string, { id: string | null; telefone: string | null; slots: string[] }>()
+    const alunoMap = new Map<string, { id: string | null; telefone: string | null; instrumento: string; slots: string[] }>()
 
     for (const h of occupiedSelected) {
       const prof = professores.find(p => p.id === h.professor_id)
@@ -408,7 +411,7 @@ export default function Horarios() {
           const aluno = alunos.find(a => a.id === alunoId)
           if (!aluno) continue
           const nome = aluno.nome
-          if (!alunoMap.has(nome)) alunoMap.set(nome, { id: alunoId, telefone: aluno.telefone || null, slots: [label] })
+          if (!alunoMap.has(nome)) alunoMap.set(nome, { id: alunoId, telefone: aluno.telefone || null, instrumento: aluno.instrumento_interesse || h.instrumento || '', slots: [label] })
           else alunoMap.get(nome)!.slots.push(label)
         }
       } else {
@@ -424,7 +427,7 @@ export default function Horarios() {
             ? alunos.find(a => { const an = normalize(a.nome); return hWords.every(w => an.includes(w)) })
             : null
           const found = exact || wordMatch
-          if (!alunoMap.has(nome)) alunoMap.set(nome, { id: found?.id || null, telefone: found?.telefone || null, slots: [label] })
+          if (!alunoMap.has(nome)) alunoMap.set(nome, { id: found?.id || null, telefone: found?.telefone || null, instrumento: found?.instrumento_interesse || h.instrumento || '', slots: [label] })
           else alunoMap.get(nome)!.slots.push(label)
         }
       }
@@ -434,6 +437,7 @@ export default function Horarios() {
       nome,
       alunoId: info.id,
       telefone: info.telefone,
+      instrumento: info.instrumento,
       selected: !!info.telefone,
       slot: info.slots.join(', ')
     }))
@@ -470,6 +474,12 @@ export default function Horarios() {
     setSavingPhone(false)
   }
 
+  const interpolateDisparo = (texto: string, nome: string, instrumento: string) =>
+    texto
+      .replace(/\{nome\}/gi, nome.trim().split(/\s+/)[0] ?? nome)
+      .replace(/\{nome_completo\}/gi, nome)
+      .replace(/\{instrumento\}/gi, instrumento)
+
   const sendDisparo = async () => {
     const recipients = disparoContatos.filter(c => c.selected && c.telefone)
     if (!disparoMensagem.trim() || recipients.length === 0) return
@@ -478,12 +488,13 @@ export default function Horarios() {
     let erros = 0
     for (const r of recipients) {
       try {
+        const texto = interpolateDisparo(disparoMensagem, r.nome, r.instrumento ?? '')
         const resp = await fetch(
           'https://api.centrodemusicamurilofinger.com/message/sendText/CentroMusica',
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'apikey': 'CentroMusica2026ApiKey' },
-            body: JSON.stringify({ number: r.telefone, text: disparoMensagem })
+            body: JSON.stringify({ number: r.telefone, text: texto })
           }
         )
         if (resp.ok) enviados++
@@ -967,12 +978,25 @@ export default function Horarios() {
                 <textarea
                   value={disparoMensagem}
                   onChange={e => setDisparoMensagem(e.target.value)}
-                  placeholder="Digite a mensagem a ser enviada..."
+                  placeholder="Ex: Oi {nome}! Sua aula de {instrumento} está confirmada para amanhã 😊"
                   rows={4}
                   disabled={disparoSending || !!disparoResultado}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent resize-none"
                 />
-                <p className="text-xs text-gray-400 mt-0.5 text-right">{disparoMensagem.length} caracteres</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Variáveis: <code className="bg-gray-100 px-1 rounded">{'{nome}'}</code> · <code className="bg-gray-100 px-1 rounded">{'{nome_completo}'}</code> · <code className="bg-gray-100 px-1 rounded">{'{instrumento}'}</code>
+                  <span className="float-right">{disparoMensagem.length} caracteres</span>
+                </p>
+                {/* Preview */}
+                {disparoMensagem.includes('{') && disparoContatos.find(c => c.selected) && (() => {
+                  const primeiro = disparoContatos.find(c => c.selected)!
+                  return (
+                    <div className="mt-1.5 p-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                      <p className="text-xs text-gray-400 mb-1">Preview para <strong className="text-gray-600">{primeiro.nome}</strong>:</p>
+                      <p className="text-xs text-gray-700 whitespace-pre-wrap">{interpolateDisparo(disparoMensagem, primeiro.nome, primeiro.instrumento ?? '')}</p>
+                    </div>
+                  )
+                })()}
               </div>
 
               {/* Result */}
