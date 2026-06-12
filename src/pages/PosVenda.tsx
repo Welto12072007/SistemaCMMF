@@ -546,8 +546,8 @@ export default function PosVenda() {
   const [anoFiltro, setAnoFiltro] = useState(() => String(new Date().getFullYear()))
 
   // Modais
-  const [modalBrinde, setModalBrinde] = useState<Brinde | null | 'novo'>(null)
-  const [modalModelo, setModalModelo] = useState<ModeloMensagem | null | 'novo'>(null)
+  const [modalBrinde, setModalBrinde] = useState<{ open: boolean; item: Brinde | null }>({ open: false, item: null })
+  const [modalModelo, setModalModelo] = useState<{ open: boolean; item: ModeloMensagem | null }>({ open: false, item: null })
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -645,14 +645,14 @@ export default function PosVenda() {
             Gerar entregas pendentes
           </button>
           <button
-            onClick={() => setModalBrinde('novo')}
+            onClick={() => setModalBrinde({ open: true, item: null })}
             className="flex items-center gap-1.5 border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium"
           >
             <Plus className="w-4 h-4" />
             Novo brinde
           </button>
           <button
-            onClick={() => setModalModelo('novo')}
+            onClick={() => setModalModelo({ open: true, item: null })}
             className="flex items-center gap-1.5 border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium"
           >
             <MessageSquare className="w-4 h-4" />
@@ -846,7 +846,7 @@ export default function PosVenda() {
       {tab === 'brindes' && (
         <div className="space-y-4">
           <div className="flex justify-end">
-            <button onClick={() => setModalBrinde('novo')} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
+            <button onClick={() => setModalBrinde({ open: true, item: null })} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
               <Plus className="w-4 h-4" /> Novo brinde
             </button>
           </div>
@@ -884,7 +884,7 @@ export default function PosVenda() {
                       <td className="px-4 py-2.5 text-right text-gray-700">{fmtBRL(b.estoque_atual * b.custo_unitario)}</td>
                       <td className="px-4 py-2.5 text-gray-500 text-xs">{b.fornecedor || '—'}</td>
                       <td className="px-4 py-2.5">
-                        <button onClick={() => setModalBrinde(b)} className="text-xs text-brand-600 hover:text-brand-800">
+                        <button onClick={() => setModalBrinde({ open: true, item: b })} className="text-xs text-brand-600 hover:text-brand-800">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                       </td>
@@ -901,7 +901,7 @@ export default function PosVenda() {
       {tab === 'mensagens' && (
         <div className="space-y-4">
           <div className="flex justify-end">
-            <button onClick={() => setModalModelo('novo')} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
+            <button onClick={() => setModalModelo({ open: true, item: null })} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
               <Plus className="w-4 h-4" /> Novo modelo
             </button>
           </div>
@@ -916,7 +916,7 @@ export default function PosVenda() {
                       <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full capitalize">{m.instrumento_alvo}</span>
                     </div>
                   </div>
-                  <button onClick={() => setModalModelo(m)} className="text-gray-400 hover:text-brand-600 shrink-0">
+                  <button onClick={() => setModalModelo({ open: true, item: m })} className="text-gray-400 hover:text-brand-600 shrink-0">
                     <Pencil className="w-4 h-4" />
                   </button>
                 </div>
@@ -991,17 +991,17 @@ export default function PosVenda() {
       )}
 
       {/* Modais */}
-      {(modalBrinde === 'novo' || (modalBrinde && modalBrinde !== 'novo')) && (
+      {modalBrinde.open && (
         <BrindeModal
-          brinde={modalBrinde === 'novo' ? null : modalBrinde as Brinde}
-          onClose={() => setModalBrinde(null)}
+          brinde={modalBrinde.item}
+          onClose={() => setModalBrinde({ open: false, item: null })}
           onSave={fetchData}
         />
       )}
-      {(modalModelo === 'novo' || (modalModelo && modalModelo !== 'novo')) && (
+      {modalModelo.open && (
         <ModeloModal
-          modelo={modalModelo === 'novo' ? null : modalModelo as ModeloMensagem}
-          onClose={() => setModalModelo(null)}
+          modelo={modalModelo.item}
+          onClose={() => setModalModelo({ open: false, item: null })}
           onSave={fetchData}
         />
       )}

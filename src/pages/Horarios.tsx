@@ -1217,19 +1217,17 @@ export default function Horarios() {
                                 </li>
                               ))
                             }
-                            {alunos.filter(a => a.nome.toLowerCase().includes(editAlunoSearch.toLowerCase()) && !editAlunoIds.includes(a.id)).length === 0 && (
-                              <li
-                                onMouseDown={() => {
-                                  setEditGrupoUnmatchedNames(prev => [...prev, { nome: editAlunoSearch.trim(), telefone: '' }])
-                                  setEditAlunoSearch('')
-                                  setEditShowSearch(false)
-                                  setEditStatus('ocupado')
-                                }}
-                                className="px-3 py-1.5 cursor-pointer text-sm text-brand-600 hover:bg-brand-50"
-                              >
-                                + Adicionar "{editAlunoSearch}" sem vínculo
-                              </li>
-                            )}
+                            <li
+                              onMouseDown={() => {
+                                setEditGrupoUnmatchedNames(prev => [...prev, { nome: editAlunoSearch.trim(), telefone: '' }])
+                                setEditAlunoSearch('')
+                                setEditShowSearch(false)
+                                setEditStatus('ocupado')
+                              }}
+                              className="px-3 py-1.5 cursor-pointer text-sm text-brand-600 hover:bg-brand-50 border-t border-gray-100"
+                            >
+                              + Adicionar "{editAlunoSearch}" sem vínculo
+                            </li>
                           </ul>
                         )}
                       </div>
@@ -1481,19 +1479,17 @@ export default function Horarios() {
                                 </li>
                               ))
                             }
-                            {alunos.filter(a => a.nome.toLowerCase().includes(novoAlunoSearch.toLowerCase()) && !novoAlunoIds.includes(a.id)).length === 0 && (
-                              <li
-                                onMouseDown={() => {
-                                  setNovoGrupoUnmatchedNames(prev => [...prev, { nome: novoAlunoSearch.trim(), telefone: '' }])
-                                  setNovoAlunoSearch('')
-                                  setNovoShowSearch(false)
-                                  setNovoStatus('ocupado')
-                                }}
-                                className="px-3 py-1.5 cursor-pointer text-sm text-brand-600 hover:bg-brand-50"
-                              >
-                                + Adicionar "{novoAlunoSearch}" sem vínculo
-                              </li>
-                            )}
+                            <li
+                              onMouseDown={() => {
+                                setNovoGrupoUnmatchedNames(prev => [...prev, { nome: novoAlunoSearch.trim(), telefone: '' }])
+                                setNovoAlunoSearch('')
+                                setNovoShowSearch(false)
+                                setNovoStatus('ocupado')
+                              }}
+                              className="px-3 py-1.5 cursor-pointer text-sm text-brand-600 hover:bg-brand-50 border-t border-gray-100"
+                            >
+                              + Adicionar "{novoAlunoSearch}" sem vínculo
+                            </li>
                           </ul>
                         )}
                       </div>
