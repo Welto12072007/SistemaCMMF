@@ -357,6 +357,93 @@ def expirar_reposicoes() -> None:
     log.info("Reposições do mês anterior expiradas")
 
 
+MESES_PT_LONGO = [
+    "janeiro","fevereiro","março","abril","maio","junho",
+    "julho","agosto","setembro","outubro","novembro","dezembro",
+]
+
+
+def lembretes_vencimento_mensalidade() -> None:
+    """8h BRT — envia lembrete de vencimento para mensalidades que vencem em até 5 dias."""
+    registros = rpc("buscar_mensalidades_para_lembrete", {"p_dias_antes": 5})
+    if not isinstance(registros, list):
+        return
+    log.info(f"Lembretes vencimento mensalidade: {len(registros)}")
+    for r in registros:
+        tel = normalizar_tel(r.get("aluno_telefone", ""))
+        if not tel:
+            continue
+        nome   = (r.get("aluno_nome") or "").split()[0] or "Aluno"
+        instr  = r.get("instrumento") or "música"
+        valor  = float(r.get("valor_liquido") or 0)
+        venc   = r.get("data_vencimento", "")
+        try:
+            d, m_, y = venc.split("-")[2], venc.split("-")[1], venc.split("-")[0]
+            venc_fmt = f"{d}/{m_}/{y}"
+        except Exception:
+            venc_fmt = venc
+
+        msg = (
+            f"Oi {nome}! 👋\n\n"
+            f"Lembrete: sua mensalidade de {instr} vence em breve.\n\n"
+            f"💰 *Valor:* R$ {valor:,.2f}\n"
+            f"📅 *Vencimento:* {venc_fmt}\n\n"
+            f"🏦 *PIX CNPJ:* 29.247.149/0001-51\n\n"
+            f"Após o pagamento, é só responder esta mensagem! 😊\n"
+            f"— Centro de Música Murilo Finger"
+        )
+        if send_whatsapp(tel, msg):
+            rpc("marcar_notificacao_mensalidade", {
+                "p_mensalidade_id": r["mensalidade_id"],
+                "p_tipo": "vencimento",
+            })
+            log.info(f"Lembrete vencimento mensalidade → {tel}")
+
+
+def cobrar_inadimplentes_mensalidade() -> None:
+    """8h BRT — cobra alunos com mensalidade atrasada há 3+ dias."""
+    registros = rpc("buscar_mensalidades_para_cobrar", {"p_dias_min": 3})
+    if not isinstance(registros, list):
+        return
+    log.info(f"Cobranças inadimplentes: {len(registros)}")
+    for r in registros:
+        tel = normalizar_tel(r.get("aluno_telefone", ""))
+        if not tel:
+            continue
+        nome       = (r.get("aluno_nome") or "").split()[0] or "Aluno"
+        instr      = r.get("instrumento") or "música"
+        valor      = float(r.get("valor_liquido") or 0)
+        venc       = r.get("data_vencimento", "")
+        dias       = int(r.get("dias_atraso") or 0)
+        ref        = r.get("referencia", "")
+        try:
+            ref_mes = MESES_PT_LONGO[int(ref.split("-")[1]) - 1] + " de " + ref.split("-")[0]
+        except Exception:
+            ref_mes = ref
+        try:
+            d, m_, y = venc.split("-")[2], venc.split("-")[1], venc.split("-")[0]
+            venc_fmt = f"{d}/{m_}/{y}"
+        except Exception:
+            venc_fmt = venc
+
+        msg = (
+            f"Oi {nome}! 👋\n\n"
+            f"Sua mensalidade de {instr} referente a {ref_mes} ainda está em aberto.\n\n"
+            f"💰 *Valor:* R$ {valor:,.2f}\n"
+            f"📅 *Venceu em:* {venc_fmt}\n"
+            f"⏰ *Atraso:* {dias} dia{'s' if dias != 1 else ''}\n\n"
+            f"Para regularizar, pague via PIX:\n"
+            f"🏦 *CNPJ:* 29.247.149/0001-51\n\n"
+            f"Qualquer dúvida estamos aqui! — Centro de Música Murilo Finger"
+        )
+        if send_whatsapp(tel, msg):
+            rpc("marcar_notificacao_mensalidade", {
+                "p_mensalidade_id": r["mensalidade_id"],
+                "p_tipo": "cobranca",
+            })
+            log.info(f"Cobrança inadimplente → {tel}")
+
+
 # ── main ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -403,6 +490,22 @@ def main() -> None:
             fechamento()
         except Exception as e:
             log.error(f"fechamento: {e}")
+
+    # 8h — marcar mensalidades atrasadas + lembretes vencimento + cobrança inadimplentes
+    if br.hour == 8:
+        try:
+            rpc("marcar_mensalidades_atrasadas")
+            log.info("marcar_mensalidades_atrasadas executado")
+        except Exception as e:
+            log.error(f"marcar_mensalidades_atrasadas: {e}")
+        try:
+            lembretes_vencimento_mensalidade()
+        except Exception as e:
+            log.error(f"lembretes_vencimento_mensalidade: {e}")
+        try:
+            cobrar_inadimplentes_mensalidade()
+        except Exception as e:
+            log.error(f"cobrar_inadimplentes_mensalidade: {e}")
 
     # Sempre — disparos programados
     try:

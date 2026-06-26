@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Plus, Search, Download, ExternalLink, Copy, Zap, CreditCard, QrCode, UserPlus } from 'lucide-react'
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Plus, Search, Download, ExternalLink, Copy, Zap, CreditCard, QrCode, UserPlus, Send, MessageSquare } from 'lucide-react'
 
 interface Mensalidade {
   id: string
@@ -22,6 +22,8 @@ interface Mensalidade {
   asaas_payment_url: string | null
   asaas_billing_type: string | null
   asaas_pix_copy_paste: string | null
+  notificado_vencimento_em: string | null
+  notificado_cobranca_em: string | null
 }
 
 const STATUS_OPTIONS = ['pendente', 'pago', 'atrasado', 'isento', 'cancelado'] as const
@@ -63,6 +65,9 @@ export default function Mensalidades() {
   const [billingModal, setBillingModal] = useState<Mensalidade | null>(null)
   const [avulsaModal, setAvulsaModal] = useState(false)
   const [aba, setAba] = useState<'mensalidades' | 'inadimplentes'>('mensalidades')
+  const [enviandoLembretes, setEnviandoLembretes] = useState(false)
+  const [enviandoCobrancas, setEnviandoCobrancas] = useState(false)
+  const [pixCnpj] = useState('29.247.149/0001-51')
 
   useEffect(() => {
     loadMensalidades()
@@ -205,8 +210,81 @@ export default function Mensalidades() {
     return { total, pagas, pendentes, atrasadas, recebido, aReceber }
   }, [items])
 
-  function exportarCSV() {
-    const header = ['Aluno', 'Telefone', 'Instrumento', 'Referência', 'Vencimento', 'Valor', 'Desconto', 'Pago', 'Status', 'Método', 'Pagamento']
+  // ── Gerar mensagem WhatsApp de cobrança individual ──────────────────────────
+  function msgCobranca(m: Mensalidade, tipo: 'lembrete' | 'cobranca') {
+    const nome = (m.aluno_nome || '').split(' ')[0]
+    const instr = m.aluno_instrumento || 'música'
+    const valor = brl(m.valor - m.desconto)
+    const venc = formatBR(m.data_vencimento)
+    const ref = m.referencia ? new Date(m.referencia + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) : ''
+
+    if (tipo === 'lembrete') {
+      return (
+        `Oi ${nome}! 👋\n\n` +
+        `Lembrete: sua mensalidade de ${instr} vence em breve.\n\n` +
+        `💰 *Valor:* ${valor}\n📅 *Vencimento:* ${venc}\n\n` +
+        `🏦 *PIX CNPJ:* ${pixCnpj}\n\n` +
+        `Após o pagamento, é só responder esta mensagem! 😊\n— Centro de Música Murilo Finger`
+      )
+    }
+    return (
+      `Oi ${nome}! 👋\n\n` +
+      `Sua mensalidade de ${instr} referente a ${ref} ainda está em aberto.\n\n` +
+      `💰 *Valor:* ${valor}\n📅 *Venceu em:* ${venc}\n\n` +
+      `Para regularizar: 🏦 *PIX CNPJ:* ${pixCnpj}\n\n` +
+      `Qualquer dúvida estamos aqui! — Centro de Música Murilo Finger`
+    )
+  }
+
+  function abrirWhatsApp(m: Mensalidade, tipo: 'lembrete' | 'cobranca') {
+    const tel = m.aluno_telefone?.replace(/\D/g, '')
+    if (!tel) { alert('Aluno sem telefone cadastrado.'); return }
+    const num = tel.startsWith('55') ? tel : `55${tel}`
+    window.open(`https://wa.me/${num}?text=${encodeURIComponent(msgCobranca(m, tipo))}`, '_blank')
+  }
+
+  async function enviarLembretesEmMassa() {
+    const pendentes = filtered.filter(m => m.status === 'pendente')
+    if (pendentes.length === 0) { alert('Nenhum aluno pendente para lembrete.'); return }
+    if (!confirm(`Enviar lembrete de vencimento para ${pendentes.length} aluno(s) via WhatsApp?`)) return
+    setEnviandoLembretes(true)
+    const inserts = pendentes
+      .filter(m => m.aluno_telefone && !m.aluno_telefone.startsWith('INVALIDO'))
+      .map(m => ({
+        aluno_id: m.aluno_id,
+        tipo: 'lembrete_mensalidade',
+        canal: 'whatsapp',
+        mensagem: msgCobranca(m, 'lembrete'),
+        telefone_destinatario: m.aluno_telefone,
+        status: 'pendente',
+      }))
+    const { error } = await supabase.from('disparos_pendentes').insert(inserts)
+    setEnviandoLembretes(false)
+    if (error) { alert('Erro ao criar lembretes:\n' + error.message); return }
+    alert(`✓ ${inserts.length} lembretes criados! Serão enviados nos próximos 30 minutos.`)
+  }
+
+  async function cobrarInadimplentesEmMassa() {
+    if (inadimplentes.length === 0) { alert('Nenhum inadimplente encontrado.'); return }
+    if (!confirm(`Enviar cobrança para ${inadimplentes.length} inadimplente(s) via WhatsApp?`)) return
+    setEnviandoCobrancas(true)
+    const inserts = inadimplentes
+      .filter(m => m.aluno_telefone && !m.aluno_telefone.startsWith('INVALIDO'))
+      .map(m => ({
+        aluno_id: m.aluno_id,
+        tipo: 'cobranca_atraso',
+        canal: 'whatsapp',
+        mensagem: msgCobranca(m, 'cobranca'),
+        telefone_destinatario: m.aluno_telefone,
+        status: 'pendente',
+      }))
+    const { error } = await supabase.from('disparos_pendentes').insert(inserts)
+    setEnviandoCobrancas(false)
+    if (error) { alert('Erro ao criar cobranças:\n' + error.message); return }
+    alert(`✓ ${inserts.length} cobranças criadas! Serão enviadas nos próximos 30 minutos.`)
+  }
+
+  function exportarCSV() {    const header = ['Aluno', 'Telefone', 'Instrumento', 'Referência', 'Vencimento', 'Valor', 'Desconto', 'Pago', 'Status', 'Método', 'Pagamento']
     const rows = filtered.map((m) => [
       m.aluno_nome,
       m.aluno_telefone || '',
@@ -244,6 +322,14 @@ export default function Mensalidades() {
           >
             <Download className="w-4 h-4" />
             Exportar CSV
+          </button>
+          <button
+            onClick={enviarLembretesEmMassa}
+            disabled={enviandoLembretes}
+            className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2.5 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          >
+            <Send className="w-4 h-4 text-green-600" />
+            {enviandoLembretes ? 'Criando...' : 'Lembrete em massa'}
           </button>
           <button
             onClick={() => setAvulsaModal(true)}
@@ -286,6 +372,18 @@ export default function Mensalidades() {
           {inadimplentes.length === 0 ? (
             <div className="p-8 text-center text-gray-500">Nenhum inadimplente neste mês. 🎉</div>
           ) : (
+            <>
+            <div className="flex items-center justify-between px-4 py-3 bg-red-50 border-b">
+              <span className="text-sm font-medium text-red-700">{inadimplentes.length} inadimplente(s)</span>
+              <button
+                onClick={cobrarInadimplentesEmMassa}
+                disabled={enviandoCobrancas}
+                className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                <MessageSquare className="w-3 h-3" />
+                {enviandoCobrancas ? 'Enviando...' : 'Cobrar todos por WhatsApp'}
+              </button>
+            </div>
             <table className="w-full text-sm">
               <thead className="bg-red-50 text-left text-xs text-gray-500 uppercase">
                 <tr>
@@ -312,7 +410,10 @@ export default function Mensalidades() {
                             : <button onClick={() => setPaymentModal(m)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200"><Zap className="w-3 h-3" /> Link</button>
                           }
                           {m.aluno_telefone && (
-                            <a href={`https://wa.me/55${m.aluno_telefone.replace(/\D/g,'')}?text=${encodeURIComponent(`Olá ${m.aluno_nome.split(' ')[0]}! Sua mensalidade de ${brl(m.valor-m.desconto)} venceu em ${formatBR(m.data_vencimento)}. Entre em contato para regularizar.`)}`} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200">WhatsApp</a>
+                            <button
+                              onClick={() => abrirWhatsApp(m, 'cobranca')}
+                              className="text-xs px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200"
+                            >WhatsApp</button>
                           )}
                         </div>
                       </td>
@@ -321,6 +422,7 @@ export default function Mensalidades() {
                 })}
               </tbody>
             </table>
+            </>
           )}
         </div>
       )}
@@ -430,7 +532,16 @@ export default function Mensalidades() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-end gap-2 flex-wrap">
+                        {m.status !== 'pago' && m.aluno_telefone && !m.aluno_telefone.startsWith('INVALIDO') && (
+                          <button
+                            onClick={() => abrirWhatsApp(m, m.status === 'atrasado' ? 'cobranca' : 'lembrete')}
+                            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200"
+                            title="Enviar mensagem WhatsApp"
+                          >
+                            <MessageSquare className="w-3 h-3" /> WhatsApp
+                          </button>
+                        )}
                         {m.status !== 'pago' && !m.asaas_charge_id && (
                           <button
                             onClick={() => setBillingModal(m)}
@@ -454,7 +565,7 @@ export default function Mensalidades() {
                             onClick={() => marcarPago(m)}
                             className="text-xs px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200"
                           >
-                            Marcar pago
+                            ✓ Pago
                           </button>
                         )}
                         <button
