@@ -67,6 +67,7 @@ export default function Mensalidades() {
   const [aba, setAba] = useState<'mensalidades' | 'inadimplentes'>('mensalidades')
   const [enviandoLembretes, setEnviandoLembretes] = useState(false)
   const [enviandoCobrancas, setEnviandoCobrancas] = useState(false)
+  const [criandoPix, setCriandoPix] = useState(false)
   const [pixCnpj] = useState('29.247.149/0001-51')
 
   useEffect(() => {
@@ -218,12 +219,22 @@ export default function Mensalidades() {
     const venc = formatBR(m.data_vencimento)
     const ref = m.referencia ? new Date(m.referencia + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) : ''
 
+    // Usa PIX Copia e Cola do Asaas se disponível, senão CNPJ genérico
+    const linhasPix = m.asaas_pix_copy_paste
+      ? `📲 *PIX Copia e Cola:*\n\`${m.asaas_pix_copy_paste}\``
+      : `🏦 *PIX CNPJ:* ${pixCnpj}`
+
+    // Link de pagamento (também aceita cartão de crédito)
+    const linhaLink = m.asaas_payment_url
+      ? `\n💳 *Pagar com cartão:* ${m.asaas_payment_url}`
+      : ''
+
     if (tipo === 'lembrete') {
       return (
         `Oi ${nome}! 👋\n\n` +
         `Lembrete: sua mensalidade de ${instr} vence em breve.\n\n` +
         `💰 *Valor:* ${valor}\n📅 *Vencimento:* ${venc}\n\n` +
-        `🏦 *PIX CNPJ:* ${pixCnpj}\n\n` +
+        `${linhasPix}${linhaLink}\n\n` +
         `Após o pagamento, é só responder esta mensagem! 😊\n— Centro de Música Murilo Finger`
       )
     }
@@ -231,7 +242,7 @@ export default function Mensalidades() {
       `Oi ${nome}! 👋\n\n` +
       `Sua mensalidade de ${instr} referente a ${ref} ainda está em aberto.\n\n` +
       `💰 *Valor:* ${valor}\n📅 *Venceu em:* ${venc}\n\n` +
-      `Para regularizar: 🏦 *PIX CNPJ:* ${pixCnpj}\n\n` +
+      `Para regularizar:\n${linhasPix}${linhaLink}\n\n` +
       `Qualquer dúvida estamos aqui! — Centro de Música Murilo Finger`
     )
   }
@@ -243,8 +254,7 @@ export default function Mensalidades() {
     window.open(`https://wa.me/${num}?text=${encodeURIComponent(msgCobranca(m, tipo))}`, '_blank')
   }
 
-  async function enviarLembretesEmMassa() {
-    const pendentes = filtered.filter(m => m.status === 'pendente')
+  async function enviarLembretesEmMassa() {    const pendentes = filtered.filter(m => m.status === 'pendente')
     if (pendentes.length === 0) { alert('Nenhum aluno pendente para lembrete.'); return }
     if (!confirm(`Enviar lembrete de vencimento para ${pendentes.length} aluno(s) via WhatsApp?`)) return
     setEnviandoLembretes(true)
@@ -308,6 +318,34 @@ export default function Mensalidades() {
     URL.revokeObjectURL(url)
   }
 
+  async function criarPixEmMassa() {
+    if (!confirm(`Criar cobranças PIX no Asaas para todas as mensalidades pendentes de ${filtroMes} sem PIX gerado?`)) return
+    setCriandoPix(true)
+    try {
+      const refData = filtroMes + '-01'
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/asaas-bulk-pix`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ p_referencia: refData }),
+        }
+      )
+      const result = await resp.json()
+      if (!resp.ok) { alert('Erro: ' + (result.error || 'Falha desconhecida')); return }
+      alert(`✓ ${result.criadas} cobranças PIX criadas no Asaas!${result.erros > 0 ? `\n⚠️ ${result.erros} erros (ver console).` : ''}`)
+      await loadMensalidades()
+    } catch (err) {
+      alert('Erro ao criar cobranças PIX: ' + String(err))
+    } finally {
+      setCriandoPix(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -322,6 +360,15 @@ export default function Mensalidades() {
           >
             <Download className="w-4 h-4" />
             Exportar CSV
+          </button>
+          <button
+            onClick={criarPixEmMassa}
+            disabled={criandoPix}
+            className="flex items-center gap-2 bg-white border border-orange-200 text-orange-700 px-4 py-2.5 rounded-lg hover:bg-orange-50 disabled:opacity-50"
+            title="Cria cobranças no Asaas: aluno pode pagar via PIX ou cartão de crédito. Baixa automática após pagamento."
+          >
+            <Zap className="w-4 h-4 text-orange-500" />
+            {criandoPix ? 'Gerando cobranças...' : 'Cobranças no Asaas'}
           </button>
           <button
             onClick={enviarLembretesEmMassa}
@@ -481,7 +528,7 @@ export default function Mensalidades() {
                 <th className="px-4 py-3">Valor</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Pagamento</th>
-                <th className="px-4 py-3">Pagamento</th>
+                <th className="px-4 py-3">PIX Asaas</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -518,18 +565,28 @@ export default function Mensalidades() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {m.asaas_charge_id && m.asaas_payment_url ? (
-                        <a
-                          href={m.asaas_payment_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                        >
-                          <CreditCard className="w-3 h-3" /> Link cartão
-                        </a>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {m.asaas_payment_url && (
+                          <a
+                            href={m.asaas_payment_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                            title="Pagar via PIX ou Cartão"
+                          ><ExternalLink className="w-3 h-3" /> Link pagamento</a>
+                        )}
+                        {m.asaas_pix_copy_paste ? (
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(m.asaas_pix_copy_paste!); alert('PIX copiado!') }}
+                            className="flex items-center gap-1 text-xs text-green-700 hover:underline"
+                            title="Copiar PIX Copia e Cola"
+                          ><Copy className="w-3 h-3" /> PIX copia e cola</button>
+                        ) : m.asaas_charge_id ? (
+                          <span className="text-xs text-yellow-600">⏳ PIX aguardando</span>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2 flex-wrap">
