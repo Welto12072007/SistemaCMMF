@@ -388,7 +388,13 @@ def lembretes_vencimento_mensalidade() -> None:
             f"Lembrete: sua mensalidade de {instr} vence em breve.\n\n"
             f"💰 *Valor:* R$ {valor:,.2f}\n"
             f"📅 *Vencimento:* {venc_fmt}\n\n"
-            f"🏦 *PIX CNPJ:* 29.247.149/0001-51\n\n"
+        )
+        link = r.get("asaas_payment_url")
+        if link:
+            msg += f"📲 *Pagar agora (PIX ou cartão):*\n{link}\n\n"
+        else:
+            msg += f"🏦 *PIX CNPJ:* 29.247.149/0001-51\n\n"
+        msg += (
             f"Após o pagamento, é só responder esta mensagem! 😊\n"
             f"— Centro de Música Murilo Finger"
         )
@@ -432,10 +438,16 @@ def cobrar_inadimplentes_mensalidade() -> None:
             f"💰 *Valor:* R$ {valor:,.2f}\n"
             f"📅 *Venceu em:* {venc_fmt}\n"
             f"⏰ *Atraso:* {dias} dia{'s' if dias != 1 else ''}\n\n"
-            f"Para regularizar, pague via PIX:\n"
-            f"🏦 *CNPJ:* 29.247.149/0001-51\n\n"
-            f"Qualquer dúvida estamos aqui! — Centro de Música Murilo Finger"
         )
+        link = r.get("asaas_payment_url")
+        if link:
+            msg += f"📲 *Regularizar agora (PIX ou cartão):*\n{link}\n\n"
+        else:
+            msg += (
+                f"Para regularizar, pague via PIX:\n"
+                f"🏦 *CNPJ:* 29.247.149/0001-51\n\n"
+            )
+        msg += f"Qualquer dúvida estamos aqui! — Centro de Música Murilo Finger"
         if send_whatsapp(tel, msg):
             rpc("marcar_notificacao_mensalidade", {
                 "p_mensalidade_id": r["mensalidade_id"],

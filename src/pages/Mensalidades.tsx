@@ -9,6 +9,7 @@ interface Mensalidade {
   aluno_telefone: string | null
   aluno_email: string | null
   aluno_instrumento: string | null
+  aluno_contato_invalido: boolean | null
   referencia: string
   valor: number
   desconto: number
@@ -259,7 +260,7 @@ export default function Mensalidades() {
     if (!confirm(`Enviar lembrete de vencimento para ${pendentes.length} aluno(s) via WhatsApp?`)) return
     setEnviandoLembretes(true)
     const inserts = pendentes
-      .filter(m => m.aluno_telefone && !m.aluno_telefone.startsWith('INVALIDO'))
+      .filter(m => m.aluno_telefone && !m.aluno_telefone.startsWith('INVALIDO') && !m.aluno_contato_invalido)
       .map(m => ({
         aluno_id: m.aluno_id,
         tipo: 'lembrete_mensalidade',
@@ -279,7 +280,7 @@ export default function Mensalidades() {
     if (!confirm(`Enviar cobrança para ${inadimplentes.length} inadimplente(s) via WhatsApp?`)) return
     setEnviandoCobrancas(true)
     const inserts = inadimplentes
-      .filter(m => m.aluno_telefone && !m.aluno_telefone.startsWith('INVALIDO'))
+      .filter(m => m.aluno_telefone && !m.aluno_telefone.startsWith('INVALIDO') && !m.aluno_contato_invalido)
       .map(m => ({
         aluno_id: m.aluno_id,
         tipo: 'cobranca_atraso',
