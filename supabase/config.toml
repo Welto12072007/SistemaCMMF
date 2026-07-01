@@ -1,0 +1,10 @@
+project_id = "oykrtlkksqekvjiiqafy"
+
+[functions.asaas-webhook]
+verify_jwt = false
+
+[functions.asaas-bulk-pix]
+verify_jwt = true
+
+[functions.asaas-create-charge]
+verify_jwt = true

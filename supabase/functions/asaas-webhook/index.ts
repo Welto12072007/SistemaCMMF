@@ -25,7 +25,11 @@ Deno.serve(async (req) => {
   }
 
   // Verificar token de segurança (configurado no painel Asaas)
-  if (ASAAS_WEBHOOK_TOKEN) {
+  // service_role key no header Authorization permite teste sem token
+  const authHeader = req.headers.get('authorization') ?? ''
+  const isServiceRole = SUPABASE_SERVICE_KEY && authHeader === `Bearer ${SUPABASE_SERVICE_KEY}`
+
+  if (ASAAS_WEBHOOK_TOKEN && !isServiceRole) {
     const token = req.headers.get('asaas-access-token')
     if (token !== ASAAS_WEBHOOK_TOKEN) {
       console.warn('Asaas webhook: token inválido')
@@ -54,8 +58,8 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-  // Buscar mensalidade pelo asaas_charge_id
-  const { data: mensa, error: findErr } = await supabase
+  // Buscar mensalidade pelo asaas_charge_id (cobrança normal ou ID do payment link)
+  let { data: mensa, error: findErr } = await supabase
     .from('mensalidades')
     .select('id, status')
     .eq('asaas_charge_id', payment.id)
@@ -67,6 +71,24 @@ Deno.serve(async (req) => {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     })
+  }
+
+  // Fallback: Payment Links geram um payment.id novo a cada pagamento
+  // Nesse caso o externalReference contém "mens_<uuid>"
+  if (!mensa && payment.externalReference?.startsWith('mens_')) {
+    const mensId = payment.externalReference.slice(5)
+    const { data: mensa2 } = await supabase
+      .from('mensalidades')
+      .select('id, status')
+      .eq('id', mensId)
+      .maybeSingle()
+    if (mensa2) {
+      mensa = mensa2
+      // Atualizar charge_id com o payment real para futuros lookups
+      await supabase.from('mensalidades')
+        .update({ asaas_charge_id: payment.id })
+        .eq('id', mensId)
+    }
   }
 
   if (!mensa) {
@@ -121,3 +143,4 @@ Deno.serve(async (req) => {
     headers: { 'Content-Type': 'application/json' },
   })
 })
+
