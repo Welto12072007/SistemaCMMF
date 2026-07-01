@@ -7,6 +7,8 @@ const ASAAS_BASE = Deno.env.get('ASAAS_SANDBOX') === 'true'
 const ASAAS_KEY          = Deno.env.get('ASAAS_API_KEY') ?? ''
 const SUPABASE_URL        = Deno.env.get('SUPABASE_URL') ?? ''
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+// CNPJ do CMMF — usado como customer genérico para alunos sem CPF
+const CMMF_CNPJ = '29247149000151'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -22,7 +24,7 @@ function jsonResp(data: unknown, status = 200) {
 
 // Busca ou cria customer no Asaas
 async function getOrCreateCustomer(
-  nome: string, telefone: string, email: string, alunoId: string
+  nome: string, telefone: string, email: string, alunoId: string, cpf?: string
 ): Promise<string> {
   const extRef = `aluno_${alunoId}`
   const searchResp = await fetch(
@@ -30,12 +32,24 @@ async function getOrCreateCustomer(
     { headers: { access_token: ASAAS_KEY } }
   )
   const searchData = await searchResp.json()
-  if (searchData?.data?.length > 0) return searchData.data[0].id
+  if (searchData?.data?.length > 0) {
+    const existing = searchData.data[0]
+    // Se CPF foi fornecido mas não está no customer, atualizar
+    if (cpf && !existing.cpfCnpj) {
+      await fetch(`${ASAAS_BASE}/customers/${existing.id}`, {
+        method: 'PUT',
+        headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpfCnpj: cpf.replace(/\D/g, '') }),
+      })
+    }
+    return existing.id
+  }
 
   const body: Record<string, string> = { name: nome, externalReference: extRef }
   const cleaned = telefone.replace(/\D/g, '')
   if (email) body.email = email
   if (cleaned.length >= 10) body.mobilePhone = cleaned
+  if (cpf) body.cpfCnpj = cpf.replace(/\D/g, '')
 
   const custResp = await fetch(`${ASAAS_BASE}/customers`, {
     method: 'POST',
@@ -47,6 +61,42 @@ async function getOrCreateCustomer(
   return custData.id
 }
 
+// Cria Payment Link do Asaas (para alunos sem CPF)
+// O aluno informa o próprio CPF na página de pagamento
+async function criarPaymentLink(
+  valor: number,
+  vencimento: string,
+  descricao: string,
+  extRef: string
+): Promise<{ linkId: string; paymentUrl: string } | { error: string }> {
+  // Data limite = vencimento + 30 dias
+  const endDate = new Date(vencimento + 'T12:00:00')
+  endDate.setDate(endDate.getDate() + 30)
+  const endDateStr = endDate.toISOString().split('T')[0]
+
+  const resp = await fetch(`${ASAAS_BASE}/paymentLinks`, {
+    method: 'POST',
+    headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: descricao,
+      billingType: 'UNDEFINED',
+      chargeType: 'DETACHED',
+      value: valor,
+      externalReference: extRef,
+      endDate: endDateStr,
+      dueDateLimitDays: 7,
+      notifications: [],           // desabilita email/SMS do Asaas (R$0,99 cada)
+    }),
+  })
+  const data = await resp.json()
+  if (!resp.ok) {
+    const msg = data?.errors?.[0]?.description ?? JSON.stringify(data)
+    console.error('Asaas paymentLink error:', msg)
+    return { error: msg }
+  }
+  return { linkId: data.id, paymentUrl: data.url }
+}
+
 // Cria cobrança no Asaas com suporte a PIX e cartão de crédito
 async function criarCobranca(
   customerId: string,
@@ -54,7 +104,7 @@ async function criarCobranca(
   vencimento: string,
   descricao: string,
   extRef: string
-): Promise<{ chargeId: string; paymentUrl: string } | null> {
+): Promise<{ chargeId: string; paymentUrl: string } | { error: string }> {
   const chargeResp = await fetch(`${ASAAS_BASE}/payments`, {
     method: 'POST',
     headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json' },
@@ -65,12 +115,14 @@ async function criarCobranca(
       dueDate: vencimento,
       description: descricao,
       externalReference: extRef,
+      notifications: [],           // desabilita email/SMS do Asaas (R$0,99 cada)
     }),
   })
   const data = await chargeResp.json()
   if (!chargeResp.ok) {
-    console.error('Asaas charge error:', JSON.stringify(data))
-    return null
+    const msg = data?.errors?.[0]?.description ?? JSON.stringify(data)
+    console.error('Asaas charge error:', msg)
+    return { error: msg }
   }
   return { chargeId: data.id, paymentUrl: data.invoiceUrl ?? '' }
 }
@@ -104,7 +156,7 @@ Deno.serve(async (req) => {
     // Buscar mensalidades pendentes sem charge Asaas ainda
     const { data: mensalidades, error: fetchErr } = await supabase
       .from('vw_mensalidades_aluno')
-      .select('id,aluno_id,aluno_nome,aluno_telefone,aluno_email,valor,desconto,data_vencimento,referencia,aluno_instrumento')
+      .select('id,aluno_id,aluno_nome,aluno_telefone,aluno_email,aluno_cpf,valor,desconto,data_vencimento,referencia,aluno_instrumento')
       .eq('referencia', p_referencia)
       .in('status', ['pendente', 'atrasado'])
       .is('asaas_charge_id', null)
@@ -116,20 +168,43 @@ Deno.serve(async (req) => {
 
     let criadas = 0
     let erros = 0
-    const resultados: Array<{ aluno: string; status: string; pix?: string }> = []
+    let sem_cpf = 0
+    const resultados: Array<{ aluno: string; status: string; pix?: string; motivo?: string }> = []
 
     for (const m of mensalidades) {
       try {
         const nome    = m.aluno_nome ?? 'Aluno'
         const tel     = m.aluno_telefone ?? ''
         const email   = m.aluno_email ?? ''
+        const cpf     = (m.aluno_cpf ?? '').replace(/\D/g, '')
         const valor   = Number(m.valor) - Number(m.desconto)
         const venc    = m.data_vencimento
         const instr   = m.aluno_instrumento ?? 'Música'
         const mesLabel = new Date(m.referencia + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
-        // Criar/buscar customer
-        const customerId = await getOrCreateCustomer(nome, tel, email, m.aluno_id)
+        // Criar/buscar customer (sem CPF = sem cobrança Asaas)
+        if (!cpf) {
+          // Sem CPF — criar Payment Link (não exige CPF, aluno informa na hora de pagar)
+          const pl = await criarPaymentLink(
+            valor, venc,
+            `Mensalidade ${instr} — ${mesLabel} | ${nome}`,
+            `mens_${m.id}`
+          )
+          if ('error' in pl) {
+            erros++
+            resultados.push({ aluno: nome, status: 'erro', motivo: pl.error })
+          } else {
+            await supabase.from('mensalidades').update({
+              asaas_charge_id:   pl.linkId,
+              asaas_payment_url: pl.paymentUrl,
+              asaas_billing_type: 'PAYMENT_LINK',
+            }).eq('id', m.id)
+            sem_cpf++
+            resultados.push({ aluno: nome, status: 'link', pix: pl.paymentUrl })
+          }
+          continue
+        }
+        const customerId = await getOrCreateCustomer(nome, tel, email, m.aluno_id, cpf)
 
         // Criar cobrança (PIX + cartão disponíveis)
         const charge = await criarCobranca(
@@ -140,10 +215,13 @@ Deno.serve(async (req) => {
           `mens_${m.id}`
         )
 
-        if (!charge) { erros++; continue }
+        if ('error' in charge) {
+          erros++
+          resultados.push({ aluno: nome, status: 'erro', motivo: charge.error })
+          continue
+        }
 
-        // Buscar PIX copia e cola (pode demorar alguns segundos)
-        await new Promise(r => setTimeout(r, 800))
+        // Buscar PIX copia e cola (tentativa imediata, pode não estar disponível ainda)
         const pixPayload = await fetchPixPayload(charge.chargeId)
 
         // Salvar no banco
@@ -171,11 +249,11 @@ Deno.serve(async (req) => {
       } catch (err) {
         console.error(`Erro ao criar charge para mensalidade ${m.id}:`, err)
         erros++
-        resultados.push({ aluno: m.aluno_nome ?? m.id, status: 'erro' })
+        resultados.push({ aluno: m.aluno_nome ?? m.id, status: 'erro', motivo: String(err) })
       }
     }
 
-    return jsonResp({ ok: true, criadas, erros, total: mensalidades.length, resultados })
+    return jsonResp({ ok: true, criadas, erros, sem_cpf, total: mensalidades.length, resultados })
   } catch (err) {
     console.error('asaas-bulk-pix error:', err)
     return jsonResp({ error: String(err) }, 500)

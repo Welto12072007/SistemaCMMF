@@ -7,6 +7,7 @@ const ASAAS_BASE = Deno.env.get('ASAAS_SANDBOX') === 'true'
 const ASAAS_KEY = Deno.env.get('ASAAS_API_KEY') ?? ''
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+const CMMF_CNPJ = '29247149000151'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -20,17 +21,29 @@ function jsonResp(data: unknown, status = 200) {
   })
 }
 
-async function getOrCreateCustomer(name: string, phone: string, email: string, externalRef: string): Promise<string> {
+async function getOrCreateCustomer(name: string, phone: string, email: string, externalRef: string, cpf?: string): Promise<string> {
   const customerBody: Record<string, string> = { name, externalReference: externalRef }
   const cleaned = phone.replace(/\D/g, '')
   if (email) customerBody.email = email
   if (cleaned.length >= 10) customerBody.mobilePhone = cleaned
+  if (cpf) customerBody.cpfCnpj = cpf.replace(/\D/g, '')
 
   const searchResp = await fetch(`${ASAAS_BASE}/customers?externalReference=${externalRef}`, {
     headers: { access_token: ASAAS_KEY },
   })
   const searchData = await searchResp.json()
-  if (searchData?.data?.length > 0) return searchData.data[0].id
+  if (searchData?.data?.length > 0) {
+    const existing = searchData.data[0]
+    // Atualizar CPF se não existir no Asaas mas existir no sistema
+    if (cpf && !existing.cpfCnpj) {
+      await fetch(`${ASAAS_BASE}/customers/${existing.id}`, {
+        method: 'PUT',
+        headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpfCnpj: cpf.replace(/\D/g, '') }),
+      })
+    }
+    return existing.id
+  }
 
   const custResp = await fetch(`${ASAAS_BASE}/customers`, {
     method: 'POST',
@@ -39,6 +52,23 @@ async function getOrCreateCustomer(name: string, phone: string, email: string, e
   })
   const custData = await custResp.json()
   if (!custResp.ok) throw new Error('Asaas customer error: ' + JSON.stringify(custData))
+  return custData.id
+}
+
+async function getGenericCustomer(): Promise<string> {
+  const extRef = 'cmmf_generic'
+  const searchResp = await fetch(`${ASAAS_BASE}/customers?externalReference=${extRef}`, {
+    headers: { access_token: ASAAS_KEY },
+  })
+  const searchData = await searchResp.json()
+  if (searchData?.data?.length > 0) return searchData.data[0].id
+  const custResp = await fetch(`${ASAAS_BASE}/customers`, {
+    method: 'POST',
+    headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Centro de Música Murilo Finger', cpfCnpj: CMMF_CNPJ, externalReference: extRef }),
+  })
+  const custData = await custResp.json()
+  if (!custResp.ok) throw new Error('Asaas generic customer: ' + JSON.stringify(custData))
   return custData.id
 }
 
@@ -83,6 +113,7 @@ Deno.serve(async (req) => {
           dueDate: vencimento,
           description: descricao,
           externalReference: extRef,
+          notifications: [],  // desabilita email/SMS (R$0,99 cada)
         }),
       })
       const chargeData = await chargeResp.json()
@@ -131,10 +162,22 @@ Deno.serve(async (req) => {
 
     const aluno = (mensa as any).alunos
     let asaas_customer_id: string = aluno.asaas_customer_id ?? ''
+    const cpf = (aluno.cpf ?? '').replace(/\D/g, '')
 
     if (!asaas_customer_id) {
-      asaas_customer_id = await getOrCreateCustomer(aluno.nome, aluno.telefone ?? '', aluno.email ?? '', aluno.id)
+      if (!cpf) {
+        // Aluno sem CPF — sem cobrança Asaas, vai pagar via PIX CNPJ
+        return jsonResp({ ok: false, sem_cpf: true, mensagem: 'Aluno sem CPF — cobrar via PIX CNPJ 29.247.149/0001-51' }, 422)
+      }
+      asaas_customer_id = await getOrCreateCustomer(aluno.nome, aluno.telefone ?? '', aluno.email ?? '', aluno.id, cpf)
       await supabase.from('alunos').update({ asaas_customer_id }).eq('id', aluno.id)
+    } else if (cpf) {
+      // Customer já existe — garantir que CPF está no Asaas
+      await fetch(`${ASAAS_BASE}/customers/${asaas_customer_id}`, {
+        method: 'PUT',
+        headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpfCnpj: cpf }),
+      })
     }
 
     const valor = Number(mensa.valor) - Number(mensa.desconto ?? 0)
@@ -147,6 +190,7 @@ Deno.serve(async (req) => {
       dueDate: mensa.data_vencimento,
       description: `Mensalidade ${mensa.referencia.substring(0, 7)} — CMMF`,
       externalReference: mensa.id,
+      notifications: [],  // desabilita email/SMS (R$0,99 cada)
     }
     if (!isPix && installmentCount > 1) {
       chargeBody.installmentCount = installmentCount
