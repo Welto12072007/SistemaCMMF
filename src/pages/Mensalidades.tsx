@@ -220,15 +220,23 @@ export default function Mensalidades() {
     const venc = formatBR(m.data_vencimento)
     const ref = m.referencia ? new Date(m.referencia + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) : ''
 
-    // Usa PIX Copia e Cola do Asaas se disponível, senão CNPJ genérico
-    const linhasPix = m.asaas_pix_copy_paste
-      ? `📲 *PIX Copia e Cola:*\n\`${m.asaas_pix_copy_paste}\``
-      : `🏦 *PIX CNPJ:* ${pixCnpj}`
-
-    // Link de pagamento (também aceita cartão de crédito)
-    const linhaLink = m.asaas_payment_url
-      ? `\n💳 *Pagar com cartão:* ${m.asaas_payment_url}`
-      : ''
+    // Lógica de pagamento:
+    // 1) Tem PIX copia e cola → mostra o PIX + link para cartão separado
+    // 2) Tem payment link mas sem PIX copia e cola → mostra só o link (já aceita PIX e cartão)
+    //    (NÃO mostrar PIX CNPJ pois pagamento por CNPJ não dispara webhook/baixa automática)
+    // 3) Sem nada do Asaas → PIX CNPJ genérico como fallback
+    let linhasPix: string
+    let linhaLink: string
+    if (m.asaas_pix_copy_paste) {
+      linhasPix = `📲 *PIX Copia e Cola:*\n\`${m.asaas_pix_copy_paste}\``
+      linhaLink = m.asaas_payment_url ? `\n💳 *Pagar com cartão:* ${m.asaas_payment_url}` : ''
+    } else if (m.asaas_payment_url) {
+      linhasPix = `📱 *Pagar por PIX ou cartão:*\n${m.asaas_payment_url}`
+      linhaLink = ''
+    } else {
+      linhasPix = `🏦 *PIX CNPJ:* ${pixCnpj}`
+      linhaLink = ''
+    }
 
     if (tipo === 'lembrete') {
       return (
