@@ -131,6 +131,46 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // MODO MARK_PAID — baixa manual no Asaas quando marcado pago no sistema
+    // ══════════════════════════════════════════════════════════════════
+    if (body.mode === 'mark_paid') {
+      const { mensalidade_id: mid, data_pagamento, valor_pago } = body
+      if (!mid) return jsonResp({ ok: false, error: 'mensalidade_id obrigatório' }, 400)
+
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+      const { data: mensa } = await supabase
+        .from('mensalidades')
+        .select('asaas_charge_id, valor, desconto')
+        .eq('id', mid)
+        .single()
+
+      // Só pode dar baixa em cobrança normal (pay_xxx), não em payment links
+      const chargeId = mensa?.asaas_charge_id
+      if (!chargeId || !chargeId.startsWith('pay_')) {
+        return jsonResp({ ok: true, skipped: 'sem_charge_normal' })
+      }
+
+      const valor = valor_pago ?? (Number(mensa.valor) - Number(mensa.desconto ?? 0))
+      const hoje = data_pagamento ?? new Date().toISOString().slice(0, 10)
+
+      const resp = await fetch(`${ASAAS_BASE}/payments/${chargeId}/receiveInCash`, {
+        method: 'POST',
+        headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentDate: hoje, value: valor, notifyCustomer: false }),
+      })
+      const result = await resp.json()
+      if (!resp.ok) {
+        // Pagamento já recebido no Asaas (ex: veio pelo link) — não é erro crítico
+        const jaRecebido = result?.errors?.[0]?.description?.toLowerCase().includes('já')
+          || result?.errors?.[0]?.code === 'invalid_action'
+        if (jaRecebido) return jsonResp({ ok: true, skipped: 'ja_recebido_no_asaas' })
+        console.warn('Asaas receiveInCash warning:', JSON.stringify(result))
+        return jsonResp({ ok: true, skipped: 'asaas_error', detail: result?.errors?.[0]?.description })
+      }
+      return jsonResp({ ok: true, asaas_status: result.status })
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // MODO MENSALIDADE — aluno cadastrado no sistema
     // ══════════════════════════════════════════════════════════════════
     const { mensalidade_id } = body

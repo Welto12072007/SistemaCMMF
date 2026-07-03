@@ -118,18 +118,25 @@ export default function Mensalidades() {
 
   async function marcarPago(m: Mensalidade) {
     const hoje = new Date().toISOString().slice(0, 10)
+    const valorLiquido = m.valor - m.desconto
     const { error } = await supabase
       .from('mensalidades')
       .update({
         status: 'pago',
         data_pagamento: hoje,
-        valor_pago: m.valor - m.desconto,
+        valor_pago: valorLiquido,
         metodo_pagamento: m.metodo_pagamento || 'pix',
       })
       .eq('id', m.id)
     if (error) {
       alert(`Erro ao marcar pago:\n${error.message}`)
       return
+    }
+    // Sincronizar baixa no Asaas (para cobranças normais pay_xxx)
+    if (m.asaas_charge_id?.startsWith('pay_')) {
+      await supabase.functions.invoke('asaas-create-charge', {
+        body: { mode: 'mark_paid', mensalidade_id: m.id, data_pagamento: hoje, valor_pago: valorLiquido },
+      })
     }
     loadMensalidades()
   }
