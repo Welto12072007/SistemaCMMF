@@ -21,7 +21,9 @@ import {
   Send,
   Tag,
   AlertTriangle,
+  CreditCard,
 } from 'lucide-react'
+import CobrancaInicialModal, { type AlunoCobrancaInicial } from '@/components/CobrancaInicialModal'
 import {
   BarChart,
   Bar,
@@ -94,6 +96,8 @@ export default function Dashboard() {
   const [ocupacaoPorProf, setOcupacaoPorProf] = useState<{ name: string; ocupados: number; total: number; taxa: number }[]>([])
   const [totalAlunosAtivos, setTotalAlunosAtivos] = useState(0)
   const [alunosSemContato, setAlunosSemContato] = useState<{ id: string; nome: string; instrumento_interesse?: string }[]>([])
+  const [cobrancasIniciais, setCobrancasIniciais] = useState<AlunoCobrancaInicial[]>([])
+  const [modalCobrancaInicial, setModalCobrancaInicial] = useState<AlunoCobrancaInicial | null>(null)
 
   useEffect(() => {
     loadDashboard()
@@ -129,6 +133,12 @@ export default function Dashboard() {
     // Alunos sem contato vinculado (telefone vazio/null OU contato_invalido=true)
     const semContato = contatos.filter(c => c.status === 'ativo' && (!c.telefone || c.telefone.trim() === '' || (c as { contato_invalido?: boolean }).contato_invalido === true))
     setAlunosSemContato(semContato.map(c => ({ id: c.id, nome: c.nome, instrumento_interesse: c.instrumento_interesse })))
+
+    // Cobranças iniciais pendentes
+    const { data: cobIniciais } = await supabase
+      .from('vw_cobranca_inicial_pendente')
+      .select('*')
+    setCobrancasIniciais((cobIniciais ?? []) as AlunoCobrancaInicial[])
 
     // Taxa de ocupação
     if (horarios) {
@@ -314,6 +324,38 @@ export default function Dashboard() {
           <span className="text-sm font-medium text-gray-700 group-hover:text-purple-700">CRM Funil</span>
         </Link>
       </div>
+
+      {/* Alerta: cobranças iniciais pendentes */}
+      {cobrancasIniciais.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <CreditCard className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-red-900">
+                {cobrancasIniciais.length} aluno{cobrancasIniciais.length > 1 ? 's' : ''} com cobrança inicial pendente
+              </p>
+              <p className="text-xs text-red-700 mt-1">
+                {cobrancasIniciais.slice(0, 3).map(a => a.nome).join(', ')}
+                {cobrancasIniciais.length > 3 ? ` e mais ${cobrancasIniciais.length - 3}` : ''}.
+              </p>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {cobrancasIniciais.slice(0, 5).map(a => (
+                  <button
+                    key={a.id}
+                    onClick={() => setModalCobrancaInicial(a)}
+                    className="text-xs px-2.5 py-1 bg-red-600 text-white rounded-full hover:bg-red-700"
+                  >
+                    {a.nome.split(' ')[0]} →
+                  </button>
+                ))}
+                {cobrancasIniciais.length > 5 && (
+                  <span className="text-xs text-red-600 self-center">+ {cobrancasIniciais.length - 5} mais</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Alerta: alunos sem contato vinculado */}
       {alunosSemContato.length > 0 && (
@@ -688,6 +730,19 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Modal cobrança inicial */}
+      {modalCobrancaInicial && (
+        <CobrancaInicialModal
+          aluno={modalCobrancaInicial}
+          onClose={() => setModalCobrancaInicial(null)}
+          onSaved={async () => {
+            setModalCobrancaInicial(null)
+            const { data } = await supabase.from('vw_cobranca_inicial_pendente').select('*')
+            setCobrancasIniciais((data ?? []) as AlunoCobrancaInicial[])
+          }}
+        />
+      )}
     </div>
   )
 }

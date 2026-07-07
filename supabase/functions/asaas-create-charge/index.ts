@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
     const { data: mensa, error: mensaErr } = await supabase
       .from('mensalidades')
       .select(`
-        id, aluno_id, valor, desconto, data_vencimento, referencia,
+        id, aluno_id, valor, desconto, data_vencimento, referencia, tipo, items,
         asaas_charge_id, asaas_payment_url, asaas_pix_copy_paste,
         alunos!inner(id, nome, telefone, email, cpf, asaas_customer_id)
       `)
@@ -223,12 +223,24 @@ Deno.serve(async (req) => {
     const valor = Number(mensa.valor) - Number(mensa.desconto ?? 0)
     const installmentCount: number = body.installment_count ?? 1
 
+    // Descrição diferenciada para cobrança inicial (matrícula + proporcional)
+    const isTipoInicial = (mensa as any).tipo === 'inicial'
+    let descricao = `Mensalidade ${mensa.referencia.substring(0, 7)} — CMMF`
+    if (isTipoInicial) {
+      const items = (mensa as any).items as Array<{descricao: string, valor: number}> | null
+      if (items?.length) {
+        descricao = items.map(i => i.descricao).join(' + ') + ' — CMMF'
+      } else {
+        descricao = `Matrícula + Mensalidade ${mensa.referencia.substring(0, 7)} — CMMF`
+      }
+    }
+
     const chargeBody: Record<string, unknown> = {
       customer: asaas_customer_id,
       billingType: billing_type,
       value: valor,
       dueDate: mensa.data_vencimento,
-      description: `Mensalidade ${mensa.referencia.substring(0, 7)} — CMMF`,
+      description: descricao,
       externalReference: mensa.id,
       notifications: [],  // desabilita email/SMS (R$0,99 cada)
     }
