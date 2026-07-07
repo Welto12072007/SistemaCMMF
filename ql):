@@ -1,0 +1,16 @@
+   column_name    |        data_type         |  column_default   
+------------------+--------------------------+-------------------
+ id               | uuid                     | gen_random_uuid()
+ nome             | text                     | 
+ descricao        | text                     | 
+ tipo_marco       | integer                  | 
+ instrumento_alvo | text                     | 'todos'::text
+ estoque_atual    | integer                  | 0
+ estoque_minimo   | integer                  | 5
+ custo_unitario   | numeric                  | 0
+ fornecedor       | text                     | 
+ ativo            | boolean                  | true
+ created_at       | timestamp with time zone | now()
+ updated_at       | timestamp with time zone | now()
+(12 rows)
+
