@@ -267,12 +267,44 @@ Deno.serve(async (req) => {
       asaas_created_at:     new Date().toISOString(),
     }).eq('id', mensalidade_id)
 
+    // ── Criar assinatura recorrente se solicitado ──────────────────────
+    let subscription_id: string | undefined
+    if (body.criar_assinatura && body.data_inicio_assinatura && body.valor_mensalidade) {
+      try {
+        const subResp = await fetch(`${ASAAS_BASE}/subscriptions`, {
+          method: 'POST',
+          headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer:          asaas_customer_id,
+            billingType:       billing_type,
+            value:             Number(body.valor_mensalidade),
+            nextDueDate:       body.data_inicio_assinatura,
+            cycle:             'MONTHLY',
+            description:       `Mensalidade mensal — CMMF`,
+            externalReference: `sub_${aluno.id}`,
+            notifications:     [],
+          }),
+        })
+        const subData = await subResp.json()
+        if (subResp.ok && subData.id) {
+          subscription_id = subData.id
+          await supabase.from('alunos').update({ asaas_subscription_id: subData.id }).eq('id', aluno.id)
+        } else {
+          console.warn('Asaas subscription failed:', JSON.stringify(subData))
+        }
+      } catch (subErr) {
+        console.warn('Asaas subscription error:', subErr)
+        // Não falhar a operação inteira por causa da assinatura
+      }
+    }
+
     return jsonResp({
       ok: true,
       charge_id: chargeData.id,
       payment_url: chargeData.invoiceUrl,
       pix_copy_paste,
       valor,
+      subscription_id,
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
