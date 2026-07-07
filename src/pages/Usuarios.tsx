@@ -5,6 +5,7 @@ import {
   Plus, Search, Filter, Phone, Mail, ChevronDown, ChevronUp,
   Users, Music, Edit2, Trash2,
 } from 'lucide-react'
+import CobrancaInicialModal, { type AlunoCobrancaInicial } from '@/components/CobrancaInicialModal'
 
 interface Aluno {
   id: string
@@ -46,6 +47,7 @@ interface Aluno {
   valor_plano?: number
   forma_pagamento?: string
   dia_inicio_aulas?: number
+  dia_vencimento?: number
   desconto_matricula?: number
   desconto_plano?: number
   motivo_saida?: string
@@ -83,6 +85,7 @@ export default function Usuarios() {
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
   const [removendo, setRemovendo] = useState<Aluno | null>(null)
   const [fromExperimentalReativacao, setFromExperimentalReativacao] = useState<string | null>(null)
+  const [cobrancaInicialAluno, setCobrancaInicialAluno] = useState<AlunoCobrancaInicial | null>(null)
 
   useEffect(() => { loadAlunos() }, [])
 
@@ -139,6 +142,7 @@ export default function Usuarios() {
   async function handleSave(data: Partial<Aluno>) {
     let savedId: string | null = editando?.id ?? null
     let saveError: { code?: string; message: string } | null = null
+    let isNewStudent = false
 
     if (editando?.id) {
       // Se vier de experimental (reativação), força status ativo
@@ -151,8 +155,16 @@ export default function Usuarios() {
         .eq('id', editando.id)
       saveError = error
     } else {
-      const { error } = await supabase.from('alunos').insert({ ...data, status: 'ativo' })
+      const { data: newRow, error } = await supabase
+        .from('alunos')
+        .insert({ ...data, status: 'ativo' })
+        .select()
+        .single()
       saveError = error
+      if (!error && newRow) {
+        savedId = newRow.id
+        isNewStudent = true
+      }
 
       // Telefone já existe (UNIQUE constraint) → oferecer mesclagem com contato existente
       if (saveError?.code === '23505' && saveError.message?.includes('telefone')) {
@@ -199,6 +211,18 @@ export default function Usuarios() {
     setEditando(null)
     setFromExperimentalReativacao(null)
     loadAlunos()
+
+    // Abrir modal de cobrança inicial para novos alunos
+    if (isNewStudent && savedId) {
+      const { data: saved } = await supabase
+        .from('alunos')
+        .select('id,nome,instrumento_interesse,taxa_matricula,desconto_matricula,valor_plano,plano_frequencia,data_matricula,dia_inicio_aulas,dia_vencimento,cobranca_inicial_status,asaas_customer_id')
+        .eq('id', savedId)
+        .single()
+      if (saved) {
+        setCobrancaInicialAluno(saved as AlunoCobrancaInicial)
+      }
+    }
   }
 
   async function handleDelete(id: string) {
@@ -326,6 +350,13 @@ export default function Usuarios() {
       )}
       {removendo && (
         <SaidaModal aluno={removendo} onConfirm={confirmarSaida} onClose={() => setRemovendo(null)} />
+      )}
+      {cobrancaInicialAluno && (
+        <CobrancaInicialModal
+          aluno={cobrancaInicialAluno}
+          onClose={() => setCobrancaInicialAluno(null)}
+          onSaved={() => { setCobrancaInicialAluno(null); loadAlunos() }}
+        />
       )}
     </div>
   )
@@ -475,6 +506,7 @@ function AlunoForm({ aluno, onSave, onClose, titulo, banner }: {
     desconto_plano: aluno?.desconto_plano?.toString() ?? '',
     forma_pagamento: aluno?.forma_pagamento ?? '',
     dia_inicio_aulas: aluno?.dia_inicio_aulas?.toString() ?? '',
+    dia_vencimento: aluno?.dia_vencimento?.toString() ?? '',
   })
 
   const [showFull, setShowFull] = useState(false)
@@ -502,6 +534,7 @@ function AlunoForm({ aluno, onSave, onClose, titulo, banner }: {
     payload.desconto_matricula = form.desconto_matricula ? parseFloat(form.desconto_matricula) : 0
     payload.desconto_plano = form.desconto_plano ? parseFloat(form.desconto_plano) : 0
     payload.dia_inicio_aulas = form.dia_inicio_aulas ? parseInt(form.dia_inicio_aulas) : null
+    payload.dia_vencimento = form.dia_vencimento ? parseInt(form.dia_vencimento) : null
     if (!form.data_matricula) delete payload.data_matricula
     if (!form.data_nascimento) delete payload.data_nascimento
     onSave(payload as Partial<Aluno>)
@@ -603,6 +636,7 @@ function AlunoForm({ aluno, onSave, onClose, titulo, banner }: {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
           <FormInput label="Data de Matrícula" type="date" value={form.data_matricula} onChange={(v) => setForm({ ...form, data_matricula: v })} />
           <FormInput label="Dia início das aulas" type="number" value={form.dia_inicio_aulas} onChange={(v) => setForm({ ...form, dia_inicio_aulas: v })} placeholder="Ex: 15 (cobrado proporcional)" />
+          <FormInput label="Dia de vencimento" type="number" value={form.dia_vencimento} onChange={(v) => setForm({ ...form, dia_vencimento: v })} placeholder="Ex: 10 (padrão)" />
           <FormSelect label="Forma de Pagamento" value={form.forma_pagamento} onChange={(v) => setForm({ ...form, forma_pagamento: v })} options={['PIX', 'Cartão de Crédito', 'Cartão de Débito', 'Boleto', 'Dinheiro', 'Transferência']} />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
