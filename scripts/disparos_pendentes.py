@@ -67,8 +67,8 @@ def enviar_whatsapp(number: str, text: str) -> bool:
 # ─── disparos_pendentes ───────────────────────────────────────────────────────
 
 def buscar_pendentes() -> list:
-    # Janela de 72h — cobre finais de semana e eventuais gaps
-    cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=72)).isoformat()
+    # Janela de 48h — cobre finais de semana sem enviar mensagens muito velhas
+    cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=48)).isoformat()
     try:
         r = requests.get(
             f"{SB_URL}/rest/v1/disparos_pendentes",
