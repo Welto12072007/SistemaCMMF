@@ -259,14 +259,15 @@ def buscar_alunos_nps(agora: dt.datetime) -> list:
     d_min = (agora - dt.timedelta(days=32)).date().isoformat()
     d_max = (agora - dt.timedelta(days=28)).date().isoformat()
     try:
+        # list of tuples para permitir dois filtros na mesma coluna
         r = requests.get(
             f"{SB_URL}/rest/v1/alunos",
-            params={
-                "select": "id,nome,telefone",
-                "status": "eq.ativo",
-                "data_matricula": f"gte.{d_min}",
-                "and": f"(data_matricula.lte.{d_max})",
-            },
+            params=[
+                ("select", "id,nome,telefone"),
+                ("status", "eq.ativo"),
+                ("data_matricula", f"gte.{d_min}"),
+                ("data_matricula", f"lte.{d_max}"),
+            ],
             headers=SB_HEADERS,
             timeout=10,
         )
@@ -285,8 +286,7 @@ def atualizar_programado(prog_id: str, agora: dt.datetime, enviados: int) -> Non
             json={
                 "ultimo_disparo": agora.isoformat(),
                 "disparar_agora": False,
-                "total_enviados": enviados,   # sobrescreve — OK para log
-                "log_ultimo_envio": f"{enviados} enviado(s) em {agora.strftime('%d/%m/%Y %H:%M')} BRT",
+                "total_enviados": enviados,
             },
             headers={**SB_HEADERS, "Prefer": "return=minimal"},
             timeout=10,
