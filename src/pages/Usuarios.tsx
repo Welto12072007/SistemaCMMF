@@ -34,7 +34,7 @@ interface Aluno {
   email_responsavel?: string
   cpf_responsavel?: string
   grau_parentesco?: string
-  idade_responsavel?: number
+  data_nascimento_responsavel?: string
   responsavel_financeiro?: string
   tags?: string[]
   historico?: string
@@ -495,7 +495,7 @@ function AlunoForm({ aluno, onSave, onClose, titulo, banner }: {
     email_responsavel: aluno?.email_responsavel ?? '',
     cpf_responsavel: aluno?.cpf_responsavel ?? '',
     grau_parentesco: aluno?.grau_parentesco ?? '',
-    idade_responsavel: aluno?.idade_responsavel?.toString() ?? '',
+    data_nascimento_responsavel: aluno?.data_nascimento_responsavel ?? '',
     responsavel_financeiro: aluno?.responsavel_financeiro ?? 'proprio',
     tags: (aluno?.tags ?? []).join(', '),
     historico: aluno?.historico ?? '',
@@ -537,7 +537,7 @@ function AlunoForm({ aluno, onSave, onClose, titulo, banner }: {
     payload.desconto_plano = form.desconto_plano ? parseFloat(form.desconto_plano) : 0
     payload.dia_inicio_aulas = form.dia_inicio_aulas ? parseInt(form.dia_inicio_aulas) : null
     payload.dia_vencimento = form.dia_vencimento ? parseInt(form.dia_vencimento) : null
-    payload.idade_responsavel = form.idade_responsavel ? parseInt(form.idade_responsavel) : null
+    if (!form.data_nascimento_responsavel) delete payload.data_nascimento_responsavel
     if (!form.data_matricula) delete payload.data_matricula
     if (!form.data_nascimento) delete payload.data_nascimento
     onSave(payload as Partial<Aluno>)
@@ -612,7 +612,7 @@ function AlunoForm({ aluno, onSave, onClose, titulo, banner }: {
                   <FormInput label="Email Responsável" value={form.email_responsavel} onChange={(v) => setForm({ ...form, email_responsavel: v })} />
                   <FormInput label="CPF Responsável" value={form.cpf_responsavel} onChange={(v) => setForm({ ...form, cpf_responsavel: v })} />
                   <FormInput label="Grau de Parentesco" value={form.grau_parentesco} onChange={(v) => setForm({ ...form, grau_parentesco: v })} placeholder="Ex. Pai, Mãe, Tio" />
-                  <FormInput label="Idade do Responsável" type="number" value={form.idade_responsavel} onChange={(v) => setForm({ ...form, idade_responsavel: v })} placeholder="Ex: 35" />
+                  <FormInput label="Data Nasc. Responsável" type="date" value={form.data_nascimento_responsavel} onChange={(v) => setForm({ ...form, data_nascimento_responsavel: v })} />
                 </>
               )}
             </div>
