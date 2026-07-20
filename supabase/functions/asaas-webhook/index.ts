@@ -39,8 +39,12 @@ Deno.serve(async (req) => {
 
   console.log(`Asaas webhook: event=${event} charge=${payment?.id}`)
 
+  // Eventos relevantes para processar
+  const isPaymentEvent = PAID_EVENTS.has(event) || REFUND_EVENTS.has(event)
+  const isCreated = event === 'PAYMENT_CREATED'
+
   // Ignorar eventos irrelevantes — retornar 200 para evitar reenvio do Asaas
-  if (!PAID_EVENTS.has(event) && !REFUND_EVENTS.has(event)) {
+  if (!isPaymentEvent && !isCreated) {
     return new Response(JSON.stringify({ ok: true, skipped: event }), {
       headers: { 'Content-Type': 'application/json' },
     })
@@ -63,7 +67,7 @@ Deno.serve(async (req) => {
     })
   }
 
-  // Fallback: Payment Links geram um payment.id novo a cada pagamento
+  // Fallback 1: Payment Links geram um payment.id novo a cada pagamento
   // Nesse caso o externalReference contém "mens_<uuid>"
   if (!mensa && payment.externalReference?.startsWith('mens_')) {
     const mensId = payment.externalReference.slice(5)
@@ -79,6 +83,49 @@ Deno.serve(async (req) => {
         .update({ asaas_charge_id: payment.id })
         .eq('id', mensId)
     }
+  }
+
+  // Fallback 2: Assinatura recorrente — externalReference = "sub_<aluno_id>"
+  // Asaas cria charges mensais automáticos; precisamos linkar à mensalidade correta
+  if (!mensa && payment.externalReference?.startsWith('sub_')) {
+    const alunoId = payment.externalReference.slice(4)
+    // Extrair mês de referência do dueDate (ex: "2026-08-10" → "2026-08-01")
+    const dueDate: string = payment.dueDate ?? ''
+    if (dueDate.length >= 7) {
+      const refMonth = dueDate.substring(0, 7) + '-01'
+      const { data: mensa3 } = await supabase
+        .from('mensalidades')
+        .select('id, status')
+        .eq('aluno_id', alunoId)
+        .eq('referencia', refMonth)
+        .in('status', ['pendente', 'atrasado'])
+        .maybeSingle()
+      if (mensa3) {
+        mensa = mensa3
+        // Linkar charge da assinatura à mensalidade + salvar URL de pagamento
+        await supabase.from('mensalidades')
+          .update({
+            asaas_charge_id: payment.id,
+            asaas_payment_url: payment.invoiceUrl ?? null,
+            asaas_billing_type: payment.billingType ?? 'CREDIT_CARD',
+          })
+          .eq('id', mensa3.id)
+        console.log(`Subscription charge ${payment.id} linked to mensalidade ${mensa3.id}`)
+      }
+    }
+  }
+
+  // PAYMENT_CREATED de assinatura: apenas linkar, não marcar como pago
+  if (isCreated && !isPaymentEvent) {
+    if (mensa) {
+      return new Response(JSON.stringify({ ok: true, linked: true, mensalidade_id: mensa.id }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    // Charge avulso ou de outro sistema — ignorar
+    return new Response(JSON.stringify({ ok: true, skipped: 'created_no_match' }), {
+      headers: { 'Content-Type': 'application/json' },
+    })
   }
 
   if (!mensa) {
