@@ -3,9 +3,10 @@ import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import {
   Plus, Search, Filter, Phone, Mail, ChevronDown, ChevronUp,
-  Users, Music, Edit2, Trash2,
+  Users, Music, Edit2, Trash2, FileText,
 } from 'lucide-react'
 import CobrancaInicialModal, { type AlunoCobrancaInicial } from '@/components/CobrancaInicialModal'
+import ContratoModal from '@/components/ContratoModal'
 
 interface Aluno {
   id: string
@@ -87,6 +88,7 @@ export default function Usuarios() {
   const [removendo, setRemovendo] = useState<Aluno | null>(null)
   const [fromExperimentalReativacao, setFromExperimentalReativacao] = useState<string | null>(null)
   const [cobrancaInicialAluno, setCobrancaInicialAluno] = useState<AlunoCobrancaInicial | null>(null)
+  const [contratoAluno, setContratoAluno] = useState<Aluno | null>(null)
 
   useEffect(() => { loadAlunos() }, [])
 
@@ -327,6 +329,7 @@ export default function Usuarios() {
                 onToggle={() => setExpandedRow(expandedRow === a.id ? null : a.id)}
                 onEdit={() => { setEditando(a); setShowForm(true) }}
                 onDelete={() => handleDelete(a.id)}
+                onContrato={() => setContratoAluno(a)}
               />
             ))}
           </tbody>
@@ -359,12 +362,15 @@ export default function Usuarios() {
           onSaved={() => { setCobrancaInicialAluno(null); loadAlunos() }}
         />
       )}
+      {contratoAluno && (
+        <ContratoModal aluno={contratoAluno} onClose={() => setContratoAluno(null)} />
+      )}
     </div>
   )
 }
 
-function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete }: {
-  aluno: Aluno; expanded: boolean; onToggle: () => void; onEdit: () => void; onDelete: () => void
+function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete, onContrato }: {
+  aluno: Aluno; expanded: boolean; onToggle: () => void; onEdit: () => void; onDelete: () => void; onContrato: () => void
 }) {
   return (
     <>
@@ -394,6 +400,9 @@ function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete }: {
             )}
             <button onClick={onEdit} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded" title="Editar">
               <Edit2 className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onContrato} className="p-1.5 text-purple-500 hover:bg-purple-50 rounded" title="Gerar Contrato">
+              <FileText className="w-3.5 h-3.5" />
             </button>
             <button onClick={onDelete} className="p-1.5 text-red-400 hover:bg-red-50 rounded" title="Remover">
               <Trash2 className="w-3.5 h-3.5" />
