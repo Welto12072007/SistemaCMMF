@@ -43,7 +43,7 @@ export default function ContratoModal({ aluno, onClose }: ContratoProps) {
     if (!win) return
     win.document.write(`<!DOCTYPE html><html><head><title>Contrato - ${aluno.nome || 'Aluno'}</title>
       <style>
-        body { font-family: 'Times New Roman', serif; font-size: 12pt; margin: 2cm; line-height: 1.6; }
+        body { font-family: 'Times New Roman', serif; font-size: 12pt; margin: 0; padding: 0; line-height: 1.6; }
         h1 { text-align: center; font-size: 14pt; margin-bottom: 24pt; }
         h2 { font-size: 12pt; margin-top: 18pt; }
         .field { border-bottom: 1px solid #000; display: inline-block; min-width: 200px; padding: 0 4px; }
@@ -51,9 +51,22 @@ export default function ContratoModal({ aluno, onClose }: ContratoProps) {
         td, th { border: 1px solid #000; padding: 6px 8px; text-align: center; }
         .sig-line { border-top: 1px solid #000; width: 45%; display: inline-block; text-align: center; margin-top: 48pt; }
         .checkbox { font-family: monospace; }
-        @media print { body { margin: 1.5cm; } }
+        .header { text-align: center; margin-bottom: 16pt; padding: 1.5cm 2cm 0; }
+        .header img { max-width: 320px; height: auto; }
+        .content { padding: 0 2cm 1cm; }
+        .footer { text-align: center; font-size: 9pt; color: #666; padding: 8pt 2cm; border-top: 1px solid #ddd; }
+        @media print {
+          body { margin: 0; }
+          .header { padding-top: 0.5cm; }
+          .content { padding: 0 1.5cm 0.5cm; }
+          .footer { position: fixed; bottom: 0; left: 0; right: 0; }
+        }
       </style>
-    </head><body>${content.innerHTML}</body></html>`)
+    </head><body>
+      <div class="header"><img src="${window.location.origin}/logo-cmmf.png" alt="Centro de Música Murilo Finger" /></div>
+      <div class="content">${content.innerHTML}</div>
+      <div class="footer">Centro de Música Murilo Finger® — Rua dos Andradas, 261, sala 204 — Campo Bom/RS — CNPJ 29.247.149/0001-51</div>
+    </body></html>`)
     win.document.close()
     setTimeout(() => win.print(), 300)
   }

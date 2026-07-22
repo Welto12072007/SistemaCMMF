@@ -156,6 +156,12 @@ export default function Horarios() {
         alunoNome = novoAlunoSearch.trim()
       }
     }
+    // Resolve instrumento from first student
+    let instrumento: string | null = null
+    if (novoAlunoIds.length > 0) {
+      const firstAluno = alunos.find(a => a.id === novoAlunoIds[0])
+      instrumento = firstAluno?.instrumento_interesse || null
+    }
     const { data, error } = await supabase.from('horarios').insert({
       professor_id: novoHorario.profId,
       dia_semana: novoDia,
@@ -165,9 +171,14 @@ export default function Horarios() {
       aluno_nome: alunoNome,
       aluno_ids: alunoIds,
       capacidade: novoTipo === 'grupo' ? novoCapacidade : 1,
+      instrumento,
     }).select().single()
     if (error) {
-      alert('Erro ao criar horário: ' + error.message)
+      if (error.message.includes('horarios_unique_slot') || error.code === '23505') {
+        alert(`Já existe um horário para este professor em ${novoDia} às ${novaHora}.\nEdite o horário existente ou escolha outro dia/hora.`)
+      } else {
+        alert('Erro ao criar horário: ' + error.message)
+      }
     } else if (data) {
       setHorarios(prev => [...prev, data])
     }
@@ -528,12 +539,20 @@ export default function Horarios() {
       }
     }
 
+    // Resolve instrumento from first student
+    let instrumento: string | null = editCell.instrumento || null
+    if (editAlunoIds.length > 0) {
+      const firstAluno = alunos.find(a => a.id === editAlunoIds[0])
+      if (firstAluno?.instrumento_interesse) instrumento = firstAluno.instrumento_interesse
+    }
+
     const { error: saveError } = await supabase.from('horarios').update({
       status: editStatus,
       tipo: editTipo,
       aluno_nome: alunoNome,
       aluno_ids: alunoIds,
       capacidade: editTipo === 'grupo' ? editCapacidade : 1,
+      instrumento: editStatus === 'ocupado' ? instrumento : null,
     }).eq('id', editCell.id)
 
     if (saveError) {
@@ -545,7 +564,7 @@ export default function Horarios() {
     // Update local state
     setHorarios(prev => prev.map(h =>
       h.id === editCell.id
-        ? { ...h, status: editStatus, tipo: editTipo, aluno_nome: alunoNome, aluno_ids: alunoIds, capacidade: editTipo === 'grupo' ? editCapacidade : 1 }
+        ? { ...h, status: editStatus, tipo: editTipo, aluno_nome: alunoNome, aluno_ids: alunoIds, capacidade: editTipo === 'grupo' ? editCapacidade : 1, instrumento: editStatus === 'ocupado' ? instrumento : null }
         : h
     ))
     setSaving(false)
@@ -828,10 +847,12 @@ export default function Horarios() {
               Indisponível
             </button>
             <button
-              onClick={() => bulkChangeStatus('ocupado')}
+              onClick={() => {
+                alert('Para marcar como ocupado, edite cada horário individualmente e vincule o aluno.')
+              }}
               disabled={bulkSaving}
-              className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-              title="Marcar como ocupado"
+              className="flex items-center gap-1.5 bg-sky-600/50 text-white/70 px-3 py-1.5 rounded-lg text-sm font-medium cursor-not-allowed"
+              title="Edite individualmente para vincular aluno"
             >
               <Clock className="w-3.5 h-3.5" />
               Ocupado
