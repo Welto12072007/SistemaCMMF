@@ -89,6 +89,7 @@ export default function Usuarios() {
   const [fromExperimentalReativacao, setFromExperimentalReativacao] = useState<string | null>(null)
   const [cobrancaInicialAluno, setCobrancaInicialAluno] = useState<AlunoCobrancaInicial | null>(null)
   const [contratoAluno, setContratoAluno] = useState<Aluno | null>(null)
+  const [pendingCobrancaId, setPendingCobrancaId] = useState<string | null>(null)
 
   useEffect(() => { loadAlunos() }, [])
 
@@ -215,15 +216,16 @@ export default function Usuarios() {
     setFromExperimentalReativacao(null)
     loadAlunos()
 
-    // Abrir modal de cobrança inicial para novos alunos
+    // Fluxo novo aluno: Cadastro → Contrato → Cobrança
     if (isNewStudent && savedId) {
       const { data: saved } = await supabase
         .from('alunos')
-        .select('id,nome,instrumento_interesse,taxa_matricula,desconto_matricula,valor_plano,plano_frequencia,data_matricula,dia_inicio_aulas,dia_vencimento,cobranca_inicial_status,asaas_customer_id')
+        .select('*')
         .eq('id', savedId)
         .single()
       if (saved) {
-        setCobrancaInicialAluno(saved as AlunoCobrancaInicial)
+        setPendingCobrancaId(savedId)
+        setContratoAluno(saved as Aluno)
       }
     }
   }
@@ -363,7 +365,19 @@ export default function Usuarios() {
         />
       )}
       {contratoAluno && (
-        <ContratoModal aluno={contratoAluno} onClose={() => setContratoAluno(null)} />
+        <ContratoModal aluno={contratoAluno} onClose={async () => {
+          setContratoAluno(null)
+          // Se veio do fluxo de cadastro, abrir cobrança em seguida
+          if (pendingCobrancaId) {
+            const { data: saved } = await supabase
+              .from('alunos')
+              .select('id,nome,instrumento_interesse,taxa_matricula,desconto_matricula,valor_plano,plano_frequencia,data_matricula,dia_inicio_aulas,dia_vencimento,cobranca_inicial_status,asaas_customer_id')
+              .eq('id', pendingCobrancaId)
+              .single()
+            setPendingCobrancaId(null)
+            if (saved) setCobrancaInicialAluno(saved as AlunoCobrancaInicial)
+          }
+        }} />
       )}
     </div>
   )
