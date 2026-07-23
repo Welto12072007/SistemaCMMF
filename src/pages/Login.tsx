@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { Link } from 'react-router-dom'
 import logoHorizontal from '@/assets/logos/cmmf-logo-horizontal-branco.png'
 
 export default function Login() {
@@ -125,6 +126,15 @@ export default function Login() {
           >
             Esqueci minha senha
           </button>
+
+          <div className="border-t mt-4 pt-4">
+            <Link
+              to="/solicitar-acesso"
+              className="w-full block text-center text-sm font-medium text-gray-600 hover:text-brand-600 bg-gray-50 hover:bg-brand-50 py-2.5 rounded-lg transition-colors"
+            >
+              Primeiro acesso? <span className="text-brand-500">Solicitar acesso</span>
+            </Link>
+          </div>
         </div>
 
         {/* Modal Esqueci minha senha */}

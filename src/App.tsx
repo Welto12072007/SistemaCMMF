@@ -4,6 +4,7 @@ import { useAuth, type UserRole } from './contexts/AuthContext'
 import Layout from './components/layout/Layout'
 import Login from './pages/Login'
 import DefinirSenha from './pages/DefinirSenha'
+import SolicitarAcesso from './pages/SolicitarAcesso'
 import Dashboard from './pages/Dashboard'
 
 const Contatos = lazy(() => import('./pages/Contatos'))
@@ -73,7 +74,12 @@ export default function App() {
   }
 
   if (!user) {
-    return <Login />
+    return (
+      <Routes>
+        <Route path="/solicitar-acesso" element={<SolicitarAcesso />} />
+        <Route path="*" element={<Login />} />
+      </Routes>
+    )
   }
 
   const defaultPage = hasRole('aluno')
