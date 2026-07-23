@@ -217,17 +217,25 @@ def deve_enviar_hoje(d: dict, agora: dt.datetime) -> bool:
     return False
 
 
-def get_destinatarios(grupo_alvo: str) -> list:
+def get_destinatarios(grupo_alvo: str, disparo_id: str | None = None, recorrencia: str | None = None) -> list:
     """Chama RPC get_destinatarios_disparo e retorna lista de {id,nome,telefone}."""
     try:
         r = requests.post(
             f"{SB_URL}/rest/v1/rpc/get_destinatarios_disparo",
-            json={"p_grupo_alvo": grupo_alvo},
+            json={
+                "p_grupo_alvo": grupo_alvo,
+                "p_disparo_id": disparo_id,
+                "p_recorrencia": recorrencia,
+            },
             headers={**SB_HEADERS, "Prefer": ""},
             timeout=15,
         )
         r.raise_for_status()
-        return r.json() or []
+        data = r.json() or []
+        # Normalizar: se RPC retorna strings (telefones), converter para dicts
+        if data and isinstance(data[0], str):
+            return [{"telefone": t, "nome": ""} for t in data]
+        return data
     except Exception as e:
         log.error(f"get_destinatarios erro ({grupo_alvo}): {e}")
         return []
@@ -333,7 +341,7 @@ def processar_programados(agora: dt.datetime) -> tuple[int, int]:
         elif tipo == "pesquisa_satisfacao":
             destinatarios = buscar_alunos_nps(agora)
         else:
-            destinatarios = get_destinatarios(grupo)
+            destinatarios = get_destinatarios(grupo, d["id"], d.get("recorrencia"))
 
         if not destinatarios:
             log.info(f"[programados] {nome}: sem destinatários")
@@ -342,6 +350,8 @@ def processar_programados(agora: dt.datetime) -> tuple[int, int]:
 
         enviados = erros = 0
         for dest in destinatarios:
+            if isinstance(dest, str):
+                dest = {"telefone": dest, "nome": ""}
             tel = normalizar_tel(dest.get("telefone") or "")
             if not tel:
                 erros += 1
