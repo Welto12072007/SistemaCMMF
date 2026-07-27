@@ -290,7 +290,10 @@ def processar_disparos_programados(br: dt.datetime) -> None:
                 deve = True
             elif recorrencia == "unico":
                 data_unica = d.get("data_unica")
-                if data_unica and str(data_unica)[:10] != br_date:
+                if not data_unica:
+                    # Sem data_unica: é disparo por trigger (boas-vindas) → não processar aqui
+                    continue
+                if str(data_unica)[:10] != br_date:
                     continue
                 deve = True
 
