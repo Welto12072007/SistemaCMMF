@@ -63,14 +63,16 @@ def enviar_whatsapp(number: str, text: str) -> bool:
 # ─── disparos_pendentes ───────────────────────────────────────────────────────
 
 def buscar_pendentes() -> list:
-    # Busca tudo que está pendente e com agendado_para <= agora (ou sem agendado_para)
-    # Sem cutoff de criado_em — mensagens agendadas para +3 dias precisam ser encontradas
+    # Janela de 7 dias — permite manual_do_aluno (+3 dias) com folga
+    # mas evita enviar mensagens muito antigas acumuladas
+    cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=7)).isoformat()
     try:
         r = requests.get(
             f"{SB_URL}/rest/v1/disparos_pendentes",
             params={
                 "select": "id,aluno_id,tipo,canal,mensagem,telefone_destinatario,agendado_para",
                 "status": "eq.pendente",
+                "criado_em": f"gte.{cutoff}",
                 "order": "criado_em.asc",
                 "limit": "100",
             },
