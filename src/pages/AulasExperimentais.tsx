@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List, RefreshCw, Download, Pencil, Trash2 } from 'lucide-react'
 import type { AulaExperimental, Professor } from '@/types'
 import ExperimentaisSemana from './ExperimentaisSemana'
@@ -696,6 +696,50 @@ function ConverterModal({ aula, onClose, onDone }: {
     const acao = res.action === 'reativado' ? 'Aluno reativado' : 'Aluno criado'
     const prop = res.mensalidade_proporcional ? ' (proporcional)' : ''
     alert(`${acao} com sucesso!\n1ª mensalidade: R$ ${res.mensalidade_valor}${prop}`)
+
+    // Envia convite de login automático se aluno tiver email
+    try {
+      const tel = (aula.telefone || '').replace(/\D/g, '')
+      const { data: aluno } = await supabase
+        .from('alunos')
+        .select('id, nome, email')
+        .eq('telefone', tel)
+        .eq('status', 'ativo')
+        .maybeSingle()
+      if (aluno?.email?.trim()) {
+        const emailAluno = aluno.email.trim()
+        // Verifica se já tem perfil
+        const { data: perfilExiste } = await supabase
+          .from('perfis')
+          .select('id')
+          .eq('email', emailAluno)
+          .maybeSingle()
+        if (!perfilExiste) {
+          const tempSenha = crypto.randomUUID()
+          const { data: created, error: errCreate } = await supabaseAdmin.auth.admin.createUser({
+            email: emailAluno,
+            password: tempSenha,
+            email_confirm: true,
+            user_metadata: { nome: aluno.nome, role: 'aluno' },
+          })
+          if (!errCreate && created.user) {
+            await supabase.from('perfis').insert({
+              user_id: created.user.id,
+              nome: aluno.nome,
+              email: emailAluno,
+              role: 'aluno',
+              ativo: true,
+            })
+            await supabase.auth.resetPasswordForEmail(emailAluno, {
+              redirectTo: `${window.location.origin}/definir-senha`,
+            })
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[ConverterModal] Erro ao criar login automático:', e)
+    }
+
     onDone()
   }
 

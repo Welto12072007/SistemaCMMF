@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseAdmin } from '@/lib/supabase'
 import {
   Plus, Search, Filter, Phone, Mail, ChevronDown, ChevronUp,
   Users, Music, Edit2, Trash2, FileText,
@@ -216,7 +216,7 @@ export default function Usuarios() {
     setFromExperimentalReativacao(null)
     loadAlunos()
 
-    // Fluxo novo aluno: Cadastro → Contrato → Cobrança
+    // Fluxo novo aluno: Cadastro → Contrato → Cobrança → Convite Login
     if (isNewStudent && savedId) {
       const { data: saved } = await supabase
         .from('alunos')
@@ -226,6 +226,43 @@ export default function Usuarios() {
       if (saved) {
         setPendingCobrancaId(savedId)
         setContratoAluno(saved as Aluno)
+
+        // Cria login automaticamente se aluno tem email
+        const emailAluno = (saved as Aluno).email?.trim()
+        if (emailAluno) {
+          try {
+            // Verifica se já tem perfil (evita duplicata)
+            const { data: perfilExiste } = await supabase
+              .from('perfis')
+              .select('id')
+              .eq('email', emailAluno)
+              .maybeSingle()
+            if (!perfilExiste) {
+              const tempSenha = crypto.randomUUID()
+              const { data: created, error: errCreate } = await supabaseAdmin.auth.admin.createUser({
+                email: emailAluno,
+                password: tempSenha,
+                email_confirm: true,
+                user_metadata: { nome: (saved as Aluno).nome, role: 'aluno' },
+              })
+              if (!errCreate && created.user) {
+                await supabase.from('perfis').insert({
+                  user_id: created.user.id,
+                  nome: (saved as Aluno).nome,
+                  email: emailAluno,
+                  role: 'aluno',
+                  ativo: true,
+                })
+                // Envia email para definir senha
+                await supabase.auth.resetPasswordForEmail(emailAluno, {
+                  redirectTo: `${window.location.origin}/definir-senha`,
+                })
+              }
+            }
+          } catch (e) {
+            console.warn('[Usuarios] Erro ao criar login automático:', e)
+          }
+        }
       }
     }
   }
