@@ -77,9 +77,6 @@ function AcessosTab() {
   const [linkConvite, setLinkConvite] = useState<string | null>(null)
   const [copiado, setCopiado] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
-  const [tempCreds, setTempCreds] = useState<{ email: string; senha: string } | null>(null)
-  const [copiadoEmail, setCopiadoEmail] = useState(false)
-  const [copiadoSenha, setCopiadoSenha] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -106,8 +103,8 @@ function AcessosTab() {
         telefone: telNorm,
       }).eq('id', editando.id)
     } else {
-      // 1. Cria o usuário com senha temporária
-      const tempSenha = 'CMMF' + Math.floor(1000 + Math.random() * 9000)
+      // 1. Cria o usuário com senha temporária (necessário para Auth)
+      const tempSenha = crypto.randomUUID()
       const { data: created, error: errCreate } = await supabaseAdmin.auth.admin.createUser({
         email: form.email,
         password: tempSenha,
@@ -132,20 +129,30 @@ function AcessosTab() {
         ativo: true,
       })
 
-      // 3. Gera link de primeiro acesso (recovery)
-      const { data: linkData, error: errLink } = await supabaseAdmin.auth.admin.generateLink({
+      // 3. Envia email com link para definir senha
+      const { error: errReset } = await supabase.auth.resetPasswordForEmail(form.email, {
+        redirectTo: `${window.location.origin}/definir-senha`,
+      })
+
+      // 4. Gera link manual como backup (caso email não chegue)
+      const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
         type: 'recovery',
         email: form.email,
-        options: { redirectTo: window.location.origin },
+        options: { redirectTo: `${window.location.origin}/definir-senha` },
       })
 
       setShowForm(false)
       setEditando(null)
       setLoading(false)
       load()
-      if (!errLink && linkData) {
+
+      if (linkData) {
         setLinkConvite((linkData.properties as any).action_link ?? null)
       }
+      setSuccessMsg(errReset
+        ? `Acesso criado! O email não pôde ser enviado — use o link abaixo.`
+        : `Acesso criado! Email enviado para ${form.email} com link para definir senha.`
+      )
       return
     }
 
@@ -169,13 +176,15 @@ function AcessosTab() {
 
   async function handleResendInvite(perfil: Perfil) {
     setErro('')
-    // Gera nova senha temporária e atualiza o usuário
-    const novaSenha = 'CMMF' + Math.floor(1000 + Math.random() * 9000)
-    const { error } = await supabaseAdmin.auth.admin.updateUserById(perfil.user_id, { password: novaSenha })
+    setSuccessMsg('')
+    // Envia email de redefinição de senha
+    const { error } = await supabase.auth.resetPasswordForEmail(perfil.email, {
+      redirectTo: `${window.location.origin}/definir-senha`,
+    })
     if (error) {
-      setErro(error.message)
+      setErro('Erro ao enviar email: ' + error.message)
     } else {
-      setTempCreds({ email: perfil.email, senha: novaSenha })
+      setSuccessMsg(`Email enviado para ${perfil.email} com link para definir/redefinir senha.`)
     }
   }
 
@@ -201,6 +210,20 @@ function AcessosTab() {
       <p className="text-sm text-gray-500 px-5 pt-3">Cadastre quem pode acessar o sistema. A pessoa receberá um email para criar a senha.</p>
 
       {erro && <div className="mx-5 mt-3 bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg">{erro}</div>}
+      {successMsg && <div className="mx-5 mt-3 bg-green-50 text-green-700 text-sm px-4 py-3 rounded-lg">{successMsg}</div>}
+
+      {linkConvite && (
+        <div className="mx-5 mt-3 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-sm font-medium text-blue-800 mb-2">Link de convite (backup caso o email não chegue):</p>
+          <div className="flex items-center gap-2">
+            <input readOnly value={linkConvite} className="flex-1 text-xs bg-white border rounded px-2 py-1.5 text-gray-600 font-mono" />
+            <button onClick={copiarLink} className={`px-3 py-1.5 rounded text-xs font-medium ${copiado ? 'bg-green-500 text-white' : 'bg-blue-500 text-white hover:bg-blue-600'}`}>
+              {copiado ? '✓ Copiado' : 'Copiar'}
+            </button>
+          </div>
+          <button onClick={() => setLinkConvite(null)} className="text-xs text-blue-600 mt-2 hover:underline">Fechar</button>
+        </div>
+      )}
 
       <table className="w-full mt-3">
         <thead className="bg-gray-50 border-b">
@@ -253,49 +276,6 @@ function AcessosTab() {
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditando(null) }}
         />
-      )}
-
-      {/* Modal credenciais temporárias */}
-      {tempCreds && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <CheckCircle2 className="w-6 h-6 text-green-500" />
-              <h3 className="text-lg font-semibold text-gray-900">Acesso criado!</h3>
-            </div>
-            <p className="text-sm text-gray-600">
-              Envie estas credenciais ao usuário via WhatsApp. Ele pode alterar a senha depois no portal.
-            </p>
-            {/* Email */}
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
-              <div className="flex items-center gap-2 bg-gray-50 border rounded-lg px-3 py-2">
-                <span className="flex-1 text-sm text-gray-800 select-all">{tempCreds.email}</span>
-                <button onClick={() => { navigator.clipboard.writeText(tempCreds.email); setCopiadoEmail(true); setTimeout(() => setCopiadoEmail(false), 2000) }}
-                  className={`shrink-0 p-1 rounded ${copiadoEmail ? 'text-green-600' : 'text-gray-400 hover:text-brand-600'}`}>
-                  {copiadoEmail ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-            {/* Senha */}
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Senha temporária</label>
-              <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
-                <span className="flex-1 text-sm font-mono font-bold text-gray-800 select-all tracking-wider">{tempCreds.senha}</span>
-                <button onClick={() => { navigator.clipboard.writeText(tempCreds.senha); setCopiadoSenha(true); setTimeout(() => setCopiadoSenha(false), 2000) }}
-                  className={`shrink-0 p-1 rounded ${copiadoSenha ? 'text-green-600' : 'text-gray-400 hover:text-brand-600'}`}>
-                  {copiadoSenha ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-            <button
-              onClick={() => { setTempCreds(null); setCopiadoEmail(false); setCopiadoSenha(false) }}
-              className="w-full px-4 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-sm font-medium"
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
       )}
     </div>
   )
