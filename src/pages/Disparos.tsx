@@ -4,6 +4,7 @@ import { getLabelGrupoBase } from '@/lib/crmSegmentos'
 import { MEDIA_ACCEPT, uploadDisparoMedia, listDisparoMedia, deleteDisparoMedia } from '@/lib/disparosMedia'
 import type { MediaType } from '@/lib/disparosMedia'
 import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
+import AudioRecorder from '@/components/AudioRecorder'
 import {
   Send,
   Users,
@@ -198,6 +199,12 @@ export default function Disparos() {
     } finally {
       setUploadingMedia(false)
     }
+  }
+
+  async function handleRecordedAudio(blob: Blob) {
+    const ext = blob.type.includes('mp4') ? 'm4a' : 'webm'
+    const file = new File([blob], `gravacao-${Date.now()}.${ext}`, { type: blob.type })
+    await handleUploadMedia(file)
   }
 
   async function handleDeleteMedia(path: string) {
@@ -561,9 +568,20 @@ export default function Disparos() {
             {/* Media URL Input */}
             {mediaType !== 'text' && (
               <div className="mb-3">
+                {/* Audio recorder (only for audio type) */}
+                {mediaType === 'audio' && !mediaUrl && (
+                  <div className="mb-3">
+                    <AudioRecorder onRecorded={handleRecordedAudio} disabled={uploadingMedia} />
+                    <div className="flex items-center gap-2 my-2">
+                      <div className="flex-1 border-t border-gray-200" />
+                      <span className="text-xs text-gray-400">ou envie um arquivo</span>
+                      <div className="flex-1 border-t border-gray-200" />
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 mb-1">
                   <Paperclip className="w-3.5 h-3.5 text-gray-400" />
-                  <label className="text-xs text-gray-500">Mídia (upload nativo)</label>
+                  <label className="text-xs text-gray-500">Mídia (upload de arquivo)</label>
                 </div>
                 <div className="flex items-center gap-2 mb-2">
                   <input
