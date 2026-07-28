@@ -1,9 +1,9 @@
 name: Disparos Pendentes
 
 on:
-  schedule:
-    # A cada 30 minutos (GitHub Actions usa UTC)
-    - cron: "*/30 * * * *"
+  # schedule:
+  #   # A cada 30 minutos (GitHub Actions usa UTC)
+  #   - cron: "*/30 * * * *"
   workflow_dispatch:
     # Permite rodar manualmente pela aba Actions do GitHub
 
