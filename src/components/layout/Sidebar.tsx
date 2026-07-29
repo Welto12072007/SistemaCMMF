@@ -92,6 +92,7 @@ const sections: NavSection[] = [
       { to: '/biblioteca', label: 'Biblioteca', icon: Library, roles: ['admin', 'recepcao', 'professor', 'aluno'] },
       { to: '/fingertv', label: 'FingerTV', icon: Tv, roles: ['admin', 'recepcao', 'professor', 'aluno'] },
       { to: '/material-apoio', label: 'Material de Apoio', icon: FileText, roles: ['admin', 'professor', 'aluno'] },
+      { to: '/agenda', label: 'Agenda', icon: CalendarPlus2, roles: ['admin', 'recepcao', 'professor', 'aluno'] },
     ],
   },
   {
