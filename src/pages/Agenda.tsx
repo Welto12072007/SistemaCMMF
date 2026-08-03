@@ -77,16 +77,23 @@ export default function Agenda() {
     const ultimoDia = new Date(ano, mes + 1, 0)
     const ultimoDiaStr = `${ano}-${String(mes + 1).padStart(2, '0')}-${String(ultimoDia.getDate()).padStart(2, '0')}`
 
-    const { data } = await supabase
+    let query = supabase
       .from('eventos_agenda')
       .select('*')
       .or(`data_inicio.lte.${ultimoDiaStr},data_fim.gte.${primeiroDia},data_fim.is.null`)
       .lte('data_inicio', ultimoDiaStr)
       .order('data_inicio')
 
+    // Aluno só vê eventos marcados como visíveis
+    if (!isAdmin) {
+      query = query.eq('visivel_aluno', true)
+    }
+
+    const { data } = await query
+
     setEventos(data || [])
     setLoading(false)
-  }, [ano, mes])
+  }, [ano, mes, isAdmin])
 
   useEffect(() => {
     void loadEventos()

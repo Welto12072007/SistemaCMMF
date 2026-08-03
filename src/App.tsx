@@ -84,7 +84,7 @@ export default function App() {
   }
 
   const defaultPage = hasRole('aluno')
-    ? <Navigate to="/biblioteca" replace />
+    ? <Navigate to="/portal-aluno" replace />
     : hasRole('professor') && !hasRole('admin', 'recepcao')
     ? <Navigate to="/portal-professor" replace />
     : <Dashboard />
@@ -96,7 +96,7 @@ export default function App() {
         <Route path="/" element={defaultPage} />
         <Route path="/contatos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><ContatosHub /></Suspense></Guard>} />
         <Route path="/contatos-lista" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Contatos /></Suspense></Guard>} />
-        <Route path="/aulas-experimentais" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><AulasExperimentais /></Suspense></Guard>} />
+        <Route path="/aulas-experimentais" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><AulasExperimentais /></Suspense></Guard>} />
         <Route path="/horarios-extras" element={<Navigate to="/financeiro" replace />} />
         <Route path="/usuarios" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Usuarios /></Suspense></Guard>} />
         <Route path="/followup" element={<Navigate to="/crm-funil" replace />} />

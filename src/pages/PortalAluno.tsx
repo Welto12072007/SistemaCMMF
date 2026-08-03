@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   Info,
   ChevronRight,
+  PartyPopper,
+  Megaphone,
 } from 'lucide-react'
 
 interface AulaAgendada {
@@ -39,6 +41,22 @@ interface HorarioDisponivel {
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 const SEMANAS_FUTURO = 4 // mostrar próximas 4 semanas
 
+interface EventoAgenda {
+  id: string
+  titulo: string
+  descricao: string | null
+  data_inicio: string
+  tipo: 'evento' | 'feriado' | 'recesso' | 'aviso'
+  cor: string
+}
+
+const TIPO_LABEL: Record<string, string> = {
+  evento: 'Evento',
+  feriado: 'Feriado',
+  recesso: 'Recesso',
+  aviso: 'Aviso',
+}
+
 export default function PortalAluno() {
   const { perfil } = useAuth()
   const [aulas, setAulas] = useState<AulaAgendada[]>([])
@@ -47,11 +65,25 @@ export default function PortalAluno() {
   const [horariosDisponiveis, setHorariosDisponiveis] = useState<HorarioDisponivel[]>([])
   const [ultimaRemarcacao, setUltimaRemarcacao] = useState<string | null>(null)
   const [mensagem, setMensagem] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null)
+  const [eventosAgenda, setEventosAgenda] = useState<EventoAgenda[]>([])
 
   useEffect(() => {
     loadAulas()
     loadUltimaRemarcacao()
+    loadEventosAgenda()
   }, [perfil?.id])
+
+  async function loadEventosAgenda() {
+    const hoje = new Date().toISOString().slice(0, 10)
+    const { data } = await supabase
+      .from('eventos_agenda')
+      .select('id, titulo, descricao, data_inicio, tipo, cor')
+      .eq('visivel_aluno', true)
+      .gte('data_inicio', hoje)
+      .order('data_inicio')
+      .limit(5)
+    setEventosAgenda((data || []) as EventoAgenda[])
+  }
 
   async function loadAulas() {
     if (!perfil?.id) return
@@ -259,6 +291,43 @@ export default function PortalAluno() {
           >
             {mensagem.texto}
           </p>
+        </div>
+      )}
+
+      {/* Próximos Eventos da Agenda */}
+      {eventosAgenda.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <PartyPopper className="w-5 h-5 text-brand-500" />
+            Próximos Eventos
+          </h2>
+          <div className="space-y-2">
+            {eventosAgenda.map((ev) => {
+              const d = new Date(ev.data_inicio + 'T12:00:00')
+              return (
+                <div key={ev.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
+                  <div
+                    className="w-2 h-10 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: ev.cor }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{ev.titulo}</p>
+                    {ev.descricao && (
+                      <p className="text-xs text-gray-500 truncate">{ev.descricao}</p>
+                    )}
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-xs font-medium text-gray-700">
+                      {d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                    </p>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                      {TIPO_LABEL[ev.tipo] || ev.tipo}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 

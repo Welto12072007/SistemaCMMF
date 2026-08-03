@@ -28,7 +28,7 @@ interface Anotacao {
   id: string; aluno_nome: string; conteudo: string; criado_em: string
 }
 
-const DIAS_SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
+const DIAS_SEMANA = ['Domingo. Segunda, Terça, Quarta, Quinta, Sexta, Sábado'].map(d=>d.trim())
 const DIAS_ORDEM = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 const TIPOS_FALTA = [
