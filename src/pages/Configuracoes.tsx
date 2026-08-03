@@ -468,6 +468,11 @@ function ProfessoresTab() {
 }
 
 function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | null; onSave: (data: any) => void; onClose: () => void }) {
+  const defaultBonif = { '2': '20', '3': '25', '4': '30' }
+  const initBonif = professor?.bonificacao_grupo
+    ? { '2': String(professor.bonificacao_grupo['2'] ?? 20), '3': String(professor.bonificacao_grupo['3'] ?? 25), '4': String(professor.bonificacao_grupo['4'] ?? 30) }
+    : defaultBonif
+
   const [form, setForm] = useState({
     nome: professor?.nome ?? '',
     instrumentos: professor?.instrumentos?.join(', ') ?? '',
@@ -477,6 +482,9 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
     valor_hora_aula: professor?.valor_hora_aula != null ? String(professor.valor_hora_aula) : '',
     chave_pix: professor?.chave_pix ? maskPixKey(professor.chave_pix, professor.pix_tipo ?? 'cpf') : '',
     pix_tipo: professor?.pix_tipo ?? 'cpf',
+    bonif_2: initBonif['2'],
+    bonif_3: initBonif['3'],
+    bonif_4: initBonif['4'],
   })
 
   const valorPadrao = form.tipo_professor === 'A' ? 26.66 : 20.00
@@ -525,7 +533,41 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
                 <p className="text-[11px] text-gray-400 mt-1">Em branco = usa valor padrão do tipo</p>
               </div>
             </div>
-            <p className="text-xs text-gray-500 mt-2">Valor que será usado: <strong className="text-gray-700">R$ {valorEfetivo.toFixed(2)}</strong> por aula</p>
+            <p className="text-xs text-gray-500 mt-2">Valor que será usado: <strong className="text-gray-700">R$ {valorEfetivo.toFixed(2)}</strong> por aula (individual)</p>
+
+            <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+              <h4 className="text-xs font-semibold text-blue-800 mb-2">Bonificação por aula em grupo</h4>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[11px] text-blue-600 mb-0.5">2 alunos (R$)</label>
+                  <input
+                    className="w-full border border-blue-200 rounded px-2 py-1.5 text-sm"
+                    value={form.bonif_2}
+                    onChange={(e) => setForm({ ...form, bonif_2: e.target.value })}
+                    placeholder="20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-blue-600 mb-0.5">3 alunos (R$)</label>
+                  <input
+                    className="w-full border border-blue-200 rounded px-2 py-1.5 text-sm"
+                    value={form.bonif_3}
+                    onChange={(e) => setForm({ ...form, bonif_3: e.target.value })}
+                    placeholder="25"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-blue-600 mb-0.5">4+ alunos (R$)</label>
+                  <input
+                    className="w-full border border-blue-200 rounded px-2 py-1.5 text-sm"
+                    value={form.bonif_4}
+                    onChange={(e) => setForm({ ...form, bonif_4: e.target.value })}
+                    placeholder="30"
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-blue-500 mt-1">Valor que o professor recebe por aula conforme o tamanho do grupo</p>
+            </div>
           </div>
 
           <div className="border-t pt-3 mt-2">
@@ -584,6 +626,11 @@ function ProfessorForm({ professor, onSave, onClose }: { professor: Professor | 
             ativo: form.ativo,
             tipo_professor: form.tipo_professor,
             valor_hora_aula: form.valor_hora_aula ? Number(form.valor_hora_aula.replace(',', '.')) : null,
+            bonificacao_grupo: {
+              '2': Number(form.bonif_2.replace(',', '.')) || 20,
+              '3': Number(form.bonif_3.replace(',', '.')) || 25,
+              '4': Number(form.bonif_4.replace(',', '.')) || 30,
+            },
             chave_pix: form.chave_pix ? normalizePixKey(form.chave_pix, form.pix_tipo) : null,
             pix_tipo: form.chave_pix ? form.pix_tipo : null,
           })} className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600" disabled={!form.nome}>Salvar</button>

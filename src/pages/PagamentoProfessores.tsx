@@ -15,13 +15,17 @@ interface Professor {
   nome: string
   tipo_professor: string | null
   valor_hora_aula: number
+  bonificacao_grupo: Record<string, number> | null
   chave_pix: string | null
   pix_tipo: string | null
 }
 
-interface Presenca {
+interface PresencaRaw {
   professor_id: string
-  count: number
+  data: string
+  horario_id: string | null
+  hora_inicio: string | null
+  presente: boolean
 }
 
 interface Extra {
@@ -69,7 +73,7 @@ export default function PagamentoProfessores() {
   const [loading, setLoading] = useState(true)
 
   const [professores, setProfessores] = useState<Professor[]>([])
-  const [presencas, setPresencas] = useState<Presenca[]>([])
+  const [presencasRaw, setPresencasRaw] = useState<PresencaRaw[]>([])
   const [extras, setExtras] = useState<Extra[]>([])
   const [fechamentos, setFechamentos] = useState<Fechamento[]>([])
 
@@ -89,14 +93,14 @@ export default function PagamentoProfessores() {
     const [{ data: profs }, { data: pres }, { data: ext }, { data: fech }] = await Promise.all([
       supabase
         .from('professores')
-        .select('id,nome,tipo_professor,valor_hora_aula,chave_pix,pix_tipo')
+        .select('id,nome,tipo_professor,valor_hora_aula,bonificacao_grupo,chave_pix,pix_tipo')
         .eq('ativo', true)
         .order('nome'),
 
-      // contar presenças confirmadas no mês
+      // buscar presenças confirmadas no mês com detalhes para agrupar por slot
       supabase
         .from('presencas')
-        .select('professor_id')
+        .select('professor_id,data,horario_id,hora_inicio,presente')
         .eq('presente', true)
         .gte('data', `${ano}-${String(mes).padStart(2, '0')}-01`)
         .lte('data', `${ano}-${String(mes).padStart(2, '0')}-${new Date(ano, mes, 0).getDate()}`),
@@ -117,13 +121,7 @@ export default function PagamentoProfessores() {
     setProfessores((profs ?? []) as Professor[])
     setExtras((ext ?? []) as Extra[])
     setFechamentos((fech ?? []) as Fechamento[])
-
-    // agrupar presenças por professor
-    const mapa = new Map<string, number>()
-    ;(pres ?? []).forEach(({ professor_id }) => {
-      mapa.set(professor_id, (mapa.get(professor_id) ?? 0) + 1)
-    })
-    setPresencas([...mapa.entries()].map(([professor_id, count]) => ({ professor_id, count })))
+    setPresencasRaw((pres ?? []) as PresencaRaw[])
 
     setLoading(false)
   }
@@ -132,15 +130,52 @@ export default function PagamentoProfessores() {
 
   const linhas = useMemo(() => {
     return professores.map(p => {
-      const qtdPresencas = presencas.find(x => x.professor_id === p.id)?.count ?? 0
+      // Agrupar presenças deste professor por slot (data+horario_id ou data+hora_inicio)
+      const presProf = presencasRaw.filter(x => x.professor_id === p.id)
+      const slots = new Map<string, number>() // key → contagem de alunos
+      presProf.forEach(pr => {
+        const key = pr.horario_id
+          ? `${pr.data}_${pr.horario_id}`
+          : `${pr.data}_${pr.hora_inicio ?? 'x'}`
+        slots.set(key, (slots.get(key) ?? 0) + 1)
+      })
+
+      // Calcular valor por slot baseado no número de alunos
+      const bonif = p.bonificacao_grupo ?? { '2': 20, '3': 25, '4': 30 }
+      let valorAulas = 0
+      let qtdAulasIndividual = 0
+      let qtdAulasGrupo = 0
+
+      slots.forEach((qtdAlunos) => {
+        if (qtdAlunos <= 1) {
+          // Individual: usa valor_hora_aula
+          valorAulas += p.valor_hora_aula
+          qtdAulasIndividual++
+        } else {
+          // Grupo: busca valor na bonificação, ou usa o maior definido
+          const key = String(qtdAlunos)
+          let valorSlot: number
+          if (bonif[key] != null) {
+            valorSlot = bonif[key] as number
+          } else {
+            // Se não há valor exato para esse tamanho, usa o maior definido
+            const chaves = Object.keys(bonif).map(Number).filter(n => !isNaN(n)).sort((a, b) => b - a)
+            const maiorKey = chaves.find(k => k <= qtdAlunos) ?? chaves[0]
+            valorSlot = maiorKey != null ? (bonif[String(maiorKey)] as number) : p.valor_hora_aula
+          }
+          valorAulas += valorSlot
+          qtdAulasGrupo++
+        }
+      })
+
+      const qtdAulas = slots.size
       const extrasProf = extras.filter(e => e.professor_id === p.id && e.aprovado)
       const valorExtras = extrasProf.reduce((s, e) => s + e.valor, 0)
-      const valorAulas = qtdPresencas * p.valor_hora_aula
       const total = valorAulas + valorExtras
       const fechado = fechamentos.find(f => f.professor_id === p.id)
-      return { prof: p, qtdPresencas, valorExtras, valorAulas, total, extrasProf, fechado }
+      return { prof: p, qtdAulas, qtdAulasIndividual, qtdAulasGrupo, valorExtras, valorAulas, total, extrasProf, fechado }
     })
-  }, [professores, presencas, extras, fechamentos])
+  }, [professores, presencasRaw, extras, fechamentos])
 
   const totalGeral = linhas.reduce((s, l) => s + l.total, 0)
   const totalPago = linhas.filter(l => l.fechado?.status === 'pago').reduce((s, l) => s + l.total, 0)
@@ -180,7 +215,7 @@ export default function PagamentoProfessores() {
     const payload = {
       professor_id: modalFechar.id,
       mes, ano,
-      presencas_count: linha.qtdPresencas,
+      presencas_count: linha.qtdAulas,
       valor_por_aula: modalFechar.valor_hora_aula,
       valor_aulas: linha.valorAulas,
       valor_extras: linha.valorExtras,
@@ -213,12 +248,13 @@ export default function PagamentoProfessores() {
   function exportarExcel() {
     const wb = XLSX.utils.book_new()
     const data = [
-      ['Professor', 'Tipo', 'Presenças', 'R$/aula', 'Total Aulas', 'Extras', 'Total', 'Status', 'PIX'],
+      ['Professor', 'Tipo', 'Aulas Total', 'Individual', 'Grupo', 'Valor Aulas', 'Extras', 'Total', 'Status', 'PIX'],
       ...linhas.map(l => [
         l.prof.nome,
         l.prof.tipo_professor ?? '',
-        l.qtdPresencas,
-        l.prof.valor_hora_aula,
+        l.qtdAulas,
+        l.qtdAulasIndividual,
+        l.qtdAulasGrupo,
         l.valorAulas,
         l.valorExtras,
         l.total,
@@ -226,7 +262,7 @@ export default function PagamentoProfessores() {
         l.prof.chave_pix ?? '',
       ]),
       [],
-      ['', '', '', '', '', 'TOTAL', totalGeral, '', ''],
+      ['', '', '', '', '', '', 'TOTAL', totalGeral, '', ''],
     ]
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'Pagamentos')
     XLSX.writeFile(wb, `pagamentos-professores-${mes.toString().padStart(2, '0')}-${ano}.xlsx`)
@@ -241,19 +277,20 @@ export default function PagamentoProfessores() {
 
     autoTable(doc, {
       startY: 32,
-      head: [['Professor', 'Tipo', 'Presenças', 'R$/aula', 'Aulas', 'Extras', 'Total', 'Status', 'PIX']],
+      head: [['Professor', 'Tipo', 'Aulas', 'Indiv.', 'Grupo', 'Valor', 'Extras', 'Total', 'Status', 'PIX']],
       body: linhas.map(l => [
         l.prof.nome,
         l.prof.tipo_professor ?? '',
-        l.qtdPresencas,
-        fmtMoeda(l.prof.valor_hora_aula),
+        l.qtdAulas,
+        l.qtdAulasIndividual,
+        l.qtdAulasGrupo,
         fmtMoeda(l.valorAulas),
         fmtMoeda(l.valorExtras),
         fmtMoeda(l.total),
         l.fechado?.status === 'pago' ? 'Pago' : 'Pendente',
         l.prof.chave_pix ?? '—',
       ]),
-      foot: [['', '', '', '', '', 'Total Geral', fmtMoeda(totalGeral), '', '']],
+      foot: [['', '', '', '', '', '', 'Total Geral', fmtMoeda(totalGeral), '', '']],
       styles: { fontSize: 8 },
       headStyles: { fillColor: [37, 99, 235] },
       footStyles: { fontStyle: 'bold', fillColor: [243, 244, 246] },
@@ -320,9 +357,10 @@ export default function PagamentoProfessores() {
               <tr className="text-left text-xs text-gray-500 border-b border-gray-100 bg-gray-50">
                 <th className="px-4 py-3 font-medium">Professor</th>
                 <th className="px-4 py-3 font-medium text-center">Tipo</th>
-                <th className="px-4 py-3 font-medium text-right">Presenças</th>
-                <th className="px-4 py-3 font-medium text-right">R$/aula</th>
                 <th className="px-4 py-3 font-medium text-right">Aulas</th>
+                <th className="px-4 py-3 font-medium text-right">Individual</th>
+                <th className="px-4 py-3 font-medium text-right">Grupo</th>
+                <th className="px-4 py-3 font-medium text-right">Valor Aulas</th>
                 <th className="px-4 py-3 font-medium text-right">Extras</th>
                 <th className="px-4 py-3 font-medium text-right">Total</th>
                 <th className="px-4 py-3 font-medium text-center">Status</th>
@@ -331,7 +369,7 @@ export default function PagamentoProfessores() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {linhas.map(({ prof, qtdPresencas, valorAulas, valorExtras, total, extrasProf, fechado }) => (
+              {linhas.map(({ prof, qtdAulas, qtdAulasIndividual, qtdAulasGrupo, valorAulas, valorExtras, total, extrasProf, fechado }) => (
                 <tr key={prof.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-900">{prof.nome}</td>
                   <td className="px-4 py-3 text-center">
@@ -339,8 +377,9 @@ export default function PagamentoProfessores() {
                       {prof.tipo_professor ?? '?'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right font-semibold">{qtdPresencas}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{fmtMoeda(prof.valor_hora_aula)}</td>
+                  <td className="px-4 py-3 text-right font-semibold">{qtdAulas}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{qtdAulasIndividual}</td>
+                  <td className="px-4 py-3 text-right text-blue-600 font-medium">{qtdAulasGrupo > 0 ? qtdAulasGrupo : '—'}</td>
                   <td className="px-4 py-3 text-right">{fmtMoeda(valorAulas)}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -409,7 +448,7 @@ export default function PagamentoProfessores() {
             </tbody>
             <tfoot>
               <tr className="border-t border-gray-200 bg-gray-50">
-                <td colSpan={6} className="px-4 py-3 text-sm font-semibold text-right text-gray-600">Total geral:</td>
+                <td colSpan={7} className="px-4 py-3 text-sm font-semibold text-right text-gray-600">Total geral:</td>
                 <td className="px-4 py-3 text-right font-bold text-gray-900">{fmtMoeda(totalGeral)}</td>
                 <td colSpan={3} />
               </tr>
@@ -477,7 +516,7 @@ export default function PagamentoProfessores() {
                 return (
                   <>
                     <p className="text-sm text-gray-700">
-                      <strong>{modalFechar.nome}</strong> — {l.qtdPresencas} presenças × {fmtMoeda(modalFechar.valor_hora_aula)}
+                      <strong>{modalFechar.nome}</strong> — {l.qtdAulas} aulas ({l.qtdAulasIndividual} indiv. + {l.qtdAulasGrupo} grupo)
                     </p>
                     <p className="text-lg font-bold text-gray-900">Total: {fmtMoeda(l.total)}</p>
                     {modalFechar.chave_pix && (

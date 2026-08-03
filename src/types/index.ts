@@ -102,6 +102,7 @@ export interface Professor {
   observacoes?: string
   tipo_professor?: 'A' | 'B'
   valor_hora_aula?: number
+  bonificacao_grupo?: Record<string, number> | null
   chave_pix?: string
   pix_tipo?: string
   created_at?: string
