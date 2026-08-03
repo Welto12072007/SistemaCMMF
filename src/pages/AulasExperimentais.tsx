@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
 import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List, RefreshCw, Download, Pencil, Trash2 } from 'lucide-react'
 import type { AulaExperimental, Professor } from '@/types'
 import ExperimentaisSemana from './ExperimentaisSemana'
@@ -21,6 +22,8 @@ const statusColor: Record<string, string> = {
 
 export default function AulasExperimentais() {
   const navigate = useNavigate()
+  const { perfil, hasRole } = useAuth()
+  const isAdmin = hasRole('admin', 'recepcao')
   const [aulas, setAulas] = useState<AulaExperimental[]>([])
   const [professores, setProfessores] = useState<Professor[]>([])
   const [filtro, setFiltro] = useState('Todos os status')
@@ -38,10 +41,17 @@ export default function AulasExperimentais() {
   }, [])
 
   async function loadAulas() {
-    const { data } = await supabase
+    let query = supabase
       .from('aulas_experimentais')
       .select('*, professor:professores(*)')
       .order('data_aula', { ascending: false })
+
+    // Professor só vê as experimentais dele
+    if (!isAdmin && perfil?.professor_id) {
+      query = query.eq('professor_id', perfil.professor_id)
+    }
+
+    const { data } = await query
     if (data) setAulas(data)
   }
 
@@ -203,13 +213,13 @@ export default function AulasExperimentais() {
             <Download className="w-4 h-4" />
             Exportar .ics
           </button>
-          <button
+          {isAdmin && <button
             onClick={() => setShowForm(true)}
             className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
           >
             <Plus className="w-4 h-4" />
             Nova Aula Experimental
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -292,13 +302,13 @@ export default function AulasExperimentais() {
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              <button
+              {isAdmin && <button
                 onClick={() => setEditarAula(a)}
                 className="text-xs px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1"
               >
                 <Pencil className="w-3.5 h-3.5" /> Editar
-              </button>
-              {confirmarExcluirId === a.id ? (
+              </button>}
+              {isAdmin && (confirmarExcluirId === a.id ? (
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-red-600">Confirmar exclusão?</span>
                   <button onClick={() => excluirAula(a.id)} className="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700">Sim</button>
@@ -311,8 +321,8 @@ export default function AulasExperimentais() {
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Excluir
                 </button>
-              )}
-              {['agendada', 'confirmada'].includes(a.status?.toLowerCase()) && (
+              ))}
+              {isAdmin && ['agendada', 'confirmada'].includes(a.status?.toLowerCase()) && (
                 <>
                   <button
                     onClick={() => { setTrocarProfModal(a); setNovoProfId(a.professor_id ?? '') }}
@@ -336,14 +346,14 @@ export default function AulasExperimentais() {
                   <span className="text-xs px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Convertido em aluno
                   </span>
-                ) : (
+                ) : isAdmin ? (
                   <button
                     onClick={() => navigate('/usuarios', { state: { fromExperimental: { id: a.id, nome: a.nome, telefone: a.telefone, instrumento: a.instrumento } } })}
                     className="text-xs px-3 py-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors flex items-center gap-1"
                   >
                     <UserPlus className="w-3.5 h-3.5" /> Converter em aluno
                   </button>
-                )}
+                ) : null}
               </div>
             )}
           </div>
