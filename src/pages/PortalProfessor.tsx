@@ -720,7 +720,7 @@ export default function PortalProfessor() {
             </button>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
               <p className="text-2xl font-bold text-brand-600">{statsMes.total}</p>
               <p className="text-xs text-gray-500 mt-1">Registros</p>
@@ -732,11 +732,6 @@ export default function PortalProfessor() {
             <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
               <p className="text-2xl font-bold text-red-500">{statsMes.aulasFaltadas}</p>
               <p className="text-xs text-gray-500 mt-1">Faltas</p>
-            </div>
-            <div className="bg-green-50 rounded-xl border border-green-200 p-4 text-center">
-              <p className="text-xl font-bold text-green-700">{fmtMoeda(statsMes.estimativa)}</p>
-              <p className="text-xs text-green-600 mt-1">Estimativa</p>
-              {valorHoraAula>0 && <p className="text-xs text-green-500">{fmtMoeda(valorHoraAula)}/aula</p>}
             </div>
           </div>
 
