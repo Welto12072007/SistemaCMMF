@@ -11,3 +11,6 @@ verify_jwt = true
 
 [functions.asaas-subscriptions]
 verify_jwt = true
+
+[functions.processar-disparos]
+verify_jwt = false

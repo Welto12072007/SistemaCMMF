@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Plus, Search, Download, ExternalLink, Copy, Zap, CreditCard, QrCode, UserPlus, Send, MessageSquare } from 'lucide-react'
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Plus, Search, Download, ExternalLink, Copy, Zap, CreditCard, QrCode, UserPlus, Send, MessageSquare, RefreshCw } from 'lucide-react'
 
 interface Mensalidade {
   id: string
@@ -70,6 +70,7 @@ export default function Mensalidades() {
   const [enviandoCobrancas, setEnviandoCobrancas] = useState(false)
   const [criandoPix, setCriandoPix] = useState(false)
   const [pixCnpj] = useState('29.247.149/0001-51')
+  const [recorrenteModal, setRecorrenteModal] = useState<Mensalidade | null>(null)
 
   useEffect(() => {
     loadMensalidades()
@@ -642,6 +643,13 @@ export default function Mensalidades() {
                           </button>
                         )}
                         <button
+                          onClick={() => setRecorrenteModal(m)}
+                          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-blue-100 text-blue-800 hover:bg-blue-200"
+                          title="Criar assinatura recorrente"
+                        >
+                          <RefreshCw className="w-3 h-3" /> Recorrente
+                        </button>
+                        <button
                           onClick={() => setEditando(m)}
                           className="text-xs px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-50"
                         >
@@ -691,6 +699,14 @@ export default function Mensalidades() {
             setPaymentModal(null)
             loadMensalidades()
           }}
+        />
+      )}
+
+      {recorrenteModal && (
+        <RecorrenteModal
+          m={recorrenteModal}
+          onClose={() => setRecorrenteModal(null)}
+          onSaved={() => { setRecorrenteModal(null); loadMensalidades() }}
         />
       )}
     </div>
@@ -1056,6 +1072,101 @@ function AvulsaModal({ onClose }: { onClose: () => void }) {
         <div className="px-5 py-3 border-t flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">Fechar</button>
           {!result && <button onClick={enviar} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{loading ? 'Gerando...' : 'Gerar cobrança'}</button>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RecorrenteModal({ m, onClose, onSaved }: { m: Mensalidade; onClose: () => void; onSaved: () => void }) {
+  const [billingType, setBillingType] = useState<'UNDEFINED' | 'CREDIT_CARD' | 'PIX'>('UNDEFINED')
+  const [nextDueDate, setNextDueDate] = useState(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() + 1)
+    d.setDate(10)
+    return d.toISOString().slice(0, 10)
+  })
+  const [salvando, setSalvando] = useState(false)
+
+  async function criar() {
+    if (!confirm(`Criar assinatura recorrente para ${m.aluno_nome}?\n\nValor: R$ ${(m.valor - m.desconto).toFixed(2)}/mês\nInício: ${nextDueDate}\n\nA partir dessa data, o Asaas cobrará automaticamente todo mês.`)) return
+    setSalvando(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/asaas-subscriptions`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({
+            action: 'create',
+            aluno_id: m.aluno_id,
+            valor: m.valor - m.desconto,
+            billing_type: billingType,
+            next_due_date: nextDueDate,
+          }),
+        }
+      )
+      const result = await resp.json()
+      if (result.ok) {
+        alert(`✓ Assinatura recorrente criada!\n\nID: ${result.subscription_id}\nPróxima cobrança: ${nextDueDate}\n\nA partir de agora o Asaas cobra automaticamente todo mês.`)
+        onSaved()
+      } else {
+        alert('Erro: ' + (result.error ?? 'Desconhecido'))
+      }
+    } catch (err) {
+      alert('Erro: ' + String(err))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+        <div className="px-5 py-4 border-b flex items-center gap-2">
+          <RefreshCw className="w-5 h-5 text-blue-600" />
+          <div>
+            <h2 className="text-lg font-semibold">Assinatura Recorrente</h2>
+            <p className="text-sm text-gray-500">{m.aluno_nome}</p>
+          </div>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
+            O Asaas vai cobrar <strong>R$ {(m.valor - m.desconto).toFixed(2)}</strong> automaticamente todo mês.
+            O aluno recebe o link de pagamento (PIX ou cartão) e a baixa é automática.
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Forma de pagamento</label>
+            <select
+              value={billingType}
+              onChange={(e) => setBillingType(e.target.value as any)}
+              className="w-full px-3 py-2 border rounded-lg text-sm"
+            >
+              <option value="UNDEFINED">PIX + Cartão (aluno escolhe)</option>
+              <option value="CREDIT_CARD">Cartão de crédito (débito automático)</option>
+              <option value="PIX">Somente PIX</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Primeira cobrança recorrente em</label>
+            <input
+              type="date"
+              value={nextDueDate}
+              onChange={(e) => setNextDueDate(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg text-sm"
+            />
+            <p className="text-xs text-gray-500 mt-1">A cobrança deste mês já foi gerada separadamente.</p>
+          </div>
+        </div>
+        <div className="px-5 py-3 border-t flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
+          <button onClick={criar} disabled={salvando} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {salvando ? 'Criando...' : 'Criar Assinatura'}
+          </button>
         </div>
       </div>
     </div>
