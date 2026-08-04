@@ -8,3 +8,6 @@ verify_jwt = true
 
 [functions.asaas-create-charge]
 verify_jwt = true
+
+[functions.asaas-subscriptions]
+verify_jwt = true
