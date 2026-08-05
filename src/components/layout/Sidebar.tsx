@@ -33,7 +33,6 @@ import {
   Home,
   CalendarRange,
   Gift,
-  RefreshCw,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -73,7 +72,6 @@ const sections: NavSection[] = [
       { to: '/financeiro', label: 'Financeiro', icon: DollarSign, roles: ['admin'] },
       { to: '/fluxo-caixa', label: 'Fluxo de Caixa', icon: Wallet, roles: ['admin'] },
       { to: '/mensalidades', label: 'Mensalidades', icon: DollarSign, roles: ['admin', 'recepcao'] },
-      { to: '/assinaturas', label: 'Assinaturas', icon: RefreshCw, roles: ['admin', 'recepcao'] },
       { to: '/cobranca', label: 'Cobrança & Jurídico', icon: AlertTriangle, roles: ['admin', 'recepcao'] },
     ],
   },

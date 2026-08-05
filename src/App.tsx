@@ -18,7 +18,6 @@ const Financeiro = lazy(() => import('./pages/Financeiro'))
 const DashboardFinanceiro = lazy(() => import('./pages/DashboardFinanceiro'))
 const FinanceiroHub = lazy(() => import('./pages/FinanceiroHub'))
 const Mensalidades = lazy(() => import('./pages/Mensalidades'))
-const Assinaturas = lazy(() => import('./pages/Assinaturas'))
 const Cobranca = lazy(() => import('./pages/Cobranca'))
 const Biblioteca = lazy(() => import('./pages/Biblioteca'))
 const FingerTV = lazy(() => import('./pages/FingerTV'))
@@ -110,7 +109,7 @@ export default function App() {
         <Route path="/fluxo-alunos" element={<Navigate to="/financeiro" replace />} />
         <Route path="/pagamento-professores" element={<Navigate to="/financeiro" replace />} />
         <Route path="/mensalidades" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Mensalidades /></Suspense></Guard>} />
-        <Route path="/assinaturas" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Assinaturas /></Suspense></Guard>} />
+        <Route path="/assinaturas" element={<Navigate to="/mensalidades" replace />} />
         <Route path="/cobranca" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Cobranca /></Suspense></Guard>} />
         <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><PresencasFaltasHub /></Suspense></Guard>} />
         <Route path="/faltas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><PresencasFaltasHub /></Suspense></Guard>} />

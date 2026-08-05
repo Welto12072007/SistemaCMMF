@@ -2,8 +2,16 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-// Token configurado no painel Asaas → Configurações → Webhooks
 const ASAAS_WEBHOOK_TOKEN = Deno.env.get('ASAAS_WEBHOOK_TOKEN')
+
+const ASAAS_BASE = Deno.env.get('ASAAS_SANDBOX') === 'true'
+  ? 'https://sandbox.asaas.com/api/v3'
+  : 'https://api.asaas.com/v3'
+const ASAAS_KEY = Deno.env.get('ASAAS_API_KEY') ?? ''
+
+const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL') ?? 'https://api.centrodemusicamurilofinger.com'
+const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY') ?? 'CentroMusica2026ApiKey'
+const EVOLUTION_INSTANCE = Deno.env.get('EVOLUTION_INSTANCE') ?? 'CentroMusica'
 
 // Eventos que significam "pagamento confirmado"
 const PAID_EVENTS = new Set([
@@ -18,6 +26,100 @@ const REFUND_EVENTS = new Set([
   'PAYMENT_CHARGEBACK_REQUESTED',
   'PAYMENT_CHARGEBACK_DISPUTE',
 ])
+
+function saudacao(): string {
+  const h = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false })
+  const hora = parseInt(h, 10)
+  if (hora >= 6 && hora < 12) return 'Bom dia'
+  if (hora >= 12 && hora < 18) return 'Boa tarde'
+  return 'Boa noite'
+}
+
+function formatDateBR(date: string): string {
+  if (!date) return ''
+  const [y, m, d] = date.split('-')
+  return `${d}/${m}/${y}`
+}
+
+function formatBRL(v: number): string {
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+async function enviarWhatsApp(telefone: string, mensagem: string): Promise<boolean> {
+  const num = telefone.replace(/\D/g, '')
+  const number = num.length >= 12 ? num : `55${num}`
+  try {
+    const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+      body: JSON.stringify({ number, text: mensagem }),
+    })
+    return resp.ok
+  } catch {
+    return false
+  }
+}
+
+async function fetchPixCopyPaste(paymentId: string): Promise<string | null> {
+  try {
+    const resp = await fetch(`${ASAAS_BASE}/payments/${paymentId}/pixQrCode`, {
+      headers: { access_token: ASAAS_KEY },
+    })
+    if (!resp.ok) return null
+    const data = await resp.json()
+    return data?.payload ?? null
+  } catch {
+    return null
+  }
+}
+
+async function notificarAluno(supabase: any, payment: any, mensaId: string, alunoId: string) {
+  const { data: aluno } = await supabase
+    .from('alunos')
+    .select('nome, telefone')
+    .eq('id', alunoId)
+    .single()
+  if (!aluno?.telefone) return
+
+  const nome = (aluno.nome ?? '').split(' ')[0]
+  const valor = formatBRL(payment.value ?? 0)
+  const vencimento = formatDateBR(payment.dueDate ?? '')
+  const linkCartao = payment.invoiceUrl ?? ''
+
+  const pixCode = await fetchPixCopyPaste(payment.id)
+
+  if (pixCode) {
+    await supabase.from('mensalidades')
+      .update({ asaas_pix_copy_paste: pixCode })
+      .eq('id', mensaId)
+  }
+
+  const msg =
+    `${saudacao()} ${nome}! 🎼💙\n\n` +
+    `Sua mensalidade do Centro de Música Murilo Finger já está disponível.\n\n` +
+    `💰 Valor: R$ ${valor}\n` +
+    `📅 Vencimento: ${vencimento}\n\n` +
+    `Escolha a forma de pagamento mais conveniente:\n` +
+    `💳 Cartão: ${linkCartao}\n` +
+    (pixCode ? `📲 PIX Copia e Cola: ${pixCode}\n` : '') +
+    `\n⚠️ Importante: caso faça o pagamento para nossa chave pix, envie o comprovante respondendo esta mensagem para que possamos identificar e registrar o pagamento em nosso sistema.\n\n` +
+    `Agradecemos por fazer parte do CMMF. Desejamos ótimos estudos! 🎶💙`
+
+  const sent = await enviarWhatsApp(aluno.telefone, msg)
+  console.log(`WhatsApp ${sent ? 'enviado' : 'FALHOU'} para ${aluno.nome} (${aluno.telefone})`)
+
+  // Logar no disparos_pendentes
+  await supabase.from('disparos_pendentes').insert({
+    aluno_id: alunoId,
+    tipo: 'boleto_disponivel',
+    canal: 'whatsapp',
+    mensagem: msg,
+    telefone_destinatario: aluno.telefone,
+    status: sent ? 'enviado' : 'erro',
+    processado_em: new Date().toISOString(),
+    erro: sent ? null : 'Falha no envio Evolution API',
+  })
+}
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
@@ -115,8 +217,17 @@ Deno.serve(async (req) => {
     }
   }
 
-  // PAYMENT_CREATED de assinatura: apenas linkar, não marcar como pago
+  // PAYMENT_CREATED de assinatura: linkar + notificar aluno via WhatsApp
   if (isCreated && !isPaymentEvent) {
+    if (mensa && payment.externalReference?.startsWith('sub_')) {
+      const alunoId = payment.externalReference.slice(4)
+      // Enviar notificação WhatsApp em background (não bloquear resposta ao Asaas)
+      const edgeCtx = { waitUntil: (p: Promise<any>) => p.catch(e => console.error('notificar erro:', e)) }
+      edgeCtx.waitUntil(notificarAluno(supabase, payment, mensa.id, alunoId))
+      return new Response(JSON.stringify({ ok: true, linked: true, notified: true, mensalidade_id: mensa.id }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
     if (mensa) {
       return new Response(JSON.stringify({ ok: true, linked: true, mensalidade_id: mensa.id }), {
         headers: { 'Content-Type': 'application/json' },
