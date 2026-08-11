@@ -36,13 +36,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [passwordRecovery, setPasswordRecovery] = useState(false)
 
   useEffect(() => {
+    // Detectar se a URL tem hash de recovery — se sim, não liberar loading até onAuthStateChange processar
+    const hashParams = new URLSearchParams(window.location.hash.substring(1))
+    const isRecoveryUrl = hashParams.get('type') === 'recovery'
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       if (session?.user) {
         loadPerfil(session.user.id)
-      } else {
+      } else if (!isRecoveryUrl) {
         setLoading(false)
       }
+      // Se isRecoveryUrl, loading fica true até onAuthStateChange processar o token
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
