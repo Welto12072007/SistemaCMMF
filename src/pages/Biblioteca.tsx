@@ -156,8 +156,12 @@ export default function Biblioteca() {
     loadAll()
   }
 
+  const hasFilter = busca || filtroTipo !== 'Todos' || filtroInstrumento !== 'Todos'
+
   const currentItems = items.filter(item => {
     if (pastaAberta) return item.pasta_id === pastaAberta.id
+    // Na raiz com filtro ativo: busca em TUDO (inclusive dentro de pastas)
+    if (hasFilter) return true
     return !item.pasta_id
   })
 
@@ -167,6 +171,8 @@ export default function Biblioteca() {
     if (filtroInstrumento !== 'Todos' && item.instrumento !== filtroInstrumento) return false
     return true
   })
+
+  const pastaMap = new Map(pastas.map(p => [p.id, p]))
 
   // ====== INSIDE FOLDER VIEW ======
   if (pastaAberta) {
@@ -336,21 +342,34 @@ export default function Biblioteca() {
 
       <p className="text-sm text-gray-500 flex items-center gap-1">
         <Filter className="w-3.5 h-3.5" />
-        {filtered.length} material(is) sem pasta
+        {filtered.length} material(is){hasFilter ? '' : ' sem pasta'}
       </p>
 
       {/* Items grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map((item) => (
-          <div
-            key={item.id}
-            draggable={canEdit}
-            onDragStart={(e) => handleDragStart(e, item.id)}
-            className="bg-white rounded-xl shadow-sm border p-5 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
-          >
-            <ItemCard item={item} onDelete={canEdit ? handleDelete : undefined} onEdit={canEdit ? (i) => { setEditingItem(i); setShowForm(true) } : undefined} />
-          </div>
-        ))}
+        {filtered.map((item) => {
+          const pasta = item.pasta_id ? pastaMap.get(item.pasta_id) : null
+          return (
+            <div
+              key={item.id}
+              draggable={canEdit}
+              onDragStart={(e) => handleDragStart(e, item.id)}
+              className="bg-white rounded-xl shadow-sm border p-5 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
+            >
+              {pasta && (
+                <button
+                  onClick={() => setPastaAberta(pasta)}
+                  className="flex items-center gap-1.5 mb-3 text-xs px-2 py-1 rounded-full hover:opacity-80 transition-opacity"
+                  style={{ backgroundColor: pasta.cor + '15', color: pasta.cor }}
+                >
+                  <FolderOpen className="w-3 h-3" />
+                  {pasta.titulo}
+                </button>
+              )}
+              <ItemCard item={item} onDelete={canEdit ? handleDelete : undefined} onEdit={canEdit ? (i) => { setEditingItem(i); setShowForm(true) } : undefined} />
+            </div>
+          )
+        })}
         {filtered.length === 0 && !pastas.length && (
           <div className="col-span-full text-center py-12 text-gray-400">
             <BookOpen className="w-12 h-12 mx-auto mb-3 text-gray-300" />
