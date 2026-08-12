@@ -246,7 +246,6 @@ export default function PortalProfessor() {
   async function salvarPresenca() {
     if (!modal||!professor_id) return
     const obs=obsTexto.trim()
-    if (!obs) { alert('A observação pedagógica é obrigatória.'); return }
     setSalvando(true)
     const {item,presente,tipoFalta}=modal
     const {data:ad}=await supabase.from('alunos').select('id').ilike('nome',item.aluno_nome).limit(1).single()
@@ -906,11 +905,10 @@ export default function PortalProfessor() {
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Observação pedagógica <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observação pedagógica <span className="text-gray-400 text-xs">(opcional)</span></label>
                 <textarea value={obsTexto} onChange={e=>setObsTexto(e.target.value)} rows={3}
                   placeholder={modal.presente?'O que foi trabalhado? Progresso do aluno...':'Motivo da falta, observações...'}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"/>
-                <p className="text-xs text-gray-400 mt-1">Obrigatório conforme Documento de Orientações §9</p>
               </div>
               <div className="flex gap-3 pt-1">
                 <button onClick={()=>{setModal(null);setObsTexto('')}} className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
