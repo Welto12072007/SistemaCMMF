@@ -102,5 +102,34 @@ export default async function handler(req, res) {
     }
   }
 
+  if (req.method === 'POST') {
+    const { customer, value, dueDate, billingType, description } = req.body || {}
+    if (!customer || !value || !dueDate) {
+      return res.status(400).json({ error: 'customer, value and dueDate are required' })
+    }
+
+    try {
+      const resp = await fetch(`${BASE}/payments`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          customer,
+          value,
+          dueDate,
+          billingType: billingType || 'BOLETO',
+          description: description || 'Mensalidade mensal — CMMF',
+        }),
+      })
+      if (!resp.ok) {
+        const err = await resp.json()
+        return res.status(resp.status).json({ error: err.errors?.[0]?.description || 'Erro ao gerar cobrança' })
+      }
+      const data = await resp.json()
+      return res.status(200).json({ ok: true, data })
+    } catch (err) {
+      return res.status(500).json({ error: err.message })
+    }
+  }
+
   return res.status(405).json({ error: 'Method not allowed' })
 }

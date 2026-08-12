@@ -122,6 +122,7 @@ export default function Cobranca() {
   const [editingSub, setEditingSub] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<{ value: string; nextDueDate: string; billingType: string }>({ value: '', nextDueDate: '', billingType: '' })
   const [savingSub, setSavingSub] = useState(false)
+  const [generatingSub, setGeneratingSub] = useState<string | null>(null)
 
   useEffect(() => {
     if (tab === 'inadimplentes') loadInadimplentes()
@@ -180,7 +181,31 @@ export default function Cobranca() {
     setSavingSub(false)
   }
 
-  async function loadAsaas() {
+  async function gerarCobranca(sub: AsaasSub) {
+    const dueDate = prompt('Data de vencimento (AAAA-MM-DD):', sub.nextDueDate)
+    if (!dueDate) return
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { alert('Data inválida. Use formato AAAA-MM-DD'); return }
+    setGeneratingSub(sub.id)
+    try {
+      const resp = await fetch('/api/asaas-assinaturas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer: sub.customer,
+          value: sub.value,
+          dueDate,
+          billingType: sub.billingType === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'BOLETO',
+          description: `Mensalidade mensal — CMMF`,
+        }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || 'Erro ao gerar cobrança')
+      alert(`Cobrança de ${brl(sub.value)} gerada para ${sub.name} com vencimento ${formatBR(dueDate)}`)
+    } catch (err: any) {
+      alert('Erro: ' + err.message)
+    }
+    setGeneratingSub(null)
+  }
     setAsaasLoading(true)
     try {
       const resp = await fetch('/api/asaas-inadimplentes')
@@ -681,10 +706,16 @@ export default function Cobranca() {
                             </td>
                             <td className="p-3">{formatBR(s.nextDueDate)}</td>
                             <td className="p-3 text-center">
-                              <button onClick={() => startEditSub(s)}
-                                className="text-xs px-2 py-1 border rounded hover:bg-gray-100 flex items-center gap-1 mx-auto">
-                                <Pencil className="w-3 h-3" /> Editar
-                              </button>
+                              <div className="flex gap-1 justify-center">
+                                <button onClick={() => startEditSub(s)}
+                                  className="text-xs px-2 py-1 border rounded hover:bg-gray-100 flex items-center gap-1">
+                                  <Pencil className="w-3 h-3" /> Editar
+                                </button>
+                                <button onClick={() => gerarCobranca(s)} disabled={generatingSub === s.id}
+                                  className="text-xs px-2 py-1 border rounded hover:bg-blue-50 text-blue-600 flex items-center gap-1">
+                                  <CreditCard className="w-3 h-3" /> {generatingSub === s.id ? '...' : 'Gerar'}
+                                </button>
+                              </div>
                             </td>
                           </>
                         )}
