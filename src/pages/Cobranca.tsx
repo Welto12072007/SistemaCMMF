@@ -1,6 +1,6 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Scale, AlertTriangle, FileText, Send, Search, RefreshCw, CheckCircle2, Clock, Download, Settings, CreditCard } from 'lucide-react'
+import { Scale, AlertTriangle, FileText, Send, Search, RefreshCw, CheckCircle2, Clock, Download, Settings, CreditCard, Pencil, Check, X, Users } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
@@ -65,6 +65,20 @@ interface AsaasResponse {
   data: AsaasCustomer[]
 }
 
+interface AsaasSub {
+  id: string
+  customer: string
+  name: string
+  cpfCnpj: string
+  phone: string
+  value: number
+  cycle: string
+  nextDueDate: string
+  billingType: string
+  status: string
+  description: string
+}
+
 const STATUS_COBRANCA_BADGE: Record<string, string> = {
   cobranca_interna: 'bg-yellow-100 text-yellow-800',
   encaminhado_juridico: 'bg-red-100 text-red-800',
@@ -90,7 +104,7 @@ function formatBR(date: string | null) {
 }
 
 export default function Cobranca() {
-  const [tab, setTab] = useState<'inadimplentes' | 'asaas' | 'juridico' | 'config'>('inadimplentes')
+  const [tab, setTab] = useState<'inadimplentes' | 'asaas' | 'assinaturas' | 'juridico' | 'config'>('inadimplentes')
   const [items, setItems] = useState<MensalidadeAtualizada[]>([])
   const [enc, setEnc] = useState<Encaminhamento[]>([])
   const [cfg, setCfg] = useState<Config | null>(null)
@@ -102,13 +116,69 @@ export default function Cobranca() {
   const [asaasData, setAsaasData] = useState<AsaasResponse | null>(null)
   const [asaasLoading, setAsaasLoading] = useState(false)
   const [asaasBusca, setAsaasBusca] = useState('')
+  const [subs, setSubs] = useState<AsaasSub[]>([])
+  const [subsLoading, setSubsLoading] = useState(false)
+  const [subsBusca, setSubsBusca] = useState('')
+  const [editingSub, setEditingSub] = useState<string | null>(null)
+  const [editValues, setEditValues] = useState<{ value: string; nextDueDate: string; billingType: string }>({ value: '', nextDueDate: '', billingType: '' })
+  const [savingSub, setSavingSub] = useState(false)
 
   useEffect(() => {
     if (tab === 'inadimplentes') loadInadimplentes()
     else if (tab === 'asaas') loadAsaas()
+    else if (tab === 'assinaturas') loadSubs()
     else if (tab === 'juridico') loadJuridico()
     else loadConfig()
   }, [tab])
+
+  async function loadSubs() {
+    setSubsLoading(true)
+    try {
+      const resp = await fetch('/api/asaas-assinaturas')
+      if (!resp.ok) throw new Error('Erro ao buscar assinaturas')
+      const data = await resp.json()
+      setSubs(data.data || [])
+    } catch (err: any) {
+      console.error(err)
+      alert('Erro ao carregar assinaturas: ' + err.message)
+    }
+    setSubsLoading(false)
+  }
+
+  function startEditSub(sub: AsaasSub) {
+    setEditingSub(sub.id)
+    setEditValues({
+      value: sub.value.toString(),
+      nextDueDate: sub.nextDueDate,
+      billingType: sub.billingType,
+    })
+  }
+
+  async function saveSubEdit() {
+    if (!editingSub) return
+    const val = parseFloat(editValues.value)
+    if (isNaN(val) || val <= 0) { alert('Valor inválido'); return }
+    setSavingSub(true)
+    try {
+      const resp = await fetch('/api/asaas-assinaturas', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingSub,
+          value: val,
+          nextDueDate: editValues.nextDueDate,
+          billingType: editValues.billingType,
+        }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || 'Erro ao salvar')
+      setSubs(prev => prev.map(s => s.id === editingSub ? { ...s, value: val, nextDueDate: editValues.nextDueDate, billingType: editValues.billingType } : s))
+      setEditingSub(null)
+    } catch (err: any) {
+      alert('Erro: ' + err.message)
+    }
+    setSavingSub(false)
+  }
 
   async function loadAsaas() {
     setAsaasLoading(true)
@@ -363,6 +433,7 @@ export default function Cobranca() {
         {[
           { k: 'inadimplentes', label: 'Inadimplentes', icon: AlertTriangle },
           { k: 'asaas', label: 'Asaas', icon: CreditCard },
+          { k: 'assinaturas', label: 'Assinaturas', icon: Users },
           { k: 'juridico', label: 'Jurídico', icon: Scale },
           { k: 'config', label: 'Configurações', icon: Settings },
         ].map(t => (
@@ -520,6 +591,111 @@ export default function Cobranca() {
               <p className="text-xs text-gray-400">Dados atualizados em {asaasData.date} — fonte: Asaas API (cobranças com status OVERDUE)</p>
             </>
           )}
+        </>
+      )}
+
+      {tab === 'assinaturas' && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white border rounded-xl p-4"><div className="text-xs text-gray-500">Total assinaturas</div><div className="text-2xl font-bold">{subs.length}</div></div>
+            <div className="bg-white border rounded-xl p-4"><div className="text-xs text-gray-500">Receita mensal</div><div className="text-2xl font-bold text-green-600">{brl(subs.reduce((s, x) => s + x.value, 0))}</div></div>
+            <div className="bg-white border rounded-xl p-4"><div className="text-xs text-gray-500">Cartão de crédito</div><div className="text-2xl font-bold">{subs.filter(s => s.billingType === 'CREDIT_CARD').length}</div></div>
+            <div className="bg-white border rounded-xl p-4"><div className="text-xs text-gray-500">PIX / Boleto</div><div className="text-2xl font-bold">{subs.filter(s => s.billingType !== 'CREDIT_CARD').length}</div></div>
+          </div>
+
+          <div className="flex gap-3 flex-wrap items-center">
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
+              <input value={subsBusca} onChange={e => setSubsBusca(e.target.value)} placeholder="Buscar aluno..." className="w-full border rounded-lg pl-9 pr-3 py-2 text-sm" />
+            </div>
+            <button onClick={loadSubs} className="flex items-center gap-2 text-sm px-3 py-2 border rounded-lg hover:bg-gray-50">
+              <RefreshCw className={`w-4 h-4 ${subsLoading ? 'animate-spin' : ''}`} /> Atualizar
+            </button>
+          </div>
+
+          <div className="bg-white border rounded-xl overflow-x-auto">
+            {subsLoading ? <div className="p-8 text-center text-gray-500">Carregando assinaturas...</div> : subs.length === 0 ? <div className="p-8 text-center text-gray-500">Nenhuma assinatura encontrada.</div> : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-xs uppercase text-gray-600">
+                  <tr>
+                    <th className="text-left p-3">Aluno</th>
+                    <th className="text-left p-3">CPF/CNPJ</th>
+                    <th className="text-right p-3">Valor</th>
+                    <th className="text-center p-3">Tipo</th>
+                    <th className="text-left p-3">Próx. vencimento</th>
+                    <th className="text-center p-3">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {subs
+                    .filter(s => !subsBusca || s.name?.toLowerCase().includes(subsBusca.toLowerCase()))
+                    .map(s => (
+                      <tr key={s.id} className="border-t hover:bg-gray-50">
+                        <td className="p-3 font-medium">
+                          {s.name || s.customer}
+                          <div className="text-xs text-gray-500">{s.phone || '—'}</div>
+                        </td>
+                        <td className="p-3 text-gray-600 text-xs">{s.cpfCnpj || '—'}</td>
+                        {editingSub === s.id ? (
+                          <>
+                            <td className="p-3">
+                              <input type="number" step="0.01" value={editValues.value}
+                                onChange={e => setEditValues({ ...editValues, value: e.target.value })}
+                                className="w-24 border rounded px-2 py-1 text-sm text-right" />
+                            </td>
+                            <td className="p-3">
+                              <select value={editValues.billingType}
+                                onChange={e => setEditValues({ ...editValues, billingType: e.target.value })}
+                                className="border rounded px-2 py-1 text-xs">
+                                <option value="UNDEFINED">Boleto/PIX</option>
+                                <option value="CREDIT_CARD">Cartão</option>
+                                <option value="PIX">PIX</option>
+                                <option value="BOLETO">Boleto</option>
+                              </select>
+                            </td>
+                            <td className="p-3">
+                              <input type="date" value={editValues.nextDueDate}
+                                onChange={e => setEditValues({ ...editValues, nextDueDate: e.target.value })}
+                                className="border rounded px-2 py-1 text-xs" />
+                            </td>
+                            <td className="p-3 text-center">
+                              <div className="flex gap-1 justify-center">
+                                <button onClick={saveSubEdit} disabled={savingSub}
+                                  className="text-green-600 hover:text-green-800 p-1" title="Salvar">
+                                  <Check className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => setEditingSub(null)}
+                                  className="text-gray-400 hover:text-gray-600 p-1" title="Cancelar">
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="p-3 text-right font-bold">{brl(s.value)}</td>
+                            <td className="p-3 text-center">
+                              <span className={`text-xs px-2 py-0.5 rounded ${s.billingType === 'CREDIT_CARD' ? 'bg-purple-100 text-purple-700' : s.billingType === 'PIX' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                {s.billingType === 'CREDIT_CARD' ? 'Cartão' : s.billingType === 'PIX' ? 'PIX' : 'Boleto/PIX'}
+                              </span>
+                            </td>
+                            <td className="p-3">{formatBR(s.nextDueDate)}</td>
+                            <td className="p-3 text-center">
+                              <button onClick={() => startEditSub(s)}
+                                className="text-xs px-2 py-1 border rounded hover:bg-gray-100 flex items-center gap-1 mx-auto">
+                                <Pencil className="w-3 h-3" /> Editar
+                              </button>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <p className="text-xs text-gray-400">Alterações de valor e vencimento são sincronizadas diretamente com o Asaas.</p>
         </>
       )}
 
