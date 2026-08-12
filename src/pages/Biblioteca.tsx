@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   BookOpen, Search, Plus, Filter, Music, FileText, Headphones, Video,
-  FolderOpen, FolderPlus, ArrowLeft, GripVertical, X,
+  FolderOpen, FolderPlus, ArrowLeft, GripVertical, X, Pencil,
 } from 'lucide-react'
 
 interface BibliotecaItem {
@@ -64,6 +64,8 @@ export default function Biblioteca() {
   const [filtroInstrumento, setFiltroInstrumento] = useState('Todos')
   const [showForm, setShowForm] = useState(false)
   const [showPastaForm, setShowPastaForm] = useState(false)
+  const [editingItem, setEditingItem] = useState<BibliotecaItem | null>(null)
+  const [editingPasta, setEditingPasta] = useState<Pasta | null>(null)
   const [dragOverPasta, setDragOverPasta] = useState<string | null>(null)
   const [dragOverRoot, setDragOverRoot] = useState(false)
 
@@ -119,14 +121,24 @@ export default function Biblioteca() {
   }
 
   async function handleSave(form: Partial<BibliotecaItem>) {
-    const payload = { ...form, pasta_id: pastaAberta?.id || null }
-    await supabase.from('biblioteca').insert(payload)
+    if (editingItem) {
+      await supabase.from('biblioteca').update(form).eq('id', editingItem.id)
+      setEditingItem(null)
+    } else {
+      const payload = { ...form, pasta_id: pastaAberta?.id || null }
+      await supabase.from('biblioteca').insert(payload)
+    }
     setShowForm(false)
     loadAll()
   }
 
   async function handleSavePasta(titulo: string, cor: string, instrumento: string) {
-    await supabase.from('biblioteca_pastas').insert({ titulo, cor, instrumento: instrumento || null })
+    if (editingPasta) {
+      await supabase.from('biblioteca_pastas').update({ titulo, cor, instrumento: instrumento || null }).eq('id', editingPasta.id)
+      setEditingPasta(null)
+    } else {
+      await supabase.from('biblioteca_pastas').insert({ titulo, cor, instrumento: instrumento || null })
+    }
     setShowPastaForm(false)
     loadAll()
   }
@@ -195,7 +207,7 @@ export default function Biblioteca() {
               onDragStart={(e) => handleDragStart(e, item.id)}
               className="bg-white rounded-xl shadow-sm border p-5 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
             >
-              <ItemCard item={item} onDelete={canEdit ? handleDelete : undefined} />
+              <ItemCard item={item} onDelete={canEdit ? handleDelete : undefined} onEdit={canEdit ? (i) => { setEditingItem(i); setShowForm(true) } : undefined} />
             </div>
           ))}
           {filtered.length === 0 && (
@@ -206,7 +218,7 @@ export default function Biblioteca() {
           )}
         </div>
 
-        {showForm && <BibliotecaForm onSave={handleSave} onClose={() => setShowForm(false)} />}
+        {showForm && <BibliotecaForm initial={editingItem} onSave={handleSave} onClose={() => { setShowForm(false); setEditingItem(null) }} />}
       </div>
     )
   }
@@ -279,12 +291,20 @@ export default function Biblioteca() {
                   )}
                 </div>
                 {canEdit && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDeletePasta(pasta.id) }}
-                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded text-red-400 hover:text-red-600 transition-all"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 flex gap-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditingPasta(pasta); setShowPastaForm(true) }}
+                      className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-700 transition-all"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeletePasta(pasta.id) }}
+                      className="p-1 hover:bg-red-50 rounded text-red-400 hover:text-red-600 transition-all"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
@@ -328,7 +348,7 @@ export default function Biblioteca() {
             onDragStart={(e) => handleDragStart(e, item.id)}
             className="bg-white rounded-xl shadow-sm border p-5 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
           >
-            <ItemCard item={item} onDelete={canEdit ? handleDelete : undefined} />
+            <ItemCard item={item} onDelete={canEdit ? handleDelete : undefined} onEdit={canEdit ? (i) => { setEditingItem(i); setShowForm(true) } : undefined} />
           </div>
         ))}
         {filtered.length === 0 && !pastas.length && (
@@ -340,13 +360,13 @@ export default function Biblioteca() {
         )}
       </div>
 
-      {showForm && <BibliotecaForm onSave={handleSave} onClose={() => setShowForm(false)} />}
-      {showPastaForm && <PastaForm onSave={handleSavePasta} onClose={() => setShowPastaForm(false)} />}
+      {showForm && <BibliotecaForm initial={editingItem} onSave={handleSave} onClose={() => { setShowForm(false); setEditingItem(null) }} />}
+      {showPastaForm && <PastaForm initial={editingPasta} onSave={handleSavePasta} onClose={() => { setShowPastaForm(false); setEditingPasta(null) }} />}
     </div>
   )
 }
 
-function ItemCard({ item, onDelete }: { item: BibliotecaItem; onDelete?: (id: string) => void }) {
+function ItemCard({ item, onDelete, onEdit }: { item: BibliotecaItem; onDelete?: (id: string) => void; onEdit?: (item: BibliotecaItem) => void }) {
   return (
     <>
       <div className="flex items-start justify-between mb-3">
@@ -358,9 +378,14 @@ function ItemCard({ item, onDelete }: { item: BibliotecaItem; onDelete?: (id: st
             {item.autor && <p className="text-xs text-gray-500">{item.autor}</p>}
           </div>
         </div>
-        {onDelete && (
-          <button onClick={() => onDelete(item.id)} className="text-xs text-red-400 hover:text-red-600">✕</button>
-        )}
+        <div className="flex items-center gap-1">
+          {onEdit && (
+            <button onClick={() => onEdit(item)} className="p-1 text-gray-400 hover:text-brand-600"><Pencil className="w-3.5 h-3.5" /></button>
+          )}
+          {onDelete && (
+            <button onClick={() => onDelete(item.id)} className="p-1 text-red-400 hover:text-red-600">✕</button>
+          )}
+        </div>
       </div>
       {item.descricao && <p className="text-xs text-gray-600 mb-3 line-clamp-2">{item.descricao}</p>}
       <div className="flex items-center gap-2 flex-wrap">
@@ -380,13 +405,13 @@ function ItemCard({ item, onDelete }: { item: BibliotecaItem; onDelete?: (id: st
   )
 }
 
-function BibliotecaForm({ onSave, onClose }: { onSave: (data: Partial<BibliotecaItem>) => void; onClose: () => void }) {
-  const [form, setForm] = useState({ titulo: '', descricao: '', tipo: 'partitura', instrumento: '', url: '', autor: '' })
+function BibliotecaForm({ initial, onSave, onClose }: { initial?: BibliotecaItem | null; onSave: (data: Partial<BibliotecaItem>) => void; onClose: () => void }) {
+  const [form, setForm] = useState({ titulo: initial?.titulo || '', descricao: initial?.descricao || '', tipo: initial?.tipo || 'partitura', instrumento: initial?.instrumento || '', url: initial?.url || '', autor: initial?.autor || '' })
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-xl p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-4">Novo Material</h2>
+        <h2 className="text-lg font-bold mb-4">{initial ? 'Editar Material' : 'Novo Material'}</h2>
         <div className="space-y-3">
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Título" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} />
           <textarea className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Descrição (opcional)" rows={2} value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
@@ -409,15 +434,15 @@ function BibliotecaForm({ onSave, onClose }: { onSave: (data: Partial<Biblioteca
   )
 }
 
-function PastaForm({ onSave, onClose }: { onSave: (titulo: string, cor: string, instrumento: string) => void; onClose: () => void }) {
-  const [titulo, setTitulo] = useState('')
-  const [cor, setCor] = useState('#6366f1')
-  const [instrumento, setInstrumento] = useState('')
+function PastaForm({ initial, onSave, onClose }: { initial?: Pasta | null; onSave: (titulo: string, cor: string, instrumento: string) => void; onClose: () => void }) {
+  const [titulo, setTitulo] = useState(initial?.titulo || '')
+  const [cor, setCor] = useState(initial?.cor || '#6366f1')
+  const [instrumento, setInstrumento] = useState(initial?.instrumento || '')
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-4">Nova Pasta</h2>
+        <h2 className="text-lg font-bold mb-4">{initial ? 'Editar Pasta' : 'Nova Pasta'}</h2>
         <div className="space-y-3">
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nome da pasta" value={titulo} onChange={(e) => setTitulo(e.target.value)} />
           <select className="w-full border rounded-lg px-3 py-2 text-sm" value={instrumento} onChange={(e) => setInstrumento(e.target.value)}>
@@ -440,7 +465,7 @@ function PastaForm({ onSave, onClose }: { onSave: (titulo: string, cor: string, 
         </div>
         <div className="flex justify-end gap-3 mt-5">
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
-          <button onClick={() => titulo && onSave(titulo, cor, instrumento)} className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">Criar</button>
+          <button onClick={() => titulo && onSave(titulo, cor, instrumento)} className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">{initial ? 'Salvar' : 'Criar'}</button>
         </div>
       </div>
     </div>

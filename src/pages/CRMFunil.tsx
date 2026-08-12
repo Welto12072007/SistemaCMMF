@@ -37,8 +37,9 @@ interface FunilContato {
   data_perdido_at?: string
 }
 
+
 interface ListaQuente {
-  instrumento: string
+  instrumento:string
   tipo: string
   total: number
   score_medio: number
