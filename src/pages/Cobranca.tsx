@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Scale, AlertTriangle, FileText, Send, Search, RefreshCw, CheckCircle2, Clock, Download, Settings } from 'lucide-react'
+import { Scale, AlertTriangle, FileText, Send, Search, RefreshCw, CheckCircle2, Clock, Download, Settings, CreditCard } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
@@ -45,6 +45,26 @@ interface Config {
   advogada_telefone: string
 }
 
+interface AsaasCustomer {
+  customerId: string
+  name: string
+  cpfCnpj: string
+  phone: string
+  total: number
+  count: number
+  oldest: string
+  subscription: boolean
+  charges: { id: string; value: number; dueDate: string; description: string }[]
+}
+
+interface AsaasResponse {
+  total: number
+  customers: number
+  totalValue: number
+  date: string
+  data: AsaasCustomer[]
+}
+
 const STATUS_COBRANCA_BADGE: Record<string, string> = {
   cobranca_interna: 'bg-yellow-100 text-yellow-800',
   encaminhado_juridico: 'bg-red-100 text-red-800',
@@ -70,7 +90,7 @@ function formatBR(date: string | null) {
 }
 
 export default function Cobranca() {
-  const [tab, setTab] = useState<'inadimplentes' | 'juridico' | 'config'>('inadimplentes')
+  const [tab, setTab] = useState<'inadimplentes' | 'asaas' | 'juridico' | 'config'>('inadimplentes')
   const [items, setItems] = useState<MensalidadeAtualizada[]>([])
   const [enc, setEnc] = useState<Encaminhamento[]>([])
   const [cfg, setCfg] = useState<Config | null>(null)
@@ -79,12 +99,30 @@ export default function Cobranca() {
   const [filtroStatus, setFiltroStatus] = useState<string>('todos')
   const [rodando, setRodando] = useState(false)
   const [dossie, setDossie] = useState<Encaminhamento | null>(null)
+  const [asaasData, setAsaasData] = useState<AsaasResponse | null>(null)
+  const [asaasLoading, setAsaasLoading] = useState(false)
+  const [asaasBusca, setAsaasBusca] = useState('')
 
   useEffect(() => {
     if (tab === 'inadimplentes') loadInadimplentes()
+    else if (tab === 'asaas') loadAsaas()
     else if (tab === 'juridico') loadJuridico()
     else loadConfig()
   }, [tab])
+
+  async function loadAsaas() {
+    setAsaasLoading(true)
+    try {
+      const resp = await fetch('/api/asaas-inadimplentes')
+      if (!resp.ok) throw new Error('Erro ao buscar inadimplentes do Asaas')
+      const data: AsaasResponse = await resp.json()
+      setAsaasData(data)
+    } catch (err: any) {
+      console.error(err)
+      alert('Erro ao carregar inadimplentes Asaas: ' + err.message)
+    }
+    setAsaasLoading(false)
+  }
 
   async function loadInadimplentes() {
     setLoading(true)
@@ -324,6 +362,7 @@ export default function Cobranca() {
       <div className="flex gap-1 border-b">
         {[
           { k: 'inadimplentes', label: 'Inadimplentes', icon: AlertTriangle },
+          { k: 'asaas', label: 'Asaas', icon: CreditCard },
           { k: 'juridico', label: 'Jurídico', icon: Scale },
           { k: 'config', label: 'Configurações', icon: Settings },
         ].map(t => (
@@ -408,6 +447,79 @@ export default function Cobranca() {
               </table>
             )}
           </div>
+        </>
+      )}
+
+      {tab === 'asaas' && (
+        <>
+          {asaasLoading ? (
+            <div className="p-8 text-center text-gray-500">Carregando dados do Asaas...</div>
+          ) : !asaasData ? (
+            <div className="p-8 text-center text-gray-500">Nenhum dado carregado.</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="bg-white border rounded-xl p-4"><div className="text-xs text-gray-500">Clientes inadimplentes</div><div className="text-2xl font-bold">{asaasData.customers}</div></div>
+                <div className="bg-white border rounded-xl p-4"><div className="text-xs text-gray-500">Total cobranças vencidas</div><div className="text-2xl font-bold">{asaasData.total}</div></div>
+                <div className="bg-white border rounded-xl p-4"><div className="text-xs text-gray-500">Valor total em aberto</div><div className="text-2xl font-bold text-red-600">{brl(asaasData.totalValue)}</div></div>
+              </div>
+
+              <div className="flex gap-3 flex-wrap items-center">
+                <div className="relative flex-1 min-w-[240px]">
+                  <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
+                  <input value={asaasBusca} onChange={e => setAsaasBusca(e.target.value)} placeholder="Buscar cliente..." className="w-full border rounded-lg pl-9 pr-3 py-2 text-sm" />
+                </div>
+                <button onClick={loadAsaas} className="flex items-center gap-2 text-sm px-3 py-2 border rounded-lg hover:bg-gray-50">
+                  <RefreshCw className={`w-4 h-4 ${asaasLoading ? 'animate-spin' : ''}`} /> Atualizar
+                </button>
+              </div>
+
+              <div className="bg-white border rounded-xl overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-xs uppercase text-gray-600">
+                    <tr>
+                      <th className="text-left p-3">Cliente</th>
+                      <th className="text-left p-3">CPF/CNPJ</th>
+                      <th className="text-left p-3">Telefone</th>
+                      <th className="text-center p-3">Cobranças</th>
+                      <th className="text-right p-3">Total</th>
+                      <th className="text-left p-3">Desde</th>
+                      <th className="text-center p-3">Tipo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {asaasData.data
+                      .filter(c => !asaasBusca || c.name?.toLowerCase().includes(asaasBusca.toLowerCase()))
+                      .map(c => {
+                        const diasAtraso = Math.floor((Date.now() - new Date(c.oldest + 'T12:00:00').getTime()) / 86400000)
+                        return (
+                          <tr key={c.customerId} className="border-t hover:bg-gray-50">
+                            <td className="p-3 font-medium">{c.name || c.customerId}</td>
+                            <td className="p-3 text-gray-600">{c.cpfCnpj || '—'}</td>
+                            <td className="p-3 text-gray-600">{c.phone || '—'}</td>
+                            <td className="p-3 text-center">
+                              <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold">{c.count}</span>
+                            </td>
+                            <td className="p-3 text-right font-bold text-red-600">{brl(c.total)}</td>
+                            <td className="p-3">
+                              <span>{formatBR(c.oldest)}</span>
+                              <span className="text-xs text-red-500 ml-1">({diasAtraso}d)</span>
+                            </td>
+                            <td className="p-3 text-center">
+                              <span className={`text-xs px-2 py-0.5 rounded ${c.subscription ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                                {c.subscription ? 'Assinatura' : 'Avulsa'}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                  </tbody>
+                </table>
+              </div>
+
+              <p className="text-xs text-gray-400">Dados atualizados em {asaasData.date} — fonte: Asaas API (cobranças com status OVERDUE)</p>
+            </>
+          )}
         </>
       )}
 
