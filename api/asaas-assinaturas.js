@@ -76,7 +76,27 @@ export default async function handler(req, res) {
         return res.status(resp.status).json({ error: err.errors?.[0]?.description || 'Erro ao atualizar' })
       }
       const data = await resp.json()
-      return res.status(200).json({ ok: true, data })
+
+      // After update, remove duplicate PENDING charges for same due date
+      const paysResp = await fetch(`${BASE}/subscriptions/${id}/payments?limit=30`, { headers })
+      const pays = await paysResp.json()
+      const byDate = {}
+      for (const p of (pays.data || [])) {
+        if (!byDate[p.dueDate]) byDate[p.dueDate] = []
+        byDate[p.dueDate].push(p)
+      }
+      let deleted = 0
+      for (const [, charges] of Object.entries(byDate)) {
+        if (charges.length <= 1) continue
+        const pending = charges.filter(c => c.status === 'PENDING')
+        // Keep one pending, delete extras
+        for (let i = 1; i < pending.length; i++) {
+          await fetch(`${BASE}/payments/${pending[i].id}`, { method: 'DELETE', headers })
+          deleted++
+        }
+      }
+
+      return res.status(200).json({ ok: true, data, duplicatesRemoved: deleted })
     } catch (err) {
       return res.status(500).json({ error: err.message })
     }
