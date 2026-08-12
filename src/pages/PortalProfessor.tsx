@@ -245,15 +245,24 @@ export default function PortalProfessor() {
 
   async function salvarPresenca() {
     if (!modal||!professor_id) return
-    const obs=obsTexto.trim()
+    const obs=obsTexto.trim()||null
     setSalvando(true)
     const {item,presente,tipoFalta}=modal
-    const {data:ad}=await supabase.from('alunos').select('id').ilike('nome',item.aluno_nome).limit(1).single()
-    if (item.presenca_id) {
-      await supabase.from('presencas').update({presente,tipo_falta:presente?null:(tipoFalta||'falta_injustificada'),observacoes:obs}).eq('id',item.presenca_id)
-    } else {
-      await supabase.from('presencas').insert({aluno_id:ad?.id||null,professor_id,horario_id:item.horario_id,data:dataAtual,hora_inicio:item.hora_inicio,hora_fim:item.hora_fim,instrumento:item.instrumento,presente,tipo_falta:presente?null:(tipoFalta||'falta_injustificada'),aluno_nome:item.aluno_nome,observacoes:obs})
+    const {data:ad}=await supabase.from('alunos').select('id').ilike('nome',item.aluno_nome).limit(1).maybeSingle()
+    const payload = {
+      aluno_id:ad?.id||null, professor_id, horario_id:item.horario_id||null,
+      data:dataAtual, hora_inicio:item.hora_inicio||null, hora_fim:item.hora_fim||null,
+      instrumento:item.instrumento||null, presente,
+      tipo_falta:presente?null:(tipoFalta||'falta_injustificada'),
+      aluno_nome:item.aluno_nome, observacoes:obs
     }
+    let error
+    if (item.presenca_id) {
+      ({error}=await supabase.from('presencas').update({presente,tipo_falta:payload.tipo_falta,observacoes:obs}).eq('id',item.presenca_id))
+    } else {
+      ({error}=await supabase.from('presencas').insert(payload))
+    }
+    if (error) { alert('Erro ao salvar presença:\n'+error.message); console.error(error) }
     setSalvando(false); setModal(null); setObsTexto(''); loadChamada()
   }
 
