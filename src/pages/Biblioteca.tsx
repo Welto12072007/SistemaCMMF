@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { BookOpen, Search, Plus, Filter, Music, FileText, Headphones, Video } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
+import {
+  BookOpen, Search, Plus, Filter, Music, FileText, Headphones, Video,
+  FolderOpen, FolderPlus, ArrowLeft, GripVertical, X,
+} from 'lucide-react'
 
 interface BibliotecaItem {
   id: string
@@ -12,7 +16,17 @@ interface BibliotecaItem {
   url?: string
   arquivo_nome?: string
   autor?: string
+  pasta_id?: string | null
   created_at?: string
+}
+
+interface Pasta {
+  id: string
+  titulo: string
+  cor: string
+  instrumento?: string
+  created_at: string
+  _count?: number
 }
 
 const TIPOS = [
@@ -26,6 +40,7 @@ const TIPOS = [
 ]
 
 const INSTRUMENTOS = ['Piano', 'Violão', 'Guitarra', 'Bateria', 'Canto', 'Ukulele', 'Violino', 'Contrabaixo', 'Cavaquinho', 'Percussão', 'Geral']
+const CORES = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6']
 
 const tipoIcon: Record<string, string> = {
   partitura: '🎵',
@@ -38,57 +53,184 @@ const tipoIcon: Record<string, string> = {
 }
 
 export default function Biblioteca() {
+  const { hasRole } = useAuth()
+  const canEdit = hasRole('admin', 'recepcao', 'professor')
+
   const [items, setItems] = useState<BibliotecaItem[]>([])
+  const [pastas, setPastas] = useState<Pasta[]>([])
+  const [pastaAberta, setPastaAberta] = useState<Pasta | null>(null)
   const [busca, setBusca] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('Todos')
   const [filtroInstrumento, setFiltroInstrumento] = useState('Todos')
   const [showForm, setShowForm] = useState(false)
+  const [showPastaForm, setShowPastaForm] = useState(false)
+  const [dragOverPasta, setDragOverPasta] = useState<string | null>(null)
+  const [dragOverRoot, setDragOverRoot] = useState(false)
 
-  useEffect(() => {
-    loadItems()
-  }, [])
+  useEffect(() => { loadAll() }, [])
 
-  async function loadItems() {
-    const { data } = await supabase
-      .from('biblioteca')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (data) setItems(data)
+  async function loadAll() {
+    const [{ data: itemsData }, { data: pastasData }] = await Promise.all([
+      supabase.from('biblioteca').select('*').order('created_at', { ascending: false }),
+      supabase.from('biblioteca_pastas').select('*').order('created_at', { ascending: false }),
+    ])
+    if (itemsData) setItems(itemsData)
+    if (pastasData) {
+      const countMap = new Map<string, number>()
+      for (const item of (itemsData || [])) {
+        if (item.pasta_id) countMap.set(item.pasta_id, (countMap.get(item.pasta_id) || 0) + 1)
+      }
+      setPastas((pastasData as Pasta[]).map(p => ({ ...p, _count: countMap.get(p.id) || 0 })))
+    }
   }
 
-  const filtered = items.filter((item) => {
+  function handleDragStart(e: React.DragEvent, itemId: string) {
+    e.dataTransfer.setData('text/plain', itemId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function handleDropOnPasta(e: React.DragEvent, pastaId: string) {
+    e.preventDefault()
+    setDragOverPasta(null)
+    const itemId = e.dataTransfer.getData('text/plain')
+    if (!itemId) return
+    moveItem(itemId, pastaId)
+  }
+
+  function handleDropOnRoot(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOverRoot(false)
+    const itemId = e.dataTransfer.getData('text/plain')
+    if (!itemId) return
+    moveItem(itemId, null)
+  }
+
+  async function moveItem(itemId: string, pastaId: string | null) {
+    await supabase.from('biblioteca').update({ pasta_id: pastaId }).eq('id', itemId)
+    setItems(prev => prev.map(i => i.id === itemId ? { ...i, pasta_id: pastaId } : i))
+    setPastas(prev => prev.map(p => {
+      let count = 0
+      for (const i of items) {
+        const pid = i.id === itemId ? pastaId : i.pasta_id
+        if (pid === p.id) count++
+      }
+      return { ...p, _count: count }
+    }))
+  }
+
+  async function handleSave(form: Partial<BibliotecaItem>) {
+    const payload = { ...form, pasta_id: pastaAberta?.id || null }
+    await supabase.from('biblioteca').insert(payload)
+    setShowForm(false)
+    loadAll()
+  }
+
+  async function handleSavePasta(titulo: string, cor: string, instrumento: string) {
+    await supabase.from('biblioteca_pastas').insert({ titulo, cor, instrumento: instrumento || null })
+    setShowPastaForm(false)
+    loadAll()
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Excluir este material?')) return
+    await supabase.from('biblioteca').delete().eq('id', id)
+    setItems(prev => prev.filter(i => i.id !== id))
+  }
+
+  async function handleDeletePasta(id: string) {
+    if (!confirm('Excluir esta pasta? Os materiais voltam para a raiz.')) return
+    await supabase.from('biblioteca').update({ pasta_id: null }).eq('pasta_id', id)
+    await supabase.from('biblioteca_pastas').delete().eq('id', id)
+    loadAll()
+  }
+
+  const currentItems = items.filter(item => {
+    if (pastaAberta) return item.pasta_id === pastaAberta.id
+    return !item.pasta_id
+  })
+
+  const filtered = currentItems.filter((item) => {
     if (busca && !item.titulo.toLowerCase().includes(busca.toLowerCase()) && !item.autor?.toLowerCase().includes(busca.toLowerCase())) return false
     if (filtroTipo !== 'Todos' && item.tipo !== filtroTipo) return false
     if (filtroInstrumento !== 'Todos' && item.instrumento !== filtroInstrumento) return false
     return true
   })
 
-  async function handleSave(form: Partial<BibliotecaItem>) {
-    await supabase.from('biblioteca').insert(form)
-    setShowForm(false)
-    loadItems()
+  // ====== INSIDE FOLDER VIEW ======
+  if (pastaAberta) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setPastaAberta(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: pastaAberta.cor + '20', color: pastaAberta.cor }}>
+            <FolderOpen className="w-5 h-5" />
+          </div>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-gray-900">{pastaAberta.titulo}</h1>
+            {pastaAberta.instrumento && <p className="text-sm text-gray-500">{pastaAberta.instrumento}</p>}
+          </div>
+          {canEdit && (
+            <button onClick={() => setShowForm(true)} className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600">
+              <Plus className="w-4 h-4" /> Novo Material
+            </button>
+          )}
+        </div>
+
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOverRoot(true) }}
+          onDragLeave={() => setDragOverRoot(false)}
+          onDrop={handleDropOnRoot}
+          className={`border-2 border-dashed rounded-lg p-3 text-center text-sm transition-colors ${dragOverRoot ? 'border-brand-500 bg-brand-50 text-brand-600' : 'border-gray-200 text-gray-400'}`}
+        >
+          ← Soltar aqui para mover para a raiz
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map(item => (
+            <div
+              key={item.id}
+              draggable={canEdit}
+              onDragStart={(e) => handleDragStart(e, item.id)}
+              className="bg-white rounded-xl shadow-sm border p-5 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
+            >
+              <ItemCard item={item} onDelete={canEdit ? handleDelete : undefined} />
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div className="col-span-full text-center py-12 text-gray-400">
+              <BookOpen className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p>Pasta vazia</p>
+            </div>
+          )}
+        </div>
+
+        {showForm && <BibliotecaForm onSave={handleSave} onClose={() => setShowForm(false)} />}
+      </div>
+    )
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Excluir este material?')) return
-    await supabase.from('biblioteca').delete().eq('id', id)
-    loadItems()
-  }
-
+  // ====== ROOT VIEW ======
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Biblioteca</h1>
-          <p className="text-gray-500">Acervo de materiais musicais do centro</p>
+          <p className="text-gray-500">Acervo de materiais musicais — arraste para organizar em pastas</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Novo Material
-        </button>
+        <div className="flex gap-2">
+          {canEdit && (
+            <>
+              <button onClick={() => setShowPastaForm(true)} className="flex items-center gap-2 border border-brand-500 text-brand-600 px-4 py-2.5 rounded-lg hover:bg-brand-50">
+                <FolderPlus className="w-4 h-4" /> Nova Pasta
+              </button>
+              <button onClick={() => setShowForm(true)} className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600">
+                <Plus className="w-4 h-4" /> Novo Material
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Stats */}
@@ -106,6 +248,49 @@ export default function Biblioteca() {
           )
         })}
       </div>
+
+      {/* Folders */}
+      {pastas.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Pastas</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {pastas.map(pasta => (
+              <div
+                key={pasta.id}
+                onDragOver={(e) => { e.preventDefault(); setDragOverPasta(pasta.id) }}
+                onDragLeave={() => setDragOverPasta(null)}
+                onDrop={(e) => handleDropOnPasta(e, pasta.id)}
+                onClick={() => setPastaAberta(pasta)}
+                className={`relative bg-white rounded-xl border shadow-sm hover:shadow-md transition-all cursor-pointer group ${dragOverPasta === pasta.id ? 'ring-2 ring-brand-500 scale-[1.02]' : ''}`}
+              >
+                <div className="h-1.5 rounded-t-xl" style={{ backgroundColor: pasta.cor }} />
+                <div className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: pasta.cor + '20', color: pasta.cor }}>
+                      <FolderOpen className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-gray-900 text-sm truncate">{pasta.titulo}</h4>
+                      <p className="text-xs text-gray-400">{pasta._count || 0} item(ns)</p>
+                    </div>
+                  </div>
+                  {pasta.instrumento && (
+                    <span className="mt-2 inline-block text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{pasta.instrumento}</span>
+                  )}
+                </div>
+                {canEdit && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeletePasta(pasta.id) }}
+                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded text-red-400 hover:text-red-600 transition-all"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
@@ -131,54 +316,22 @@ export default function Biblioteca() {
 
       <p className="text-sm text-gray-500 flex items-center gap-1">
         <Filter className="w-3.5 h-3.5" />
-        {filtered.length} material(is)
+        {filtered.length} material(is) sem pasta
       </p>
 
-      {/* Grid */}
+      {/* Items grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map((item) => (
-          <div key={item.id} className="bg-white rounded-xl shadow-sm border p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">{tipoIcon[item.tipo] || '📄'}</span>
-                <div>
-                  <h4 className="font-medium text-gray-900 text-sm">{item.titulo}</h4>
-                  {item.autor && <p className="text-xs text-gray-500">{item.autor}</p>}
-                </div>
-              </div>
-              <button
-                onClick={() => handleDelete(item.id)}
-                className="text-xs text-red-400 hover:text-red-600"
-              >
-                ✕
-              </button>
-            </div>
-            {item.descricao && (
-              <p className="text-xs text-gray-600 mb-3 line-clamp-2">{item.descricao}</p>
-            )}
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs px-2 py-1 rounded-full bg-brand-50 text-brand-700">
-                {TIPOS.find(t => t.value === item.tipo)?.label || item.tipo}
-              </span>
-              {item.instrumento && (
-                <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                  {item.instrumento}
-                </span>
-              )}
-            </div>
-            {item.url && (
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 block text-xs text-brand-500 hover:underline"
-              >
-                Abrir material →
-              </a>
-            )}
+          <div
+            key={item.id}
+            draggable={canEdit}
+            onDragStart={(e) => handleDragStart(e, item.id)}
+            className="bg-white rounded-xl shadow-sm border p-5 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
+          >
+            <ItemCard item={item} onDelete={canEdit ? handleDelete : undefined} />
           </div>
         ))}
-        {filtered.length === 0 && (
+        {filtered.length === 0 && !pastas.length && (
           <div className="col-span-full text-center py-12 text-gray-400">
             <BookOpen className="w-12 h-12 mx-auto mb-3 text-gray-300" />
             <p>Nenhum material na biblioteca ainda</p>
@@ -187,26 +340,48 @@ export default function Biblioteca() {
         )}
       </div>
 
-      {/* Form Modal */}
-      {showForm && (
-        <BibliotecaForm onSave={handleSave} onClose={() => setShowForm(false)} />
-      )}
+      {showForm && <BibliotecaForm onSave={handleSave} onClose={() => setShowForm(false)} />}
+      {showPastaForm && <PastaForm onSave={handleSavePasta} onClose={() => setShowPastaForm(false)} />}
     </div>
   )
 }
 
-function BibliotecaForm({ onSave, onClose }: {
-  onSave: (data: Partial<BibliotecaItem>) => void
-  onClose: () => void
-}) {
-  const [form, setForm] = useState({
-    titulo: '',
-    descricao: '',
-    tipo: 'partitura',
-    instrumento: '',
-    url: '',
-    autor: '',
-  })
+function ItemCard({ item, onDelete }: { item: BibliotecaItem; onDelete?: (id: string) => void }) {
+  return (
+    <>
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2">
+          {onDelete && <GripVertical className="w-4 h-4 text-gray-300 shrink-0" />}
+          <span className="text-2xl">{tipoIcon[item.tipo] || '📄'}</span>
+          <div>
+            <h4 className="font-medium text-gray-900 text-sm">{item.titulo}</h4>
+            {item.autor && <p className="text-xs text-gray-500">{item.autor}</p>}
+          </div>
+        </div>
+        {onDelete && (
+          <button onClick={() => onDelete(item.id)} className="text-xs text-red-400 hover:text-red-600">✕</button>
+        )}
+      </div>
+      {item.descricao && <p className="text-xs text-gray-600 mb-3 line-clamp-2">{item.descricao}</p>}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs px-2 py-1 rounded-full bg-brand-50 text-brand-700">
+          {TIPOS.find(t => t.value === item.tipo)?.label || item.tipo}
+        </span>
+        {item.instrumento && (
+          <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">{item.instrumento}</span>
+        )}
+      </div>
+      {item.url && (
+        <a href={item.url} target="_blank" rel="noopener noreferrer" className="mt-3 block text-xs text-brand-500 hover:underline">
+          Abrir material →
+        </a>
+      )}
+    </>
+  )
+}
+
+function BibliotecaForm({ onSave, onClose }: { onSave: (data: Partial<BibliotecaItem>) => void; onClose: () => void }) {
+  const [form, setForm] = useState({ titulo: '', descricao: '', tipo: 'partitura', instrumento: '', url: '', autor: '' })
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
@@ -227,7 +402,45 @@ function BibliotecaForm({ onSave, onClose }: {
         </div>
         <div className="flex justify-end gap-3 mt-5">
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
-          <button onClick={() => onSave(form)} className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">Salvar</button>
+          <button onClick={() => form.titulo && onSave(form)} className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">Salvar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PastaForm({ onSave, onClose }: { onSave: (titulo: string, cor: string, instrumento: string) => void; onClose: () => void }) {
+  const [titulo, setTitulo] = useState('')
+  const [cor, setCor] = useState('#6366f1')
+  const [instrumento, setInstrumento] = useState('')
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold mb-4">Nova Pasta</h2>
+        <div className="space-y-3">
+          <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nome da pasta" value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+          <select className="w-full border rounded-lg px-3 py-2 text-sm" value={instrumento} onChange={(e) => setInstrumento(e.target.value)}>
+            <option value="">Instrumento (opcional)</option>
+            {INSTRUMENTOS.map(i => <option key={i}>{i}</option>)}
+          </select>
+          <div>
+            <p className="text-xs text-gray-500 mb-2">Cor</p>
+            <div className="flex gap-2 flex-wrap">
+              {CORES.map(c => (
+                <button
+                  key={c}
+                  onClick={() => setCor(c)}
+                  className={`w-7 h-7 rounded-full border-2 transition-transform ${cor === c ? 'border-gray-800 scale-110' : 'border-transparent'}`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 mt-5">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+          <button onClick={() => titulo && onSave(titulo, cor, instrumento)} className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">Criar</button>
         </div>
       </div>
     </div>
