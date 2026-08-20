@@ -208,6 +208,8 @@ export default function Cobranca() {
     }
     setGeneratingSub(null)
   }
+
+  async function loadAsaas() {
     setAsaasLoading(true)
     try {
       const resp = await fetch('/api/asaas-inadimplentes')
