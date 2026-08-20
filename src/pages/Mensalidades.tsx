@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Plus, Search, Download, ExternalLink, Copy, Zap, CreditCard, QrCode, UserPlus, Send, MessageSquare, RefreshCw, XCircle } from 'lucide-react'
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Plus, Search, Download, ExternalLink, Copy, Zap, CreditCard, QrCode, UserPlus, Send, MessageSquare, RefreshCw, XCircle, Trash2 } from 'lucide-react'
 
 interface AsaasSubscription {
   id: string
@@ -226,6 +226,13 @@ export default function Mensalidades() {
       asaas_payment_url: data.payment_url,
       asaas_billing_type: billing_type,
     })
+  }
+
+  async function excluirMensalidade(m: Mensalidade) {
+    if (!confirm(`Excluir mensalidade de ${m.aluno_nome} (${m.referencia?.substring(0, 7)})?\n\nEsta ação não pode ser desfeita.`)) return
+    const { error } = await supabase.from('mensalidades').delete().eq('id', m.id)
+    if (error) { alert(`Erro ao excluir:\n${error.message}`); return }
+    loadMensalidades()
   }
 
   async function salvarEdicao(form: Partial<Mensalidade>) {
@@ -723,6 +730,13 @@ export default function Mensalidades() {
                           className="text-xs px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-50"
                         >
                           Editar
+                        </button>
+                        <button
+                          onClick={() => excluirMensalidade(m)}
+                          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100"
+                          title="Excluir mensalidade"
+                        >
+                          <Trash2 className="w-3 h-3" /> Excluir
                         </button>
                       </div>
                     </td>
