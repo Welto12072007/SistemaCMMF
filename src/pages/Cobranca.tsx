@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Scale, AlertTriangle, FileText, Send, Search, RefreshCw, CheckCircle2, Clock, Download, Settings, CreditCard, Pencil, Check, X, Users } from 'lucide-react'
+import { Scale, AlertTriangle, FileText, Send, Search, RefreshCw, CheckCircle2, Clock, Download, Settings, CreditCard, Pencil, Check, X, Users, Trash2, Save } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
@@ -123,6 +123,8 @@ export default function Cobranca() {
   const [editValues, setEditValues] = useState<{ value: string; nextDueDate: string; billingType: string }>({ value: '', nextDueDate: '', billingType: '' })
   const [savingSub, setSavingSub] = useState(false)
   const [generatingSub, setGeneratingSub] = useState<string | null>(null)
+  const [editingInad, setEditingInad] = useState<string | null>(null)
+  const [editInad, setEditInad] = useState<{ valor_base: string; referencia: string; data_vencimento: string }>({ valor_base: '', referencia: '', data_vencimento: '' })
 
   useEffect(() => {
     if (tab === 'inadimplentes') loadInadimplentes()
@@ -280,6 +282,31 @@ export default function Cobranca() {
 
   async function alterarStatus(id: string, novoStatus: string) {
     const { error } = await supabase.rpc('marcar_mensalidade_status_cobranca', { p_id: id, p_status: novoStatus })
+    if (error) { alert('Erro: ' + error.message); return }
+    loadInadimplentes()
+  }
+
+  function startEditInad(m: MensalidadeAtualizada) {
+    setEditingInad(m.id)
+    setEditInad({ valor_base: m.valor_base.toString(), referencia: m.referencia, data_vencimento: m.data_vencimento })
+  }
+
+  async function saveEditInad(id: string) {
+    const val = parseFloat(editInad.valor_base)
+    if (isNaN(val) || val <= 0) { alert('Valor inválido'); return }
+    const { error } = await supabase.from('mensalidades').update({
+      valor: val,
+      referencia: editInad.referencia,
+      data_vencimento: editInad.data_vencimento,
+    }).eq('id', id)
+    if (error) { alert('Erro: ' + error.message); return }
+    setEditingInad(null)
+    loadInadimplentes()
+  }
+
+  async function excluirInad(m: MensalidadeAtualizada) {
+    if (!confirm(`Excluir mensalidade de ${m.aluno_nome} ref. ${formatBR(m.referencia)}?\nEssa ação não pode ser desfeita.`)) return
+    const { error } = await supabase.from('mensalidades').delete().eq('id', m.id)
     if (error) { alert('Erro: ' + error.message); return }
     loadInadimplentes()
   }
@@ -514,29 +541,60 @@ export default function Cobranca() {
                   {filtered.map(m => (
                     <tr key={m.id} className="border-t hover:bg-gray-50">
                       <td className="p-3 font-medium">{m.aluno_nome}<div className="text-xs text-gray-500">{m.telefone || '—'}</div></td>
-                      <td className="p-3">{formatBR(m.referencia)}</td>
-                      <td className="p-3">{formatBR(m.data_vencimento)}</td>
-                      <td className="p-3 text-right font-bold text-red-600">{m.dias_atraso}</td>
-                      <td className="p-3 text-right">{brl(m.valor_base)}</td>
-                      <td className="p-3 text-right text-orange-700">{brl(m.multa)}</td>
-                      <td className="p-3 text-right text-orange-700">{brl(m.juros)}</td>
-                      <td className="p-3 text-right font-bold">{brl(m.total_atualizado)}</td>
-                      <td className="p-3 text-center">{m.disparos_enviados}</td>
-                      <td className="p-3">
-                        <select value={m.status_cobranca} onChange={e => alterarStatus(m.id, e.target.value)}
-                          className={`text-xs px-2 py-1 rounded ${STATUS_COBRANCA_BADGE[m.status_cobranca]}`}>
-                          {Object.entries(STATUS_COBRANCA_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                        </select>
-                      </td>
-                      <td className="p-3 text-center">
-                        {m.status_cobranca !== 'encaminhado_juridico' && m.status_cobranca !== 'quitado' && (
-                          <button onClick={() => encaminharAluno(m.aluno_id, m.aluno_nome)}
-                            className="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700"
-                            title="Encaminhar ao jurídico">
-                            <Scale className="w-3 h-3 inline" /> Jurídico
-                          </button>
-                        )}
-                      </td>
+                      {editingInad === m.id ? (
+                        <>
+                          <td className="p-3"><input type="month" value={editInad.referencia} onChange={e => setEditInad({ ...editInad, referencia: e.target.value })} className="border rounded px-2 py-1 text-xs w-32" /></td>
+                          <td className="p-3"><input type="date" value={editInad.data_vencimento} onChange={e => setEditInad({ ...editInad, data_vencimento: e.target.value })} className="border rounded px-2 py-1 text-xs w-32" /></td>
+                          <td className="p-3 text-right font-bold text-red-600">{m.dias_atraso}</td>
+                          <td className="p-3"><input type="number" step="0.01" value={editInad.valor_base} onChange={e => setEditInad({ ...editInad, valor_base: e.target.value })} className="border rounded px-2 py-1 text-xs w-20 text-right" /></td>
+                          <td className="p-3 text-right text-orange-700">{brl(m.multa)}</td>
+                          <td className="p-3 text-right text-orange-700">{brl(m.juros)}</td>
+                          <td className="p-3 text-right font-bold">{brl(m.total_atualizado)}</td>
+                          <td className="p-3 text-center">{m.disparos_enviados}</td>
+                          <td className="p-3">
+                            <select value={m.status_cobranca} onChange={e => alterarStatus(m.id, e.target.value)}
+                              className={`text-xs px-2 py-1 rounded ${STATUS_COBRANCA_BADGE[m.status_cobranca]}`}>
+                              {Object.entries(STATUS_COBRANCA_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                            </select>
+                          </td>
+                          <td className="p-3 text-center">
+                            <div className="flex gap-1 justify-center">
+                              <button onClick={() => saveEditInad(m.id)} className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700" title="Salvar"><Save className="w-3 h-3 inline" /></button>
+                              <button onClick={() => setEditingInad(null)} className="text-xs px-2 py-1 border rounded hover:bg-gray-100" title="Cancelar"><X className="w-3 h-3 inline" /></button>
+                            </div>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="p-3">{formatBR(m.referencia)}</td>
+                          <td className="p-3">{formatBR(m.data_vencimento)}</td>
+                          <td className="p-3 text-right font-bold text-red-600">{m.dias_atraso}</td>
+                          <td className="p-3 text-right">{brl(m.valor_base)}</td>
+                          <td className="p-3 text-right text-orange-700">{brl(m.multa)}</td>
+                          <td className="p-3 text-right text-orange-700">{brl(m.juros)}</td>
+                          <td className="p-3 text-right font-bold">{brl(m.total_atualizado)}</td>
+                          <td className="p-3 text-center">{m.disparos_enviados}</td>
+                          <td className="p-3">
+                            <select value={m.status_cobranca} onChange={e => alterarStatus(m.id, e.target.value)}
+                              className={`text-xs px-2 py-1 rounded ${STATUS_COBRANCA_BADGE[m.status_cobranca]}`}>
+                              {Object.entries(STATUS_COBRANCA_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                            </select>
+                          </td>
+                          <td className="p-3 text-center">
+                            <div className="flex gap-1 justify-center">
+                              <button onClick={() => startEditInad(m)} className="text-xs px-2 py-1 border rounded hover:bg-gray-100" title="Editar"><Pencil className="w-3 h-3 inline" /></button>
+                              <button onClick={() => excluirInad(m)} className="text-xs px-2 py-1 border border-red-300 text-red-600 rounded hover:bg-red-50" title="Excluir"><Trash2 className="w-3 h-3 inline" /></button>
+                              {m.status_cobranca !== 'encaminhado_juridico' && m.status_cobranca !== 'quitado' && (
+                                <button onClick={() => encaminharAluno(m.aluno_id, m.aluno_nome)}
+                                  className="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                                  title="Encaminhar ao jurídico">
+                                  <Scale className="w-3 h-3 inline" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>
