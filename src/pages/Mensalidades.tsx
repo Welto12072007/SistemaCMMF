@@ -615,14 +615,12 @@ export default function Mensalidades() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
               <tr>
-                <th className="px-4 py-3">Aluno</th>
-                <th className="px-4 py-3">Instrumento</th>
-                <th className="px-4 py-3">Vencimento</th>
-                <th className="px-4 py-3">Valor</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Pagamento</th>
-                <th className="px-4 py-3">PIX Asaas</th>
-                <th className="px-4 py-3"></th>
+                <th className="px-3 py-3">Aluno</th>
+                <th className="px-3 py-3">Vencimento</th>
+                <th className="px-3 py-3">Valor</th>
+                <th className="px-3 py-3">Status</th>
+                <th className="px-3 py-3">Pagamento</th>
+                <th className="px-3 py-3 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -630,97 +628,61 @@ export default function Mensalidades() {
                 const liquido = m.valor - m.desconto
                 return (
                   <tr key={m.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <div className="font-medium text-gray-900">{m.aluno_nome}</div>
-                      <div className="text-xs text-gray-500">{m.aluno_telefone || ''}</div>
+                      <div className="text-xs text-gray-500">{m.aluno_instrumento || ''} · {m.aluno_telefone || ''}</div>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{m.aluno_instrumento || '-'}</td>
-                    <td className="px-4 py-3 text-gray-700">{formatBR(m.data_vencimento)}</td>
-                    <td className="px-4 py-3 text-gray-900">
+                    <td className="px-3 py-3 text-gray-700">{formatBR(m.data_vencimento)}</td>
+                    <td className="px-3 py-3 text-gray-900 whitespace-nowrap">
                       {brl(liquido)}
                       {m.desconto > 0 && (
                         <div className="text-xs text-gray-500">desc. {brl(m.desconto)}</div>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[m.status]}`}>
                         {m.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">
+                    <td className="px-3 py-3 text-gray-700">
                       {m.data_pagamento ? (
-                        <>
+                        <div>
                           {formatBR(m.data_pagamento)}
                           <div className="text-xs text-gray-500">{m.metodo_pagamento}</div>
-                        </>
+                        </div>
+                      ) : m.asaas_payment_url ? (
+                        <a href={m.asaas_payment_url} target="_blank" rel="noreferrer"
+                          className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+                          <ExternalLink className="w-3 h-3" /> Link pagamento
+                        </a>
                       ) : (
-                        '-'
+                        <span className="text-gray-400">-</span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-1">
-                        {m.asaas_payment_url && (
-                          <a
-                            href={m.asaas_payment_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                            title="Pagar via PIX ou Cartão"
-                          ><ExternalLink className="w-3 h-3" /> Link pagamento</a>
-                        )}
-                        {m.asaas_pix_copy_paste ? (
-                          <button
-                            onClick={() => { navigator.clipboard.writeText(m.asaas_pix_copy_paste!); alert('PIX copiado!') }}
-                            className="flex items-center gap-1 text-xs text-green-700 hover:underline"
-                            title="Copiar PIX Copia e Cola"
-                          ><Copy className="w-3 h-3" /> PIX copia e cola</button>
-                        ) : m.asaas_charge_id ? (
-                          <span className="text-xs text-yellow-600">⏳ PIX aguardando</span>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex flex-col items-end gap-1">
-                        <div className="flex gap-1">
-                          {m.status !== 'pago' && (
-                            <button onClick={() => marcarPago(m)}
-                              className="text-xs px-2.5 py-1 rounded bg-green-600 text-white hover:bg-green-700">
-                              <CheckCircle2 className="w-3 h-3 inline mr-1" />Pago
-                            </button>
-                          )}
-                          <button onClick={() => setEditando(m)}
-                            className="text-xs px-2.5 py-1 rounded border border-gray-300 hover:bg-gray-100">
-                            Editar
+                    <td className="px-3 py-3 text-right">
+                      <div className="flex gap-1 justify-end flex-nowrap">
+                        {m.status !== 'pago' && (
+                          <button onClick={() => marcarPago(m)}
+                            className="text-xs px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700 whitespace-nowrap">
+                            ✓ Pago
                           </button>
-                          <button onClick={() => excluirMensalidade(m)}
-                            className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50"
-                            title="Excluir">
-                            <Trash2 className="w-3 h-3" />
+                        )}
+                        <button onClick={() => setEditando(m)}
+                          className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100">
+                          Editar
+                        </button>
+                        <button onClick={() => excluirMensalidade(m)}
+                          className="text-xs px-1.5 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50"
+                          title="Excluir">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                        {m.status !== 'pago' && m.aluno_telefone && !m.aluno_telefone.startsWith('INVALIDO') && (
+                          <button onClick={() => abrirWhatsApp(m, m.status === 'atrasado' ? 'cobranca' : 'lembrete')}
+                            className="text-xs px-1.5 py-1 rounded text-green-700 hover:bg-green-50"
+                            title="WhatsApp">
+                            <MessageSquare className="w-3 h-3" />
                           </button>
-                        </div>
-                        <div className="flex gap-1">
-                          {m.status !== 'pago' && m.aluno_telefone && !m.aluno_telefone.startsWith('INVALIDO') && (
-                            <button onClick={() => abrirWhatsApp(m, m.status === 'atrasado' ? 'cobranca' : 'lembrete')}
-                              className="flex items-center gap-1 text-xs px-2 py-1 rounded text-green-700 hover:bg-green-50"
-                              title="Enviar mensagem WhatsApp">
-                              <MessageSquare className="w-3 h-3" /> WhatsApp
-                            </button>
-                          )}
-                          {m.status !== 'pago' && !m.asaas_charge_id && (
-                            <button onClick={() => setBillingModal(m)} disabled={paymentLoading === m.id}
-                              className="flex items-center gap-1 text-xs px-2 py-1 rounded text-purple-700 hover:bg-purple-50 disabled:opacity-50">
-                              <Zap className="w-3 h-3" /> {paymentLoading === m.id ? '...' : 'Cobrar'}
-                            </button>
-                          )}
-                          {m.asaas_charge_id && (
-                            <button onClick={() => setPaymentModal(m)}
-                              className="flex items-center gap-1 text-xs px-2 py-1 rounded text-purple-700 hover:bg-purple-50">
-                              <Zap className="w-3 h-3" /> Pagamento
-                            </button>
-                          )}
-                        </div>
+                        )}
                       </div>
                     </td>
                   </tr>
