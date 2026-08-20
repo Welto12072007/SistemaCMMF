@@ -682,62 +682,45 @@ export default function Mensalidades() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2 flex-wrap">
-                        {m.status !== 'pago' && m.aluno_telefone && !m.aluno_telefone.startsWith('INVALIDO') && (
-                          <button
-                            onClick={() => abrirWhatsApp(m, m.status === 'atrasado' ? 'cobranca' : 'lembrete')}
-                            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200"
-                            title="Enviar mensagem WhatsApp"
-                          >
-                            <MessageSquare className="w-3 h-3" /> WhatsApp
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="flex gap-1">
+                          {m.status !== 'pago' && (
+                            <button onClick={() => marcarPago(m)}
+                              className="text-xs px-2.5 py-1 rounded bg-green-600 text-white hover:bg-green-700">
+                              <CheckCircle2 className="w-3 h-3 inline mr-1" />Pago
+                            </button>
+                          )}
+                          <button onClick={() => setEditando(m)}
+                            className="text-xs px-2.5 py-1 rounded border border-gray-300 hover:bg-gray-100">
+                            Editar
                           </button>
-                        )}
-                        {m.status !== 'pago' && !m.asaas_charge_id && (
-                          <button
-                            onClick={() => setBillingModal(m)}
-                            disabled={paymentLoading === m.id}
-                            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200 disabled:opacity-50"
-                          >
-                            <Zap className="w-3 h-3" />
-                            {paymentLoading === m.id ? '...' : 'Cobrar'}
+                          <button onClick={() => excluirMensalidade(m)}
+                            className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50"
+                            title="Excluir">
+                            <Trash2 className="w-3 h-3" />
                           </button>
-                        )}
-                        {m.asaas_charge_id && (
-                          <button
-                            onClick={() => setPaymentModal(m)}
-                            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200"
-                          >
-                            <Zap className="w-3 h-3" /> Pagamento
-                          </button>
-                        )}
-                        {m.status !== 'pago' && (
-                          <button
-                            onClick={() => marcarPago(m)}
-                            className="text-xs px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200"
-                          >
-                            ✓ Pago
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setRecorrenteModal(m)}
-                          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-blue-100 text-blue-800 hover:bg-blue-200"
-                          title="Criar assinatura recorrente"
-                        >
-                          <RefreshCw className="w-3 h-3" /> Recorrente
-                        </button>
-                        <button
-                          onClick={() => setEditando(m)}
-                          className="text-xs px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-50"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => excluirMensalidade(m)}
-                          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100"
-                          title="Excluir mensalidade"
-                        >
-                          <Trash2 className="w-3 h-3" /> Excluir
-                        </button>
+                        </div>
+                        <div className="flex gap-1">
+                          {m.status !== 'pago' && m.aluno_telefone && !m.aluno_telefone.startsWith('INVALIDO') && (
+                            <button onClick={() => abrirWhatsApp(m, m.status === 'atrasado' ? 'cobranca' : 'lembrete')}
+                              className="flex items-center gap-1 text-xs px-2 py-1 rounded text-green-700 hover:bg-green-50"
+                              title="Enviar mensagem WhatsApp">
+                              <MessageSquare className="w-3 h-3" /> WhatsApp
+                            </button>
+                          )}
+                          {m.status !== 'pago' && !m.asaas_charge_id && (
+                            <button onClick={() => setBillingModal(m)} disabled={paymentLoading === m.id}
+                              className="flex items-center gap-1 text-xs px-2 py-1 rounded text-purple-700 hover:bg-purple-50 disabled:opacity-50">
+                              <Zap className="w-3 h-3" /> {paymentLoading === m.id ? '...' : 'Cobrar'}
+                            </button>
+                          )}
+                          {m.asaas_charge_id && (
+                            <button onClick={() => setPaymentModal(m)}
+                              className="flex items-center gap-1 text-xs px-2 py-1 rounded text-purple-700 hover:bg-purple-50">
+                              <Zap className="w-3 h-3" /> Pagamento
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
