@@ -229,7 +229,28 @@ export default function Mensalidades() {
   }
 
   async function excluirMensalidade(m: Mensalidade) {
-    if (!confirm(`Excluir mensalidade de ${m.aluno_nome} (${m.referencia?.substring(0, 7)})?\n\nEsta ação não pode ser desfeita.`)) return
+    const temCobranca = !!m.asaas_charge_id
+    const msg = temCobranca
+      ? `Excluir mensalidade de ${m.aluno_nome} (${m.referencia?.substring(0, 7)})?\n\n⚠️ A cobrança também será CANCELADA no Asaas.\n\nEsta ação não pode ser desfeita.`
+      : `Excluir mensalidade de ${m.aluno_nome} (${m.referencia?.substring(0, 7)})?\n\nEsta ação não pode ser desfeita.`
+    if (!confirm(msg)) return
+
+    if (temCobranca) {
+      try {
+        const resp = await fetch('/api/asaas-cancelar-cobranca', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chargeId: m.asaas_charge_id }),
+        })
+        const data = await resp.json()
+        if (!resp.ok) {
+          if (!confirm(`Não foi possível cancelar no Asaas:\n${data.error}\n\nExcluir mesmo assim do sistema?`)) return
+        }
+      } catch (err: any) {
+        if (!confirm(`Erro ao contatar o Asaas:\n${err.message}\n\nExcluir mesmo assim do sistema?`)) return
+      }
+    }
+
     const { error } = await supabase.from('mensalidades').delete().eq('id', m.id)
     if (error) { alert(`Erro ao excluir:\n${error.message}`); return }
     loadMensalidades()

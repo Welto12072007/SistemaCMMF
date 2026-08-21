@@ -307,7 +307,28 @@ export default function Cobranca() {
   }
 
   async function excluirInad(m: MensalidadeAtualizada) {
-    if (!confirm(`Excluir mensalidade de ${m.aluno_nome} ref. ${formatBR(m.referencia)}?\nEssa ação não pode ser desfeita.`)) return
+    const { data: row } = await supabase.from('mensalidades').select('asaas_charge_id').eq('id', m.id).maybeSingle()
+    const chargeId = (row as any)?.asaas_charge_id as string | null
+
+    const msg = chargeId
+      ? `Excluir mensalidade de ${m.aluno_nome} ref. ${formatBR(m.referencia)}?\n\n⚠️ A cobrança também será CANCELADA no Asaas.\n\nEssa ação não pode ser desfeita.`
+      : `Excluir mensalidade de ${m.aluno_nome} ref. ${formatBR(m.referencia)}?\nEssa ação não pode ser desfeita.`
+    if (!confirm(msg)) return
+
+    if (chargeId) {
+      try {
+        const resp = await fetch('/api/asaas-cancelar-cobranca', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chargeId }),
+        })
+        const data = await resp.json()
+        if (!resp.ok && !confirm(`Não foi possível cancelar no Asaas:\n${data.error}\n\nExcluir mesmo assim do sistema?`)) return
+      } catch (err: any) {
+        if (!confirm(`Erro ao contatar o Asaas:\n${err.message}\n\nExcluir mesmo assim do sistema?`)) return
+      }
+    }
+
     const { error } = await supabase.from('mensalidades').delete().eq('id', m.id)
     if (error) { alert('Erro: ' + error.message); return }
     loadInadimplentes()
