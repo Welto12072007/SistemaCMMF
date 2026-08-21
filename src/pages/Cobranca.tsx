@@ -125,6 +125,8 @@ export default function Cobranca() {
   const [generatingSub, setGeneratingSub] = useState<string | null>(null)
   const [editingInad, setEditingInad] = useState<string | null>(null)
   const [editInad, setEditInad] = useState<{ valor_base: string; referencia: string; data_vencimento: string }>({ valor_base: '', referencia: '', data_vencimento: '' })
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
+  const [excluindoLote, setExcluindoLote] = useState(false)
 
   useEffect(() => {
     if (tab === 'inadimplentes') loadInadimplentes()
@@ -331,6 +333,49 @@ export default function Cobranca() {
 
     const { error } = await supabase.from('mensalidades').delete().eq('id', m.id)
     if (error) { alert('Erro: ' + error.message); return }
+    loadInadimplentes()
+  }
+
+  function toggleSelecionado(id: string) {
+    setSelecionados(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleTodos() {
+    setSelecionados(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(m => m.id)))
+  }
+
+  async function excluirSelecionados() {
+    const ids = [...selecionados]
+    if (ids.length === 0) return
+    if (!confirm(`Excluir ${ids.length} mensalidade(s)?\n\n⚠️ As cobranças com link do Asaas também serão CANCELADAS lá.\n\nEssa ação não pode ser desfeita.`)) return
+
+    setExcluindoLote(true)
+    const { data: rows } = await supabase.from('mensalidades').select('id, asaas_charge_id').in('id', ids)
+    const comCobranca = (rows || []).filter((r: any) => r.asaas_charge_id)
+
+    let falhasAsaas = 0
+    for (const r of comCobranca as any[]) {
+      try {
+        const resp = await fetch('/api/asaas-cancelar-cobranca', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chargeId: r.asaas_charge_id }),
+        })
+        if (!resp.ok) falhasAsaas++
+      } catch { falhasAsaas++ }
+    }
+
+    const { error } = await supabase.from('mensalidades').delete().in('id', ids)
+    setExcluindoLote(false)
+    if (error) { alert('Erro ao excluir: ' + error.message); return }
+
+    setSelecionados(new Set())
+    alert(`✅ ${ids.length} mensalidade(s) excluída(s).${falhasAsaas > 0 ? `\n⚠️ ${falhasAsaas} cobrança(s) não puderam ser canceladas no Asaas (provavelmente já pagas).` : ''}`)
     loadInadimplentes()
   }
 
@@ -542,11 +587,35 @@ export default function Cobranca() {
             </div>
           </div>
 
+          {selecionados.size > 0 && (
+            <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <span className="text-sm text-red-800 font-medium">{selecionados.size} selecionada(s)</span>
+              <div className="flex gap-2">
+                <button onClick={() => setSelecionados(new Set())}
+                  className="text-sm px-3 py-1.5 border rounded-lg hover:bg-white">
+                  Limpar seleção
+                </button>
+                <button onClick={excluirSelecionados} disabled={excluindoLote}
+                  className="flex items-center gap-2 text-sm px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
+                  <Trash2 className="w-4 h-4" />
+                  {excluindoLote ? 'Excluindo...' : 'Excluir selecionadas'}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white border rounded-xl overflow-x-auto">
             {loading ? <div className="p-8 text-center text-gray-500">Carregando...</div> : filtered.length === 0 ? <div className="p-8 text-center text-gray-500">Nenhum inadimplente.</div> : (
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs uppercase text-gray-600">
                   <tr>
+                    <th className="p-3 w-10">
+                      <input type="checkbox"
+                        checked={filtered.length > 0 && selecionados.size === filtered.length}
+                        onChange={toggleTodos}
+                        className="w-4 h-4 cursor-pointer"
+                        title="Selecionar todos" />
+                    </th>
                     <th className="text-left p-3">Aluno</th>
                     <th className="text-left p-3">Referência</th>
                     <th className="text-left p-3">Vencimento</th>
@@ -562,7 +631,13 @@ export default function Cobranca() {
                 </thead>
                 <tbody>
                   {filtered.map(m => (
-                    <tr key={m.id} className="border-t hover:bg-gray-50">
+                    <tr key={m.id} className={`border-t hover:bg-gray-50 ${selecionados.has(m.id) ? 'bg-red-50' : ''}`}>
+                      <td className="p-3">
+                        <input type="checkbox"
+                          checked={selecionados.has(m.id)}
+                          onChange={() => toggleSelecionado(m.id)}
+                          className="w-4 h-4 cursor-pointer" />
+                      </td>
                       <td className="p-3 font-medium">{m.aluno_nome}<div className="text-xs text-gray-500">{m.telefone || '—'}</div></td>
                       {editingInad === m.id ? (
                         <>
