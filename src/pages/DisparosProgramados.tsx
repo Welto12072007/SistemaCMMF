@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
 import { MEDIA_ACCEPT, uploadDisparoMedia, listDisparoMedia, deleteDisparoMedia } from '@/lib/disparosMedia'
@@ -32,6 +32,10 @@ import {
   CheckCircle2,
   XCircle,
   SkipForward,
+  Camera,
+  X,
+  Video,
+  StopCircle,
 } from 'lucide-react'
 
 interface DisparoProgramado {
@@ -110,17 +114,33 @@ const GRUPO_LABELS: Record<string, string> = {
 
 type Tab = 'disparos' | 'historico'
 
+interface DisparoPublico {
+  id: string
+  nome: string
+  descricao: string | null
+  ativo: boolean
+  created_at: string
+}
+
 export default function DisparosProgramados() {
   const [disparos, setDisparos] = useState<DisparoProgramado[]>([])
   const [segmentos, setSegmentos] = useState<CRMSegmento[]>([])
+  const [publicos, setPublicos] = useState<DisparoPublico[]>([])
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<DisparoProgramado | null>(null)
   const [tab, setTab] = useState<Tab>('disparos')
+  const [showPublicos, setShowPublicos] = useState(false)
 
   useEffect(() => {
     loadDisparos()
     void loadSegmentos()
+    void loadPublicos()
   }, [])
+
+  async function loadPublicos() {
+    const { data } = await supabase.from('disparos_publicos').select('*').order('nome')
+    setPublicos((data as DisparoPublico[]) || [])
+  }
 
   async function loadSegmentos() {
     const { data } = await supabase
@@ -145,6 +165,11 @@ export default function DisparosProgramados() {
 
   function formatarGrupo(grupoAlvo: string) {
     if (GRUPO_LABELS[grupoAlvo]) return GRUPO_LABELS[grupoAlvo]
+    if (grupoAlvo.startsWith('publico:')) {
+      const publicoId = grupoAlvo.replace('publico:', '')
+      const pub = publicos.find((p) => p.id === publicoId)
+      return pub ? `Público: ${pub.nome}` : 'Público personalizado'
+    }
     if (grupoAlvo.startsWith('segmento:')) {
       const segmentoId = grupoAlvo.replace('segmento:', '')
       const seg = segmentos.find((s) => s.id === segmentoId)
@@ -234,13 +259,22 @@ export default function DisparosProgramados() {
           <p className="text-gray-500">Mensagens automáticas recorrentes</p>
         </div>
         {tab === 'disparos' && (
-          <button
-            onClick={() => { setEditing(null); setShowForm(true) }}
-            className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Novo Disparo
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowPublicos(true)}
+              className="flex items-center gap-2 border border-gray-200 text-gray-700 px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Users className="w-4 h-4" />
+              Públicos
+            </button>
+            <button
+              onClick={() => { setEditing(null); setShowForm(true) }}
+              className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Novo Disparo
+            </button>
+          </div>
         )}
       </div>
 
@@ -398,8 +432,17 @@ export default function DisparosProgramados() {
         <DisparoForm
           disparo={editing}
           segmentos={segmentos}
+          publicos={publicos}
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditing(null) }}
+        />
+      )}
+
+      {showPublicos && (
+        <PublicosManagerModal
+          publicos={publicos}
+          onClose={() => setShowPublicos(false)}
+          onChanged={loadPublicos}
         />
       )}
     </div>
@@ -409,11 +452,13 @@ export default function DisparosProgramados() {
 function DisparoForm({
   disparo,
   segmentos,
+  publicos,
   onSave,
   onClose,
 }: {
   disparo: DisparoProgramado | null
   segmentos: CRMSegmento[]
+  publicos: DisparoPublico[]
   onSave: (data: Partial<DisparoProgramado>) => void
   onClose: () => void
 }) {
@@ -435,6 +480,7 @@ function DisparoForm({
   const [uploadingMedia, setUploadingMedia] = useState(false)
   const [mediaLibrary, setMediaLibrary] = useState<Array<{ name: string; path: string; url: string }>>([])
   const [mediaError, setMediaError] = useState('')
+  const [showCamera, setShowCamera] = useState(false)
 
   useEffect(() => {
     if (!form.media_type) {
@@ -482,6 +528,11 @@ function DisparoForm({
     } catch {
       setMediaError('Falha ao excluir mídia da biblioteca.')
     }
+  }
+
+  async function handleCameraCapture(file: File) {
+    setShowCamera(false)
+    await handleUploadMedia(file)
   }
 
   return (
@@ -536,6 +587,12 @@ function DisparoForm({
             {segmentos.map((s) => (
               <option key={s.id} value={`segmento:${s.id}`}>
                 Segmento: {s.nome}
+              </option>
+            ))}
+            {publicos.length > 0 && <option disabled>──────────</option>}
+            {publicos.map((p) => (
+              <option key={p.id} value={`publico:${p.id}`}>
+                Público: {p.nome}{!p.ativo ? ' (inativo)' : ''}
               </option>
             ))}
           </select>
@@ -617,12 +674,23 @@ function DisparoForm({
           </select>
           {form.media_type && (
             <div className="space-y-2">
-              <input
-                type="file"
-                accept={MEDIA_ACCEPT[form.media_type as MediaType]}
-                className="text-xs"
-                onChange={(e) => handleUploadMedia(e.target.files?.[0] || null)}
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept={MEDIA_ACCEPT[form.media_type as MediaType]}
+                  className="text-xs"
+                  onChange={(e) => handleUploadMedia(e.target.files?.[0] || null)}
+                />
+                {(form.media_type === 'image' || form.media_type === 'video') && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCamera(true)}
+                    className="flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-gray-200 hover:bg-gray-50 whitespace-nowrap"
+                  >
+                    <Camera className="w-3.5 h-3.5" /> Usar câmera
+                  </button>
+                )}
+              </div>
               {uploadingMedia && <p className="text-xs text-gray-500">Enviando arquivo...</p>}
               {mediaError && <p className="text-xs text-red-500">{mediaError}</p>}
               {form.media_url && (
@@ -693,6 +761,14 @@ function DisparoForm({
           </button>
         </div>
       </div>
+
+      {showCamera && (
+        <CameraCaptureModal
+          mode={form.media_type === 'video' ? 'video' : 'photo'}
+          onClose={() => setShowCamera(false)}
+          onCapture={handleCameraCapture}
+        />
+      )}
     </div>
   )
 }
@@ -1047,6 +1123,354 @@ function HistoricoView({ formatarGrupo: _formatarGrupo }: { formatarGrupo: (g: s
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// =====================================================================
+// Captura de foto/vídeo direto da câmera
+// =====================================================================
+
+function CameraCaptureModal({
+  mode,
+  onClose,
+  onCapture,
+}: {
+  mode: 'photo' | 'video'
+  onClose: () => void
+  onCapture: (file: File) => void
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+  const [error, setError] = useState('')
+  const [recording, setRecording] = useState(false)
+  const [seconds, setSeconds] = useState(0)
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null
+    async function start() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' },
+          audio: mode === 'video',
+        })
+        streamRef.current = stream
+        if (videoRef.current) videoRef.current.srcObject = stream
+      } catch {
+        setError('Não foi possível acessar a câmera. Verifique as permissões do navegador.')
+      }
+    }
+    void start()
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop())
+      if (timer) clearInterval(timer)
+    }
+  }, [mode])
+
+  function tirarFoto() {
+    const video = videoRef.current
+    if (!video) return
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(video, 0, 0)
+    canvas.toBlob((blob) => {
+      if (!blob) return
+      const file = new File([blob], `foto-${Date.now()}.jpg`, { type: 'image/jpeg' })
+      onCapture(file)
+    }, 'image/jpeg', 0.9)
+  }
+
+  function iniciarGravacao() {
+    const stream = streamRef.current
+    if (!stream) return
+    chunksRef.current = []
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' })
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+    recorder.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: 'video/webm' })
+      const file = new File([blob], `video-${Date.now()}.webm`, { type: 'video/webm' })
+      onCapture(file)
+    }
+    recorder.start()
+    recorderRef.current = recorder
+    setRecording(true)
+    setSeconds(0)
+    const timer = setInterval(() => {
+      setSeconds((s) => {
+        if (s + 1 >= 60) { pararGravacao(); return s }
+        return s + 1
+      })
+    }, 1000)
+    ;(recorder as any)._timer = timer
+  }
+
+  function pararGravacao() {
+    const recorder = recorderRef.current
+    if (!recorder) return
+    if ((recorder as any)._timer) clearInterval((recorder as any)._timer)
+    if (recorder.state !== 'inactive') recorder.stop()
+    setRecording(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60]" onClick={onClose}>
+      <div className="bg-white rounded-xl p-4 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <Camera className="w-4 h-4" /> {mode === 'video' ? 'Gravar vídeo' : 'Tirar foto'}
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X className="w-4 h-4" /></button>
+        </div>
+
+        {error ? (
+          <p className="text-sm text-red-600 py-8 text-center">{error}</p>
+        ) : (
+          <>
+            <video ref={videoRef} autoPlay playsInline muted className="w-full rounded-lg bg-black aspect-video object-cover" />
+            {recording && (
+              <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" /> Gravando... {seconds}s / 60s
+              </p>
+            )}
+            <div className="flex justify-center gap-3 mt-4">
+              {mode === 'photo' ? (
+                <button onClick={tirarFoto} className="flex items-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-lg hover:bg-brand-600">
+                  <Camera className="w-4 h-4" /> Capturar foto
+                </button>
+              ) : recording ? (
+                <button onClick={pararGravacao} className="flex items-center gap-2 bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700">
+                  <StopCircle className="w-4 h-4" /> Parar gravação
+                </button>
+              ) : (
+                <button onClick={iniciarGravacao} className="flex items-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-lg hover:bg-brand-600">
+                  <Video className="w-4 h-4" /> Iniciar gravação
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// =====================================================================
+// Públicos personalizados (audiências manuais para disparos direcionados)
+// =====================================================================
+
+interface AlunoPublico {
+  id: string
+  nome: string
+  telefone: string | null
+  status: string
+}
+
+function PublicosManagerModal({
+  publicos,
+  onClose,
+  onChanged,
+}: {
+  publicos: DisparoPublico[]
+  onClose: () => void
+  onChanged: () => void
+}) {
+  const [editing, setEditing] = useState<DisparoPublico | null>(null)
+  const [creating, setCreating] = useState(false)
+
+  async function handleDelete(id: string, nome: string) {
+    if (!confirm(`Excluir o público "${nome}"? Os alunos não serão afetados, só a lista.`)) return
+    await supabase.from('disparos_publicos').delete().eq('id', id)
+    onChanged()
+  }
+
+  async function toggleAtivo(p: DisparoPublico) {
+    await supabase.from('disparos_publicos').update({ ativo: !p.ativo }).eq('id', p.id)
+    onChanged()
+  }
+
+  if (editing || creating) {
+    return (
+      <PublicoEditorModal
+        publico={editing}
+        onClose={() => { setEditing(null); setCreating(false) }}
+        onSaved={() => { setEditing(null); setCreating(false); onChanged() }}
+      />
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold">Públicos personalizados</h2>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X className="w-4 h-4" /></button>
+        </div>
+
+        <button
+          onClick={() => setCreating(true)}
+          className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg py-3 text-sm text-gray-600 hover:border-brand-400 hover:text-brand-600 mb-4"
+        >
+          <Plus className="w-4 h-4" /> Novo público
+        </button>
+
+        <div className="space-y-2">
+          {publicos.map((p) => (
+            <div key={p.id} className={`border rounded-lg p-3 ${!p.ativo ? 'opacity-60' : ''}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-sm text-gray-900">{p.nome}</p>
+                  {p.descricao && <p className="text-xs text-gray-500">{p.descricao}</p>}
+                </div>
+                <button onClick={() => toggleAtivo(p)} title={p.ativo ? 'Desativar' : 'Ativar'}>
+                  {p.ativo ? <ToggleRight className="w-7 h-7 text-green-500" /> : <ToggleLeft className="w-7 h-7 text-gray-300" />}
+                </button>
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button onClick={() => setEditing(p)} className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600 px-2 py-1 rounded">
+                  <Pencil className="w-3 h-3" /> Editar / alunos
+                </button>
+                <button onClick={() => handleDelete(p.id, p.nome)} className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded ml-auto">
+                  <Trash2 className="w-3 h-3" /> Excluir
+                </button>
+              </div>
+            </div>
+          ))}
+          {publicos.length === 0 && (
+            <p className="text-center text-sm text-gray-400 py-6">Nenhum público criado ainda.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PublicoEditorModal({
+  publico,
+  onClose,
+  onSaved,
+}: {
+  publico: DisparoPublico | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [nome, setNome] = useState(publico?.nome ?? '')
+  const [descricao, setDescricao] = useState(publico?.descricao ?? '')
+  const [busca, setBusca] = useState('')
+  const [alunos, setAlunos] = useState<AlunoPublico[]>([])
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    void loadAlunos()
+    if (publico) void loadSelecionados(publico.id)
+  }, [])
+
+  async function loadAlunos() {
+    const { data } = await supabase
+      .from('alunos')
+      .select('id, nome, telefone, status')
+      .order('nome')
+      .limit(1000)
+    setAlunos((data as AlunoPublico[]) || [])
+  }
+
+  async function loadSelecionados(publicoId: string) {
+    const { data } = await supabase.from('disparos_publicos_alunos').select('aluno_id').eq('publico_id', publicoId)
+    setSelecionados(new Set((data || []).map((r: any) => r.aluno_id)))
+  }
+
+  function toggleAluno(id: string) {
+    setSelecionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function salvar() {
+    if (!nome.trim()) { alert('Dê um nome ao público.'); return }
+    setSaving(true)
+    try {
+      let publicoId = publico?.id
+      if (publicoId) {
+        const { error } = await supabase.from('disparos_publicos').update({ nome, descricao: descricao || null }).eq('id', publicoId)
+        if (error) throw error
+      } else {
+        const { data, error } = await supabase.from('disparos_publicos').insert({ nome, descricao: descricao || null }).select('id').single()
+        if (error) throw error
+        publicoId = data.id
+      }
+
+      await supabase.from('disparos_publicos_alunos').delete().eq('publico_id', publicoId)
+      const rows = [...selecionados].map((aluno_id) => ({ publico_id: publicoId, aluno_id }))
+      if (rows.length > 0) {
+        const { error } = await supabase.from('disparos_publicos_alunos').insert(rows)
+        if (error) throw error
+      }
+      onSaved()
+    } catch (err: any) {
+      alert('Erro ao salvar: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const filtrados = alunos.filter((a) => !busca.trim() || a.nome.toLowerCase().includes(busca.toLowerCase()))
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold">{publico ? 'Editar público' : 'Novo público'}</h2>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="space-y-3 mb-3">
+          <input
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+            placeholder="Nome (ex: Confirmados Rock Music Festival)"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+          />
+          <input
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+            placeholder="Descrição (opcional)"
+            value={descricao}
+            onChange={(e) => setDescricao(e.target.value)}
+          />
+        </div>
+
+        <p className="text-xs text-gray-500 mb-1">{selecionados.size} aluno(s) selecionado(s)</p>
+        <input
+          className="w-full border rounded-lg px-3 py-2 text-sm mb-2"
+          placeholder="Buscar aluno..."
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+        />
+        <div className="border rounded-lg divide-y overflow-y-auto flex-1 max-h-64">
+          {filtrados.map((a) => (
+            <label key={a.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
+              <input type="checkbox" checked={selecionados.has(a.id)} onChange={() => toggleAluno(a.id)} className="w-4 h-4" />
+              <span className="flex-1">{a.nome}</span>
+              <span className="text-xs text-gray-400">{a.status}</span>
+            </label>
+          ))}
+          {filtrados.length === 0 && <p className="text-center text-sm text-gray-400 py-6">Nenhum aluno encontrado.</p>}
+        </div>
+
+        <div className="flex justify-end gap-3 mt-4">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+          <button onClick={salvar} disabled={saving} className="px-4 py-2 text-sm text-white rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-50">
+            {saving ? 'Salvando...' : 'Salvar'}
+          </button>
         </div>
       </div>
     </div>
