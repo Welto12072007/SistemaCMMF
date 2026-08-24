@@ -774,7 +774,7 @@ function DisparoForm({
 }
 
 // =====================================================================
-// Lembrete de Aula Experimental (evento-driven, processado pelo n8n a cada 5min)
+// Lembrete de Aula Experimental (evento-driven, processado pelo GitHub Actions a cada 15min)
 // =====================================================================
 
 interface LembreteExpConfig {
@@ -825,7 +825,7 @@ function LembreteExperimentalCard() {
           <div className="p-2 rounded-lg bg-teal-100 text-teal-700"><Bell className="w-5 h-5" /></div>
           <div>
             <h3 className="font-semibold text-gray-900">Lembrete de Aula Experimental</h3>
-            <p className="text-xs text-gray-500">Envio automático 1 dia antes e 3h antes de cada aula experimental confirmada — processado pelo n8n a cada 5 min</p>
+            <p className="text-xs text-gray-500">Envio automático 1 dia antes e 3h antes de cada aula experimental confirmada — processado pelo GitHub Actions a cada 15 min (não consome executions do n8n)</p>
           </div>
         </div>
         <button onClick={toggleAtivo} title={cfg.ativo ? 'Desativar' : 'Ativar'}>
