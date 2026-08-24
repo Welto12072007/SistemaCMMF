@@ -414,7 +414,7 @@ export default function Faltas() {
               <option value="cancelado">Cancelados</option>
             </select>
             <p className="text-sm text-gray-500">
-              Fluxo: <strong>pendente</strong> → revisar → <strong>aprovar</strong> → n8n envia → <strong>enviado</strong>
+              Fluxo: <strong>pendente</strong> → revisar → <strong>aprovar</strong> → envio automático → <strong>enviado</strong>
             </p>
           </div>
 

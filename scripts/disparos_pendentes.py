@@ -28,7 +28,12 @@ EVO_URL      = os.environ.get("EVOLUTION_API_URL", "https://api.centrodemusicamu
 EVO_KEY      = os.environ.get("EVOLUTION_API_KEY", "CentroMusica2026ApiKey")
 EVO_INSTANCE = os.environ.get("EVOLUTION_INSTANCE", "CentroMusica")
 
-TIPOS_PERMITIDOS = ["lembrete_experimental_1d", "lembrete_experimental_3h"]
+TIPOS_PERMITIDOS = [
+    "boas_vindas",
+    "manual_do_aluno",
+    "lembrete_experimental_1d",
+    "lembrete_experimental_3h",
+]
 
 SB_HEADERS = {
     "apikey": SB_KEY,
