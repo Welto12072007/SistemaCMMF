@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     const batchSize = 10
     for (let i = 0; i < customerIds.length; i += batchSize) {
       const batch = customerIds.slice(i, i + batchSize)
-      const promises = batch.map(cid =>
+      const promises = batch.map(cid => 
         fetch(`https://api.asaas.com/v3/customers/${cid}`, { headers: { 'access_token': apiKey } })
           .then(r => r.json())
           .then(c => ({ cid, name: c.name || '?', cpfCnpj: c.cpfCnpj || '', phone: c.mobilePhone || c.phone || '' }))

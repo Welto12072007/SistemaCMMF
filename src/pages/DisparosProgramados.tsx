@@ -264,6 +264,8 @@ export default function DisparosProgramados() {
         <HistoricoView formatarGrupo={formatarGrupo} />
       ) : (
       <>
+      <LembreteExperimentalCard />
+
       {/* Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {disparos.map((d) => {
@@ -696,8 +698,102 @@ function DisparoForm({
 }
 
 // =====================================================================
-// Histórico de Disparos
+// Lembrete de Aula Experimental (evento-driven, processado pelo n8n a cada 5min)
 // =====================================================================
+
+interface LembreteExpConfig {
+  ativo: boolean
+  mensagem_1d: string
+  mensagem_3h: string
+}
+
+function LembreteExperimentalCard() {
+  const [cfg, setCfg] = useState<LembreteExpConfig | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    void load()
+  }, [])
+
+  async function load() {
+    const { data } = await supabase.from('lembrete_experimental_config').select('*').eq('id', 1).maybeSingle()
+    if (data) setCfg(data as LembreteExpConfig)
+  }
+
+  async function toggleAtivo() {
+    if (!cfg) return
+    const novo = { ...cfg, ativo: !cfg.ativo }
+    setCfg(novo)
+    await supabase.from('lembrete_experimental_config').update({ ativo: novo.ativo }).eq('id', 1)
+  }
+
+  async function salvar() {
+    if (!cfg) return
+    setSaving(true)
+    const { error } = await supabase
+      .from('lembrete_experimental_config')
+      .update({ mensagem_1d: cfg.mensagem_1d, mensagem_3h: cfg.mensagem_3h, updated_at: new Date().toISOString() })
+      .eq('id', 1)
+    setSaving(false)
+    if (error) { alert('Erro ao salvar: ' + error.message); return }
+    alert('Mensagens salvas!')
+  }
+
+  if (!cfg) return null
+
+  return (
+    <div className={`bg-white rounded-xl shadow-sm border p-5 ${!cfg.ativo ? 'opacity-60' : ''}`}>
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-teal-100 text-teal-700"><Bell className="w-5 h-5" /></div>
+          <div>
+            <h3 className="font-semibold text-gray-900">Lembrete de Aula Experimental</h3>
+            <p className="text-xs text-gray-500">Envio automático 1 dia antes e 3h antes de cada aula experimental confirmada — processado pelo n8n a cada 5 min</p>
+          </div>
+        </div>
+        <button onClick={toggleAtivo} title={cfg.ativo ? 'Desativar' : 'Ativar'}>
+          {cfg.ativo ? <ToggleRight className="w-8 h-8 text-green-500" /> : <ToggleLeft className="w-8 h-8 text-gray-300" />}
+        </button>
+      </div>
+
+      <button onClick={() => setExpanded(!expanded)} className="text-xs text-brand-600 hover:underline mt-3">
+        {expanded ? 'Ocultar mensagens' : 'Editar mensagens'}
+      </button>
+
+      {expanded && (
+        <div className="mt-3 space-y-3">
+          <p className="text-xs text-gray-400">Variáveis: {'{nome}'}, {'{hora}'}</p>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Mensagem — 1 dia antes</label>
+            <textarea
+              className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
+              rows={6}
+              value={cfg.mensagem_1d}
+              onChange={(e) => setCfg({ ...cfg, mensagem_1d: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Mensagem — 3 horas antes</label>
+            <textarea
+              className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
+              rows={6}
+              value={cfg.mensagem_3h}
+              onChange={(e) => setCfg({ ...cfg, mensagem_3h: e.target.value })}
+            />
+          </div>
+          <button
+            onClick={salvar}
+            disabled={saving}
+            className="px-4 py-2 text-sm text-white rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-50"
+          >
+            {saving ? 'Salvando...' : 'Salvar mensagens'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface HistoricoAgg {
   disparo_id: string
