@@ -4,7 +4,11 @@ Processa APENAS a tabela disparos_pendentes (mensagens individuais agendadas por
 NÃO processa disparos_programados — isso é feito exclusivamente pelo automacoes.py
 que loga corretamente no disparos_programados_log para deduplicação.
 
-Roda via GitHub Actions a cada 30 minutos.
+Roda via GitHub Actions (baixo custo de execuções, ao contrário do n8n Cloud).
+
+Por segurança, só processa os tipos em TIPOS_PERMITIDOS — há registros antigos de
+outros tipos (cobranca_atraso, lembrete_mensalidade, pos_experimental etc.) na fila
+que não devem ser reenviados sem revisão manual antes.
 """
 import os
 import re
@@ -23,6 +27,8 @@ SB_KEY       = os.environ["SUPABASE_SERVICE_KEY"]
 EVO_URL      = os.environ.get("EVOLUTION_API_URL", "https://api.centrodemusicamurilofinger.com")
 EVO_KEY      = os.environ.get("EVOLUTION_API_KEY", "CentroMusica2026ApiKey")
 EVO_INSTANCE = os.environ.get("EVOLUTION_INSTANCE", "CentroMusica")
+
+TIPOS_PERMITIDOS = ["lembrete_experimental_1d", "lembrete_experimental_3h"]
 
 SB_HEADERS = {
     "apikey": SB_KEY,
@@ -72,6 +78,7 @@ def buscar_pendentes() -> list:
             params={
                 "select": "id,aluno_id,tipo,canal,mensagem,telefone_destinatario,agendado_para",
                 "status": "eq.pendente",
+                "tipo": f"in.({','.join(TIPOS_PERMITIDOS)})",
                 "criado_em": f"gte.{cutoff}",
                 "order": "criado_em.asc",
                 "limit": "100",
