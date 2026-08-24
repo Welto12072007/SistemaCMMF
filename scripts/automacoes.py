@@ -261,6 +261,19 @@ def processar_disparos_programados(br: dt.datetime) -> None:
         disparar_agora = d.get("disparar_agora") is True
         deve = False
 
+        # Trava de segurança: recorrencia='unico' sem data_unica é convenção
+        # para "disparo por evento" (ex.: boas-vindas/manual do aluno, feito
+        # por trigger no banco). NUNCA deve virar blast pra todo o grupo de
+        # uma vez, mesmo que disparar_agora tenha sido setado por engano.
+        if recorrencia == "unico" and not d.get("data_unica"):
+            if disparar_agora:
+                log.warning(
+                    f'Disparo "{d["nome"]}" é gatilho por evento (unico sem data) '
+                    f'mas veio com disparar_agora=true — ignorando para evitar envio em massa.'
+                )
+                rpc("marcar_disparo_processado", {"p_disparo_id": d["id"], "p_total_enviados": 0})
+            continue
+
         if disparar_agora:
             deve = True
         else:

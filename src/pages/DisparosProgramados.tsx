@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
 import { MEDIA_ACCEPT, uploadDisparoMedia, listDisparoMedia, deleteDisparoMedia } from '@/lib/disparosMedia'
 import type { MediaType } from '@/lib/disparosMedia'
 import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
+import CameraCaptureModal from '@/components/CameraCaptureModal'
 import {
   Calendar,
   Plus,
@@ -34,8 +35,6 @@ import {
   SkipForward,
   Camera,
   X,
-  Video,
-  StopCircle,
 } from 'lucide-react'
 
 interface DisparoProgramado {
@@ -113,6 +112,13 @@ const GRUPO_LABELS: Record<string, string> = {
 }
 
 type Tab = 'disparos' | 'historico'
+
+// Convenção: recorrência 'unico' + sem data_unica = disparo automático por
+// evento (matrícula), disparado por trigger no banco — não por lista/blast.
+// "Disparar agora" nesses casos mandaria pra TODOS os alunos do grupo de uma vez.
+function ehGatilhoDeEvento(d: { recorrencia?: string; data_unica?: string | null }) {
+  return (d.recorrencia || '') === 'unico' && !d.data_unica
+}
 
 interface DisparoPublico {
   id: string
@@ -226,7 +232,11 @@ export default function DisparosProgramados() {
   }
 
   async function handleDispararAgora(d: DisparoProgramado) {
-    if (!confirm(`Disparar AGORA o disparo "${d.nome}" para ${formatarGrupo(d.grupo_alvo)}?\n\nO n8n vai processar na próxima execução (em até 2 horas).`)) return
+    if (ehGatilhoDeEvento(d)) {
+      alert('Este disparo é automático por evento (matrícula), não por lista de contatos.\n\nClicar em "Disparar agora" mandaria a mensagem para TODOS os alunos do grupo de uma vez, inclusive quem já recebeu antes. Por segurança, isso está bloqueado.\n\nPara editar quando ele dispara, use o campo "Dias após a matrícula".')
+      return
+    }
+    if (!confirm(`Disparar AGORA o disparo "${d.nome}" para ${formatarGrupo(d.grupo_alvo)}?\n\nSerá processado na próxima execução do GitHub Actions (em até 2 horas).`)) return
     const { error } = await supabase
       .from('disparos_programados')
       .update({ disparar_agora: true, ativo: true })
@@ -235,7 +245,7 @@ export default function DisparosProgramados() {
       alert('Erro ao agendar disparo:\n' + error.message)
       return
     }
-    alert('Disparo agendado! Será processado na próxima execução do n8n.')
+    alert('Disparo agendado! Será processado na próxima execução do GitHub Actions.')
     loadDisparos()
   }
 
@@ -384,6 +394,12 @@ export default function DisparosProgramados() {
                 </p>
               )}
 
+              {ehGatilhoDeEvento(d) && (
+                <p className="text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded px-2 py-1 mb-3">
+                  Disparo automático por matrícula — envia {d.dia_disparo ?? 1} dia(s) depois, individualmente por aluno.
+                </p>
+              )}
+
               <div className="flex items-center gap-2 pt-2 border-t flex-wrap">
                 <button
                   onClick={() => { setEditing(d); setShowForm(true) }}
@@ -400,8 +416,9 @@ export default function DisparosProgramados() {
                 </button>
                 <button
                   onClick={() => handleDispararAgora(d)}
-                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-orange-600 px-2 py-1 rounded"
-                  title="Forçar disparo na próxima execução do n8n"
+                  disabled={ehGatilhoDeEvento(d)}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-orange-600 px-2 py-1 rounded disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-gray-500"
+                  title={ehGatilhoDeEvento(d) ? 'Bloqueado: este disparo é automático por matrícula, não por lista' : 'Forçar disparo na próxima execução do GitHub Actions'}
                 >
                   <Zap className="w-3 h-3" /> Disparar agora
                 </button>
@@ -481,6 +498,9 @@ function DisparoForm({
   const [mediaLibrary, setMediaLibrary] = useState<Array<{ name: string; path: string; url: string }>>([])
   const [mediaError, setMediaError] = useState('')
   const [showCamera, setShowCamera] = useState(false)
+
+  // Boas-vindas e Manual do Aluno são disparos por evento (matrícula), não por lista
+  const isMatriculaGatilho = form.tipo === 'boas_vindas' || form.nome.trim().toLowerCase() === 'manual do aluno'
 
   useEffect(() => {
     if (!form.media_type) {
@@ -650,7 +670,24 @@ function DisparoForm({
             </div>
           )}
 
-          {form.recorrencia === 'unico' && (
+          {form.recorrencia === 'unico' && isMatriculaGatilho && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Dias após a matrícula do aluno</label>
+              <input
+                type="number"
+                min="0"
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                placeholder="Ex: 1"
+                value={form.dia_disparo}
+                onChange={(e) => setForm({ ...form, dia_disparo: e.target.value })}
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Automático por evento: dispara individualmente X dias depois de cada matrícula (não é um blast pra todo mundo de uma vez).
+              </p>
+            </div>
+          )}
+
+          {form.recorrencia === 'unico' && !isMatriculaGatilho && (
             <div>
               <label className="text-xs text-gray-500 block mb-1">Data específica</label>
               <input
@@ -1124,138 +1161,6 @@ function HistoricoView({ formatarGrupo: _formatarGrupo }: { formatarGrupo: (g: s
             </tbody>
           </table>
         </div>
-      </div>
-    </div>
-  )
-}
-
-// =====================================================================
-// Captura de foto/vídeo direto da câmera
-// =====================================================================
-
-function CameraCaptureModal({
-  mode,
-  onClose,
-  onCapture,
-}: {
-  mode: 'photo' | 'video'
-  onClose: () => void
-  onCapture: (file: File) => void
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const recorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const [error, setError] = useState('')
-  const [recording, setRecording] = useState(false)
-  const [seconds, setSeconds] = useState(0)
-
-  useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | null = null
-    async function start() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' },
-          audio: mode === 'video',
-        })
-        streamRef.current = stream
-        if (videoRef.current) videoRef.current.srcObject = stream
-      } catch {
-        setError('Não foi possível acessar a câmera. Verifique as permissões do navegador.')
-      }
-    }
-    void start()
-    return () => {
-      streamRef.current?.getTracks().forEach((t) => t.stop())
-      if (timer) clearInterval(timer)
-    }
-  }, [mode])
-
-  function tirarFoto() {
-    const video = videoRef.current
-    if (!video) return
-    const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.drawImage(video, 0, 0)
-    canvas.toBlob((blob) => {
-      if (!blob) return
-      const file = new File([blob], `foto-${Date.now()}.jpg`, { type: 'image/jpeg' })
-      onCapture(file)
-    }, 'image/jpeg', 0.9)
-  }
-
-  function iniciarGravacao() {
-    const stream = streamRef.current
-    if (!stream) return
-    chunksRef.current = []
-    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' })
-    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
-    recorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: 'video/webm' })
-      const file = new File([blob], `video-${Date.now()}.webm`, { type: 'video/webm' })
-      onCapture(file)
-    }
-    recorder.start()
-    recorderRef.current = recorder
-    setRecording(true)
-    setSeconds(0)
-    const timer = setInterval(() => {
-      setSeconds((s) => {
-        if (s + 1 >= 60) { pararGravacao(); return s }
-        return s + 1
-      })
-    }, 1000)
-    ;(recorder as any)._timer = timer
-  }
-
-  function pararGravacao() {
-    const recorder = recorderRef.current
-    if (!recorder) return
-    if ((recorder as any)._timer) clearInterval((recorder as any)._timer)
-    if (recorder.state !== 'inactive') recorder.stop()
-    setRecording(false)
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60]" onClick={onClose}>
-      <div className="bg-white rounded-xl p-4 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <Camera className="w-4 h-4" /> {mode === 'video' ? 'Gravar vídeo' : 'Tirar foto'}
-          </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X className="w-4 h-4" /></button>
-        </div>
-
-        {error ? (
-          <p className="text-sm text-red-600 py-8 text-center">{error}</p>
-        ) : (
-          <>
-            <video ref={videoRef} autoPlay playsInline muted className="w-full rounded-lg bg-black aspect-video object-cover" />
-            {recording && (
-              <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" /> Gravando... {seconds}s / 60s
-              </p>
-            )}
-            <div className="flex justify-center gap-3 mt-4">
-              {mode === 'photo' ? (
-                <button onClick={tirarFoto} className="flex items-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-lg hover:bg-brand-600">
-                  <Camera className="w-4 h-4" /> Capturar foto
-                </button>
-              ) : recording ? (
-                <button onClick={pararGravacao} className="flex items-center gap-2 bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700">
-                  <StopCircle className="w-4 h-4" /> Parar gravação
-                </button>
-              ) : (
-                <button onClick={iniciarGravacao} className="flex items-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-lg hover:bg-brand-600">
-                  <Video className="w-4 h-4" /> Iniciar gravação
-                </button>
-              )}
-            </div>
-          </>
-        )}
       </div>
     </div>
   )

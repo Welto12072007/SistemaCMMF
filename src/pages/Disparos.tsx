@@ -1,10 +1,12 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
 import { MEDIA_ACCEPT, uploadDisparoMedia, listDisparoMedia, deleteDisparoMedia } from '@/lib/disparosMedia'
 import type { MediaType } from '@/lib/disparosMedia'
 import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
 import AudioRecorder from '@/components/AudioRecorder'
+import CameraCaptureModal from '@/components/CameraCaptureModal'
 import {
   Send,
   Users,
@@ -18,6 +20,7 @@ import {
   Loader2,
   Image,
   Paperclip,
+  Camera,
 } from 'lucide-react'
 
 interface Destinatario {
@@ -37,6 +40,7 @@ type GrupoBase =
   | 'leads'
   | 'aguardando_pagamento'
   | `segmento:${string}`
+  | `publico:${string}`
 
 const GRUPOS: { key: GrupoBase; label: string; desc: string }[] = [
   { key: 'todos', label: 'Todos os contatos', desc: 'Enviar para toda a base' },
@@ -73,6 +77,9 @@ export default function Disparos() {
   const [uploadingMedia, setUploadingMedia] = useState(false)
   const [mediaLibrary, setMediaLibrary] = useState<Array<{ name: string; path: string; url: string }>>([])
   const [mediaError, setMediaError] = useState('')
+  const [publicos, setPublicos] = useState<{ id: string; nome: string; ativo: boolean }[]>([])
+  const [publicoMembros, setPublicoMembros] = useState<Record<string, Set<string>>>({})
+  const [showCamera, setShowCamera] = useState(false)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -99,7 +106,25 @@ export default function Disparos() {
   useEffect(() => {
     void loadContatos()
     void loadSegmentos()
+    void loadPublicos()
   }, [])
+
+  useEffect(() => {
+    if (typeof grupoBase !== 'string' || !grupoBase.startsWith('publico:')) return
+    const publicoId = grupoBase.replace('publico:', '')
+    if (publicoMembros[publicoId]) return
+    void loadMembrosPublico(publicoId)
+  }, [grupoBase])
+
+  async function loadPublicos() {
+    const { data } = await supabase.from('disparos_publicos').select('id, nome, ativo').eq('ativo', true).order('nome')
+    setPublicos(data || [])
+  }
+
+  async function loadMembrosPublico(publicoId: string) {
+    const { data } = await supabase.from('disparos_publicos_alunos').select('aluno_id').eq('publico_id', publicoId)
+    setPublicoMembros((prev) => ({ ...prev, [publicoId]: new Set((data || []).map((r: any) => r.aluno_id)) }))
+  }
 
   useEffect(() => {
     if (mediaType === 'text') {
@@ -221,7 +246,11 @@ export default function Disparos() {
   const filtrados = useMemo(() => {
     let lista = contatos
 
-    if (typeof grupoBase === 'string' && grupoBase.startsWith('segmento:')) {
+    if (typeof grupoBase === 'string' && grupoBase.startsWith('publico:')) {
+      const publicoId = grupoBase.replace('publico:', '')
+      const ids = publicoMembros[publicoId]
+      lista = ids ? lista.filter((c) => ids.has(c.id)) : []
+    } else if (typeof grupoBase === 'string' && grupoBase.startsWith('segmento:')) {
       const segmentoId = grupoBase.replace('segmento:', '')
       const segmento = segmentos.find((s) => s.id === segmentoId)
       if (segmento) {
@@ -268,7 +297,7 @@ export default function Disparos() {
     }
 
     return lista
-  }, [contatos, segmentos, grupoBase, instrumentosSelecionados, busca])
+  }, [contatos, segmentos, grupoBase, instrumentosSelecionados, busca, publicoMembros])
 
   const selecionados = contatos.filter((c) => c.selected)
 
@@ -381,10 +410,15 @@ export default function Disparos() {
         <div className="lg:col-span-2 space-y-4">
           {/* Group Filters */}
           <div className="bg-white rounded-xl shadow-sm border p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-              <Filter className="w-4 h-4" />
-              Selecionar público
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <Filter className="w-4 h-4" />
+                Selecionar público
+              </h3>
+              <Link to="/disparos-programados" className="text-xs text-brand-600 hover:underline">
+                Gerenciar públicos personalizados →
+              </Link>
+            </div>
             <div className="flex flex-wrap gap-2">
               {GRUPOS.map((g) => (
                 <button
@@ -412,6 +446,20 @@ export default function Disparos() {
                   title={`${getLabelGrupoBase(s.grupoBase)}${s.instrumento ? ` | ${s.instrumento}` : ''}`}
                 >
                   {s.nome}
+                </button>
+              ))}
+              {publicos.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setGrupoBase(`publico:${p.id}`)}
+                  className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                    grupoBase === `publico:${p.id}`
+                      ? 'bg-brand-500 text-white'
+                      : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                  }`}
+                  title="Público personalizado (lista manual de alunos)"
+                >
+                  {p.nome}
                 </button>
               ))}
             </div>
@@ -590,6 +638,15 @@ export default function Disparos() {
                     className="text-xs"
                     onChange={(e) => handleUploadMedia(e.target.files?.[0] || null)}
                   />
+                  {(mediaType === 'image' || mediaType === 'video') && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCamera(true)}
+                      className="flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-gray-200 hover:bg-gray-50 whitespace-nowrap"
+                    >
+                      <Camera className="w-3.5 h-3.5" /> Usar câmera
+                    </button>
+                  )}
                   {uploadingMedia && <span className="text-xs text-gray-500">Enviando...</span>}
                 </div>
                 {mediaUrl && (
@@ -716,6 +773,14 @@ export default function Disparos() {
           )}
         </div>
       </div>
+
+      {showCamera && (
+        <CameraCaptureModal
+          mode={mediaType === 'video' ? 'video' : 'photo'}
+          onClose={() => setShowCamera(false)}
+          onCapture={async (file) => { setShowCamera(false); await handleUploadMedia(file) }}
+        />
+      )}
     </div>
   )
 }
