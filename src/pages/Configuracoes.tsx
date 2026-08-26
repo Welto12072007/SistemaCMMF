@@ -81,6 +81,8 @@ function AcessosTab() {
   const [filtroRole, setFiltroRole] = useState<UserRole | 'todos'>('todos')
   const [ultimoAcesso, setUltimoAcesso] = useState<Record<string, string | null>>({})
   const [reenviandoLote, setReenviandoLote] = useState(false)
+  const [showPendentes, setShowPendentes] = useState(false)
+  const [selecionadosPendentes, setSelecionadosPendentes] = useState<Set<string>>(new Set())
 
   useEffect(() => { load() }, [])
 
@@ -115,9 +117,9 @@ function AcessosTab() {
   }
 
   async function handleReenviarLote() {
-    const pendentes = pendentesDe24h()
-    if (pendentes.length === 0) { alert('Ninguém pendente há mais de 24h sem acessar.'); return }
-    if (!confirm(`Reenviar email de acesso para ${pendentes.length} pessoa(s) que ainda não entraram no sistema?\n\n${pendentes.map(p => p.nome).join(', ')}`)) return
+    const pendentes = perfis.filter(p => selecionadosPendentes.has(p.id))
+    if (pendentes.length === 0) { alert('Selecione ao menos uma pessoa.'); return }
+    if (!confirm(`Reenviar email de acesso para ${pendentes.length} pessoa(s)?\n\n${pendentes.map(p => p.nome).join(', ')}`)) return
     setReenviandoLote(true)
     let ok = 0
     for (const p of pendentes) {
@@ -127,7 +129,18 @@ function AcessosTab() {
       if (!error) ok++
     }
     setReenviandoLote(false)
+    setSelecionadosPendentes(new Set())
+    setShowPendentes(false)
     setSuccessMsg(`Reenviado para ${ok} de ${pendentes.length} pessoa(s).`)
+  }
+
+  function toggleSelecionado(id: string) {
+    setSelecionadosPendentes(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   async function handleSave(form: { nome: string; email: string; role: UserRole; professor_id: string; telefone: string }) {
@@ -253,12 +266,11 @@ function AcessosTab() {
         <div className="flex items-center gap-2">
           {pendentesDe24h().length > 0 && (
             <button
-              onClick={handleReenviarLote}
-              disabled={reenviandoLote}
-              className="flex items-center gap-2 border border-amber-300 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg text-sm hover:bg-amber-100 disabled:opacity-50"
+              onClick={() => setShowPendentes(true)}
+              className="flex items-center gap-2 border border-amber-300 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg text-sm hover:bg-amber-100"
               title="Pessoas que nunca acessaram e o cadastro já tem mais de 24h"
             >
-              <Mail className="w-4 h-4" /> {reenviandoLote ? 'Reenviando...' : `Reenviar p/ ${pendentesDe24h().length} pendente(s)`}
+              <Mail className="w-4 h-4" /> {`${pendentesDe24h().length} pendente(s) sem acesso`}
             </button>
           )}
           <button
@@ -362,6 +374,36 @@ function AcessosTab() {
         </tbody>
       </table>
       {perfis.length === 0 && <div className="text-center py-10 text-gray-400">Nenhum acesso cadastrado</div>}
+
+      {showPendentes && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowPendentes(false)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-1">Reenviar acesso</h2>
+            <p className="text-sm text-gray-500 mb-4">Marque quem deve receber o email de novo — não precisa ser todo mundo.</p>
+            <div className="space-y-1 max-h-64 overflow-y-auto border rounded-lg divide-y">
+              {pendentesDe24h().map((p) => (
+                <label key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
+                  <input type="checkbox" checked={selecionadosPendentes.has(p.id)} onChange={() => toggleSelecionado(p.id)} className="w-4 h-4" />
+                  <span className="flex-1">{p.nome}</span>
+                  <span className="text-xs text-gray-400">{ROLE_LABELS[p.role]}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-end gap-3 mt-4">
+              <button onClick={() => { setShowPendentes(false); setSelecionadosPendentes(new Set()) }} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
+                Cancelar
+              </button>
+              <button
+                onClick={handleReenviarLote}
+                disabled={reenviandoLote || selecionadosPendentes.size === 0}
+                className="px-4 py-2 text-sm text-white rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-50"
+              >
+                {reenviandoLote ? 'Enviando...' : `Reenviar (${selecionadosPendentes.size})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <AcessoForm
