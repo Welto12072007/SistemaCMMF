@@ -79,6 +79,8 @@ function AcessosTab() {
   const [successMsg, setSuccessMsg] = useState('')
   const [busca, setBusca] = useState('')
   const [filtroRole, setFiltroRole] = useState<UserRole | 'todos'>('todos')
+  const [ultimoAcesso, setUltimoAcesso] = useState<Record<string, string | null>>({})
+  const [reenviandoLote, setReenviandoLote] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -89,6 +91,43 @@ function AcessosTab() {
     ])
     if (p) setPerfis(p)
     if (profs) setProfessores(profs)
+
+    // Busca ultimo_acesso via Admin API (auth.users nao e' consultavel pelo client normal)
+    try {
+      const { data: usersData } = await supabaseAdmin.auth.admin.listUsers({ perPage: 200 })
+      const map: Record<string, string | null> = {}
+      for (const u of usersData?.users || []) map[u.id] = u.last_sign_in_at ?? null
+      setUltimoAcesso(map)
+    } catch {
+      // Se falhar, so' nao mostramos o status de acesso — nao trava a tela
+    }
+  }
+
+  // Staff (nao-aluno) que nunca acessou e o cadastro tem 24h+ — alunos ainda nao tem portal liberado
+  function pendentesDe24h(): Perfil[] {
+    const agora = Date.now()
+    return perfis.filter((p) => {
+      if (p.role === 'aluno' || !p.ativo) return false
+      if (ultimoAcesso[p.user_id]) return false
+      const criadoEm = new Date(p.created_at as any).getTime()
+      return agora - criadoEm >= 24 * 60 * 60 * 1000
+    })
+  }
+
+  async function handleReenviarLote() {
+    const pendentes = pendentesDe24h()
+    if (pendentes.length === 0) { alert('Ninguém pendente há mais de 24h sem acessar.'); return }
+    if (!confirm(`Reenviar email de acesso para ${pendentes.length} pessoa(s) que ainda não entraram no sistema?\n\n${pendentes.map(p => p.nome).join(', ')}`)) return
+    setReenviandoLote(true)
+    let ok = 0
+    for (const p of pendentes) {
+      const { error } = await supabase.auth.resetPasswordForEmail(p.email, {
+        redirectTo: `${window.location.origin}/definir-senha`,
+      })
+      if (!error) ok++
+    }
+    setReenviandoLote(false)
+    setSuccessMsg(`Reenviado para ${ok} de ${pendentes.length} pessoa(s).`)
   }
 
   async function handleSave(form: { nome: string; email: string; role: UserRole; professor_id: string; telefone: string }) {
@@ -211,12 +250,24 @@ function AcessosTab() {
     <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
       <div className="flex items-center justify-between px-5 py-3 border-b bg-gray-50">
         <h3 className="font-semibold text-gray-900">Usuários do Sistema</h3>
-        <button
-          onClick={() => { setEditando(null); setShowForm(true); setErro('') }}
-          className="flex items-center gap-2 bg-brand-500 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-brand-600"
-        >
-          <Plus className="w-4 h-4" /> Novo Acesso
-        </button>
+        <div className="flex items-center gap-2">
+          {pendentesDe24h().length > 0 && (
+            <button
+              onClick={handleReenviarLote}
+              disabled={reenviandoLote}
+              className="flex items-center gap-2 border border-amber-300 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg text-sm hover:bg-amber-100 disabled:opacity-50"
+              title="Pessoas que nunca acessaram e o cadastro já tem mais de 24h"
+            >
+              <Mail className="w-4 h-4" /> {reenviandoLote ? 'Reenviando...' : `Reenviar p/ ${pendentesDe24h().length} pendente(s)`}
+            </button>
+          )}
+          <button
+            onClick={() => { setEditando(null); setShowForm(true); setErro('') }}
+            className="flex items-center gap-2 bg-brand-500 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-brand-600"
+          >
+            <Plus className="w-4 h-4" /> Novo Acesso
+          </button>
+        </div>
       </div>
       <p className="text-sm text-gray-500 px-5 pt-3">Cadastre quem pode acessar o sistema. A pessoa receberá um email para criar a senha.</p>
 
@@ -264,6 +315,7 @@ function AcessosTab() {
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Telefone</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Perfil</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Acesso</th>
             <th className="px-4 py-3"></th>
           </tr>
         </thead>
@@ -285,6 +337,15 @@ function AcessosTab() {
                 <span className={`text-xs px-2 py-1 rounded-full ${p.ativo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                   {p.ativo ? 'Ativo' : 'Inativo'}
                 </span>
+              </td>
+              <td className="px-4 py-3">
+                {p.role === 'aluno' ? (
+                  <span className="text-xs text-gray-400">portal ainda não liberado</span>
+                ) : ultimoAcesso[p.user_id] ? (
+                  <span className="text-xs text-gray-500">{new Date(ultimoAcesso[p.user_id]!).toLocaleDateString('pt-BR')}</span>
+                ) : (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Nunca acessou</span>
+                )}
               </td>
               <td className="px-4 py-3">
                 <div className="flex gap-2">
