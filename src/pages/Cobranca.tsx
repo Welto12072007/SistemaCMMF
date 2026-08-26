@@ -43,6 +43,7 @@ interface Config {
   max_mensalidades_juridico: number
   advogada_nome: string
   advogada_telefone: string
+  notificar_advogada_ativo: boolean
 }
 
 interface AsaasCustomer {
@@ -936,6 +937,10 @@ export default function Cobranca() {
             <label className="block text-sm col-span-2">Advogada (nome)<input value={cfg.advogada_nome} onChange={e => setCfg({ ...cfg, advogada_nome: e.target.value })} className="mt-1 w-full border rounded px-3 py-2" /></label>
             <label className="block text-sm">Telefone<input value={cfg.advogada_telefone} onChange={e => setCfg({ ...cfg, advogada_telefone: e.target.value })} className="mt-1 w-full border rounded px-3 py-2" /></label>
           </div>
+          <label className="flex items-center gap-2 text-sm bg-gray-50 border rounded-lg px-3 py-2">
+            <input type="checkbox" checked={cfg.notificar_advogada_ativo} onChange={e => setCfg({ ...cfg, notificar_advogada_ativo: e.target.checked })} />
+            Avisar a advogada automaticamente por WhatsApp ao encaminhar um caso (desligado por padrão)
+          </label>
           <button onClick={saveConfig} className="bg-brand-500 text-white px-4 py-2 rounded hover:bg-brand-600">Salvar configurações</button>
         </div>
       )}
