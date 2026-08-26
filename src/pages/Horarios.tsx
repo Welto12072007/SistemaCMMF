@@ -1149,7 +1149,8 @@ export default function Horarios() {
                             .map(a => (
                               <li
                                 key={a.id}
-                                onMouseDown={() => {
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
                                   setEditAlunoIds([a.id])
                                   setEditAlunoSearch(a.nome)
                                   setEditShowSearch(false)
@@ -1245,7 +1246,8 @@ export default function Horarios() {
                               .map(a => (
                                 <li
                                   key={a.id}
-                                  onMouseDown={() => {
+                                  onMouseDown={(e) => {
+                                    e.preventDefault()
                                     setEditAlunoIds(prev => [...prev, a.id])
                                     setEditAlunoSearch('')
                                     setEditShowSearch(false)
@@ -1263,7 +1265,8 @@ export default function Horarios() {
                               ))
                             }
                             <li
-                              onMouseDown={() => {
+                              onMouseDown={(e) => {
+                                e.preventDefault()
                                 setEditGrupoUnmatchedNames(prev => [...prev, { nome: editAlunoSearch.trim(), telefone: '' }])
                                 setEditAlunoSearch('')
                                 setEditShowSearch(false)
@@ -1417,7 +1420,8 @@ export default function Horarios() {
                             .map(a => (
                               <li
                                 key={a.id}
-                                onMouseDown={() => {
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
                                   setNovoAlunoIds([a.id])
                                   setNovoAlunoSearch(a.nome)
                                   setNovoShowSearch(false)
@@ -1507,7 +1511,8 @@ export default function Horarios() {
                               .map(a => (
                                 <li
                                   key={a.id}
-                                  onMouseDown={() => {
+                                  onMouseDown={(e) => {
+                                    e.preventDefault()
                                     setNovoAlunoIds(prev => [...prev, a.id])
                                     setNovoAlunoSearch('')
                                     setNovoShowSearch(false)
@@ -1525,7 +1530,8 @@ export default function Horarios() {
                               ))
                             }
                             <li
-                              onMouseDown={() => {
+                              onMouseDown={(e) => {
+                                e.preventDefault()
                                 setNovoGrupoUnmatchedNames(prev => [...prev, { nome: novoAlunoSearch.trim(), telefone: '' }])
                                 setNovoAlunoSearch('')
                                 setNovoShowSearch(false)

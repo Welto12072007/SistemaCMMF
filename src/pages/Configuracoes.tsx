@@ -77,6 +77,8 @@ function AcessosTab() {
   const [linkConvite, setLinkConvite] = useState<string | null>(null)
   const [copiado, setCopiado] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
+  const [busca, setBusca] = useState('')
+  const [filtroRole, setFiltroRole] = useState<UserRole | 'todos'>('todos')
 
   useEffect(() => { load() }, [])
 
@@ -181,10 +183,19 @@ function AcessosTab() {
     const { error } = await supabase.auth.resetPasswordForEmail(perfil.email, {
       redirectTo: `${window.location.origin}/definir-senha`,
     })
+    // Gera link manual também (caso queira mandar por WhatsApp em vez de email)
+    const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'recovery',
+      email: perfil.email,
+      options: { redirectTo: `${window.location.origin}/definir-senha` },
+    })
+    if (linkData) {
+      setLinkConvite((linkData.properties as any).action_link ?? null)
+    }
     if (error) {
       setErro('Erro ao enviar email: ' + error.message)
     } else {
-      setSuccessMsg(`Email enviado para ${perfil.email} com link para definir/redefinir senha.`)
+      setSuccessMsg(`Email enviado para ${perfil.email} com link para definir/redefinir senha. Você também pode copiar o link abaixo e mandar direto por WhatsApp.`)
     }
   }
 
@@ -208,6 +219,26 @@ function AcessosTab() {
         </button>
       </div>
       <p className="text-sm text-gray-500 px-5 pt-3">Cadastre quem pode acessar o sistema. A pessoa receberá um email para criar a senha.</p>
+
+      <div className="flex flex-wrap gap-2 px-5 pt-3">
+        <input
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar por nome ou email..."
+          className="flex-1 min-w-[200px] border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+        />
+        <select
+          value={filtroRole}
+          onChange={(e) => setFiltroRole(e.target.value as UserRole | 'todos')}
+          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+        >
+          <option value="todos">Todos os perfis</option>
+          <option value="admin">Admin</option>
+          <option value="recepcao">Recepção</option>
+          <option value="professor">Professor</option>
+          <option value="aluno">Aluno</option>
+        </select>
+      </div>
 
       {erro && <div className="mx-5 mt-3 bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg">{erro}</div>}
       {successMsg && <div className="mx-5 mt-3 bg-green-50 text-green-700 text-sm px-4 py-3 rounded-lg">{successMsg}</div>}
@@ -237,7 +268,10 @@ function AcessosTab() {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {perfis.map((p) => (
+          {perfis
+            .filter((p) => filtroRole === 'todos' || p.role === filtroRole)
+            .filter((p) => !busca.trim() || p.nome.toLowerCase().includes(busca.toLowerCase()) || p.email.toLowerCase().includes(busca.toLowerCase()))
+            .map((p) => (
             <tr key={p.id} className="hover:bg-gray-50">
               <td className="px-4 py-3 text-sm font-medium">{p.nome}</td>
               <td className="px-4 py-3 text-sm text-gray-600">{p.email}</td>
@@ -377,7 +411,15 @@ function ProfessoresTab() {
 
   async function handleDelete(id: string) {
     if (!confirm('Excluir professor?')) return
-    await supabase.from('professores').delete().eq('id', id)
+    const { error } = await supabase.from('professores').delete().eq('id', id)
+    if (error) {
+      if (error.code === '23503') {
+        alert('Não é possível excluir: este professor tem horários, aulas experimentais ou histórico vinculado a ele.\n\nUse "Editar" e desmarque "Ativo" para desativá-lo sem perder o histórico.')
+      } else {
+        alert('Erro ao excluir: ' + error.message)
+      }
+      return
+    }
     load()
   }
 

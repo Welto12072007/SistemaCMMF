@@ -42,11 +42,27 @@ export default function Relatorios() {
   const [crescimento, setCrescimento] = useState<{ mes_label: string; entradas: number; saidas: number; saldo: number }[]>([])
   const [evasaoMotivos, setEvasaoMotivos] = useState<{ motivo: string; total: number; ult_30d: number; ult_90d: number; ult_ano: number }[]>([])
   const [profEvolucao, setProfEvolucao] = useState<{ professor_nome: string; alunos_ativos: number; saidas_30d: number; saidas_90d: number; saidas_ano: number; saidas_motivo_professor_ano: number }[]>([])
+  const [alunosAtivosPorInstrumento, setAlunosAtivosPorInstrumento] = useState<{ instrumento: string; total: number }[]>([])
 
   useEffect(() => {
     loadRelatorios()
     loadCrescimento()
+    loadAlunosAtivosPorInstrumento()
   }, [])
+
+  async function loadAlunosAtivosPorInstrumento() {
+    const { data } = await supabase.from('alunos').select('instrumento_interesse').eq('status', 'ativo')
+    const cont: Record<string, number> = {}
+    ;(data || []).forEach((a: any) => {
+      const instr = a.instrumento_interesse || 'Não definido'
+      cont[instr] = (cont[instr] || 0) + 1
+    })
+    setAlunosAtivosPorInstrumento(
+      Object.entries(cont)
+        .map(([instrumento, total]) => ({ instrumento, total }))
+        .sort((a, b) => b.total - a.total)
+    )
+  }
 
   async function loadCrescimento() {
     const [{ data: cresc }, { data: motivos }, { data: profs }] = await Promise.all([
@@ -389,6 +405,22 @@ export default function Relatorios() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      </div>
+
+      {/* Alunos ativos por instrumento (independente do filtro de datas) */}
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <h3 className="font-semibold text-gray-900 mb-1">Alunos Ativos por Instrumento</h3>
+        <p className="text-sm text-gray-500 mb-4">Total de matriculados hoje, por instrumento (não depende do período filtrado acima)</p>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={alunosAtivosPorInstrumento} layout="vertical">
+              <XAxis type="number" allowDecimals={false} />
+              <YAxis type="category" dataKey="instrumento" width={100} />
+              <Tooltip />
+              <Bar dataKey="total" fill="#2183a8" name="Alunos ativos" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 

@@ -33,6 +33,7 @@ TIPOS_PERMITIDOS = [
     "manual_do_aluno",
     "lembrete_experimental_1d",
     "lembrete_experimental_3h",
+    "juridico_advogada",
 ]
 
 SB_HEADERS = {
