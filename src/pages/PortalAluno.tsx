@@ -11,6 +11,7 @@ import {
   ChevronRight,
   PartyPopper,
   Megaphone,
+  Repeat,
 } from 'lucide-react'
 
 interface AulaAgendada {
@@ -50,6 +51,29 @@ interface EventoAgenda {
   cor: string
 }
 
+interface ReposicaoAluno {
+  id: string
+  professor_id: string | null
+  professor_nome: string | null
+  instrumento: string | null
+  data_falta: string
+  data_reposicao: string | null
+  hora_reposicao: string | null
+  status: 'pendente' | 'aguardando_confirmacao' | 'agendada' | 'realizada' | 'expirada' | 'cancelada'
+}
+
+interface SlotReposicao {
+  data: string
+  hora_inicio: string
+  hora_fim: string
+}
+
+const REP_STATUS_LABEL: Record<string, string> = {
+  pendente: 'Escolha um horário',
+  aguardando_confirmacao: 'Aguardando o professor confirmar',
+  agendada: 'Confirmada',
+}
+
 const TIPO_LABEL: Record<string, string> = {
   evento: 'Evento',
   feriado: 'Feriado',
@@ -66,11 +90,18 @@ export default function PortalAluno() {
   const [ultimaRemarcacao, setUltimaRemarcacao] = useState<string | null>(null)
   const [mensagem, setMensagem] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null)
   const [eventosAgenda, setEventosAgenda] = useState<EventoAgenda[]>([])
+  const [alunoId, setAlunoId] = useState<string | null>(null)
+  const [reposicoes, setReposicoes] = useState<ReposicaoAluno[]>([])
+  const [escolhendoRep, setEscolhendoRep] = useState<ReposicaoAluno | null>(null)
+  const [slotsRep, setSlotsRep] = useState<SlotReposicao[]>([])
+  const [carregandoSlots, setCarregandoSlots] = useState(false)
+  const [enviandoRep, setEnviandoRep] = useState(false)
 
   useEffect(() => {
     loadAulas()
     loadUltimaRemarcacao()
     loadEventosAgenda()
+    loadReposicoes()
   }, [perfil?.id])
 
   async function loadEventosAgenda() {
@@ -150,6 +181,87 @@ export default function PortalAluno() {
     } else {
       setUltimaRemarcacao(null)
     }
+  }
+
+  async function loadReposicoes() {
+    if (!perfil?.email) return
+
+    const { data: alunoRes } = await supabase
+      .from('alunos')
+      .select('id')
+      .eq('email', perfil.email)
+      .single()
+
+    if (!alunoRes) return
+    setAlunoId(alunoRes.id)
+
+    const { data } = await supabase
+      .from('reposicoes')
+      .select('id, professor_id, professor_nome, instrumento, data_falta, data_reposicao, hora_reposicao, status')
+      .eq('aluno_id', alunoRes.id)
+      .in('status', ['pendente', 'aguardando_confirmacao', 'agendada'])
+      .order('created_at', { ascending: false })
+
+    setReposicoes((data || []) as ReposicaoAluno[])
+  }
+
+  async function abrirEscolherHorario(rep: ReposicaoAluno) {
+    setEscolhendoRep(rep)
+    setSlotsRep([])
+    if (!rep.professor_id) return
+    setCarregandoSlots(true)
+
+    const { data: horarios } = await supabase
+      .from('horarios')
+      .select('dia_semana, hora_inicio, hora_fim')
+      .eq('professor_id', rep.professor_id)
+      .eq('status', 'disponivel')
+
+    const dias = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+    const hoje = new Date()
+    const slots: SlotReposicao[] = []
+    for (let i = 1; i <= 21; i++) {
+      const data = new Date(hoje)
+      data.setDate(data.getDate() + i)
+      const nomeDia = dias[data.getDay()]
+      for (const h of horarios || []) {
+        if (h.dia_semana === nomeDia) {
+          slots.push({ data: data.toISOString().slice(0, 10), hora_inicio: h.hora_inicio, hora_fim: h.hora_fim })
+        }
+      }
+    }
+    slots.sort((a, b) => (a.data === b.data ? a.hora_inicio.localeCompare(b.hora_inicio) : a.data.localeCompare(b.data)))
+    setSlotsRep(slots.slice(0, 12))
+    setCarregandoSlots(false)
+  }
+
+  async function confirmarSlotReposicao(slot: SlotReposicao) {
+    if (!escolhendoRep || !alunoId) return
+    setEnviandoRep(true)
+
+    const { data, error } = await supabase.rpc('reposicao_propor_horario_aluno', {
+      p_reposicao_id: escolhendoRep.id,
+      p_aluno_id: alunoId,
+      p_data: slot.data,
+      p_hora_inicio: slot.hora_inicio,
+    })
+
+    setEnviandoRep(false)
+
+    if (error) {
+      setMensagem({ tipo: 'erro', texto: 'Erro: ' + error.message })
+      return
+    }
+    const result = data as { ok: boolean; mensagem: string }
+    if (!result?.ok) {
+      setMensagem({ tipo: 'erro', texto: result?.mensagem || 'Não foi possível enviar o horário.' })
+      return
+    }
+
+    setMensagem({ tipo: 'sucesso', texto: result.mensagem })
+    setEscolhendoRep(null)
+    loadReposicoes()
+    setTimeout(() => setMensagem(null), 4000)
   }
 
   async function loadHorariosDisp(instrumento: string, professorId: string) {
@@ -344,6 +456,49 @@ export default function PortalAluno() {
         </div>
       </div>
 
+      {/* Reposições */}
+      {reposicoes.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <h2 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            <Repeat className="w-5 h-5 text-brand-500" />
+            Reposições
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">Aulas que você perdeu e precisa repor</p>
+          <div className="space-y-3">
+            {reposicoes.map((rep) => (
+              <div key={rep.id} className="border rounded-lg p-4 flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="font-medium text-gray-900">{rep.instrumento || 'Aula'} com {rep.professor_nome || 'professor'}</p>
+                  <p className="text-xs text-gray-500">Falta em {new Date(rep.data_falta + 'T12:00').toLocaleDateString('pt-BR')}</p>
+                  {rep.data_reposicao && (
+                    <p className="text-xs text-gray-600 mt-1">
+                      Proposta: {new Date(rep.data_reposicao + 'T12:00').toLocaleDateString('pt-BR')} às {rep.hora_reposicao?.slice(0, 5)}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-1 rounded-full ${
+                    rep.status === 'agendada' ? 'bg-green-100 text-green-700'
+                      : rep.status === 'aguardando_confirmacao' ? 'bg-orange-100 text-orange-700'
+                      : 'bg-yellow-100 text-yellow-700'
+                  }`}>
+                    {REP_STATUS_LABEL[rep.status] || rep.status}
+                  </span>
+                  {rep.status === 'pendente' && (
+                    <button
+                      onClick={() => abrirEscolherHorario(rep)}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600"
+                    >
+                      Escolher horário
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Aulas */}
       {aulas.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-xl border">
@@ -449,6 +604,55 @@ export default function PortalAluno() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {escolhendoRep && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEscolhendoRep(null)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-1">Escolher horário de reposição</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              {escolhendoRep.instrumento} com {escolhendoRep.professor_nome} — o professor precisa confirmar antes de valer.
+            </p>
+
+            {carregandoSlots ? (
+              <div className="text-center py-8">
+                <div className="w-6 h-6 border-3 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-sm text-gray-500">Carregando horários do professor...</p>
+              </div>
+            ) : slotsRep.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">
+                <AlertCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>Nenhum horário livre encontrado com esse professor nas próximas 3 semanas.</p>
+                <p className="text-xs mt-1">Fale com a recepção pra resolver.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                {slotsRep.map((slot) => {
+                  const [y, m, d] = slot.data.split('-')
+                  return (
+                    <button
+                      key={`${slot.data}_${slot.hora_inicio}`}
+                      onClick={() => confirmarSlotReposicao(slot)}
+                      disabled={enviandoRep}
+                      className="p-3 border rounded-lg text-left bg-gray-50 border-gray-200 hover:border-brand-300 hover:bg-brand-50 transition-colors disabled:opacity-50"
+                    >
+                      <p className="font-medium text-sm text-gray-900">{d}/{m}/{y}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {slot.hora_inicio.slice(0, 5)} - {slot.hora_fim.slice(0, 5)}
+                      </p>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            <div className="flex gap-3 justify-end pt-4 border-t">
+              <button onClick={() => setEscolhendoRep(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
+                Fechar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

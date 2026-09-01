@@ -72,7 +72,7 @@ interface Reposicao {
   data_falta: string
   data_reposicao: string | null
   hora_reposicao: string | null
-  status: 'pendente' | 'agendada' | 'realizada' | 'expirada' | 'cancelada'
+  status: 'pendente' | 'aguardando_confirmacao' | 'agendada' | 'realizada' | 'expirada' | 'cancelada'
   motivo_falta: string | null
   observacoes: string | null
   created_at: string
@@ -82,6 +82,7 @@ interface Reposicao {
 
 const REP_STATUS_BADGE: Record<string, string> = {
   pendente: 'bg-yellow-100 text-yellow-800',
+  aguardando_confirmacao: 'bg-orange-100 text-orange-800',
   agendada: 'bg-blue-100 text-blue-800',
   realizada: 'bg-green-100 text-green-800',
   expirada: 'bg-gray-100 text-gray-600',
@@ -90,6 +91,7 @@ const REP_STATUS_BADGE: Record<string, string> = {
 
 const REP_STATUS_LABEL: Record<string, string> = {
   pendente: 'Pendente',
+  aguardando_confirmacao: 'Aguardando professor',
   agendada: 'Agendada',
   realizada: 'Realizada',
   expirada: 'Expirada',
@@ -203,7 +205,7 @@ export default function Faltas() {
   async function loadReposicoes() {
     setLoading(true)
     let q = supabase.from('vw_reposicoes_painel').select('*').order('mes_referencia', { ascending: false }).order('created_at', { ascending: false })
-    if (filtroRepStatus === 'ativos') q = q.in('status', ['pendente', 'agendada'])
+    if (filtroRepStatus === 'ativos') q = q.in('status', ['pendente', 'aguardando_confirmacao', 'agendada'])
     else if (filtroRepStatus !== 'todos') q = q.eq('status', filtroRepStatus)
     const { data, error } = await q
     if (error) {
@@ -638,6 +640,7 @@ function ReposicoesView({
     const mesAtual = new Date().toISOString().slice(0, 7)
     return {
       pendentes: reposicoes.filter((r) => r.status === 'pendente').length,
+      aguardandoProfessor: reposicoes.filter((r) => r.status === 'aguardando_confirmacao').length,
       agendadas: reposicoes.filter((r) => r.status === 'agendada').length,
       realizadasMes: reposicoes.filter((r) => r.status === 'realizada' && r.mes_referencia.startsWith(mesAtual)).length,
       expiradas: reposicoes.filter((r) => r.status === 'expirada').length,
@@ -646,8 +649,9 @@ function ReposicoesView({
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <KpiCard label="Pendentes" value={String(kpis.pendentes)} icon={<Clock className="w-4 h-4 text-yellow-600" />} color="text-yellow-700" />
+        <KpiCard label="Aguardando professor" value={String(kpis.aguardandoProfessor)} icon={<Clock className="w-4 h-4 text-orange-600" />} color="text-orange-700" />
         <KpiCard label="Agendadas" value={String(kpis.agendadas)} icon={<CalendarPlus className="w-4 h-4 text-blue-600" />} color="text-blue-700" />
         <KpiCard label="Realizadas (mês)" value={String(kpis.realizadasMes)} icon={<CheckCircle2 className="w-4 h-4 text-green-600" />} color="text-green-700" />
         <KpiCard label="Expiradas" value={String(kpis.expiradas)} icon={<X className="w-4 h-4 text-gray-500" />} color="text-gray-700" />
@@ -661,6 +665,7 @@ function ReposicoesView({
         >
           <option value="ativos">Ativos (pendente + agendada)</option>
           <option value="pendente">Pendentes</option>
+          <option value="aguardando_confirmacao">Aguardando professor</option>
           <option value="agendada">Agendadas</option>
           <option value="realizada">Realizadas</option>
           <option value="expirada">Expiradas</option>
@@ -754,7 +759,12 @@ function ReposicoesView({
                             </button>
                           </>
                         )}
-                        {(r.status === 'pendente' || r.status === 'agendada') && (
+                        {r.status === 'aguardando_confirmacao' && (
+                          <span className="text-xs px-3 py-1.5 rounded bg-orange-50 text-orange-700 inline-flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> Aguardando o professor confirmar
+                          </span>
+                        )}
+                        {(r.status === 'pendente' || r.status === 'aguardando_confirmacao' || r.status === 'agendada') && (
                           <button
                             onClick={() => onCancelar(r.id)}
                             className="text-xs px-3 py-1.5 rounded bg-gray-100 text-gray-700 hover:bg-red-100 hover:text-red-700 inline-flex items-center gap-1"

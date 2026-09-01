@@ -7,7 +7,7 @@ import {
   BookOpen, DollarSign, CalendarCheck, Loader2, AlertCircle,
   ClipboardCheck, MinusCircle, CalendarDays, Users, KeyRound,
   Music2, Eye, EyeOff, StickyNote, CalendarRange, Sparkles,
-  ChevronDown, ChevronUp, Plus, Send, PlusCircle, X, FileText,
+  ChevronDown, ChevronUp, Plus, Send, PlusCircle, X, FileText, Repeat,
 } from 'lucide-react'
 
 interface AulaItem {
@@ -26,6 +26,10 @@ interface HorarioGrade {
 }
 interface Anotacao {
   id: string; aluno_nome: string; conteudo: string; criado_em: string
+}
+interface ReposicaoPendente {
+  id: string; aluno_nome: string; instrumento: string | null
+  data_reposicao: string; hora_reposicao: string
 }
 
 const DIAS_SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
@@ -133,6 +137,40 @@ export default function PortalProfessor() {
   const [alunoExpandido, setAlunoExpandido] = useState<string|null>(null)
   const [novaAnotacao, setNovaAnotacao] = useState('')
   const [salvandoNota, setSalvandoNota] = useState(false)
+
+  // reposições aguardando confirmação
+  const [reposicoesPendentes, setReposicoesPendentes] = useState<ReposicaoPendente[]>([])
+  const [confirmandoRepId, setConfirmandoRepId] = useState<string|null>(null)
+
+  async function loadReposicoesPendentes() {
+    if (!professor_id) return
+    const { data } = await supabase
+      .from('reposicoes')
+      .select('id, aluno_nome, instrumento, data_reposicao, hora_reposicao')
+      .eq('professor_id', professor_id)
+      .eq('status', 'aguardando_confirmacao')
+      .order('data_reposicao')
+    setReposicoesPendentes((data || []) as ReposicaoPendente[])
+  }
+
+  useEffect(() => { loadReposicoesPendentes() }, [professor_id])
+
+  async function responderReposicao(rep: ReposicaoPendente, aprovado: boolean) {
+    if (!professor_id) return
+    setConfirmandoRepId(rep.id)
+    const motivo = aprovado ? null : (prompt('Motivo da recusa (opcional):') || undefined)
+    const { data, error } = await supabase.rpc('reposicao_professor_confirmar', {
+      p_reposicao_id: rep.id,
+      p_professor_id: professor_id,
+      p_aprovado: aprovado,
+      p_motivo_recusa: motivo ?? null,
+    })
+    setConfirmandoRepId(null)
+    if (error) { alert('Erro: ' + error.message); return }
+    const result = data as { ok: boolean; mensagem: string }
+    if (!result?.ok) { alert(result?.mensagem || 'Não foi possível processar.'); return }
+    loadReposicoesPendentes()
+  }
 
   useEffect(() => {
     if (!professor_id) return
@@ -452,6 +490,41 @@ export default function PortalProfessor() {
           </button>
         ))}
       </div>
+
+      {/* Reposições aguardando confirmação */}
+      {reposicoesPendentes.length > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-orange-800 flex items-center gap-2">
+            <Repeat className="w-4 h-4" /> Reposições aguardando sua confirmação
+          </h3>
+          {reposicoesPendentes.map((rep) => (
+            <div key={rep.id} className="bg-white rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="text-sm font-medium text-gray-900">{rep.aluno_nome} — {rep.instrumento || 'aula'}</p>
+                <p className="text-xs text-gray-500">
+                  {new Date(rep.data_reposicao + 'T12:00').toLocaleDateString('pt-BR')} às {rep.hora_reposicao.slice(0, 5)}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => responderReposicao(rep, true)}
+                  disabled={confirmandoRepId === rep.id}
+                  className="text-xs px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200 disabled:opacity-50 inline-flex items-center gap-1"
+                >
+                  <CheckCircle2 className="w-3 h-3" /> Confirmar
+                </button>
+                <button
+                  onClick={() => responderReposicao(rep, false)}
+                  disabled={confirmandoRepId === rep.id}
+                  className="text-xs px-3 py-1.5 rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 inline-flex items-center gap-1"
+                >
+                  <XCircle className="w-3 h-3" /> Recusar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── CHAMADA ── */}
       {tab==='chamada' && (
