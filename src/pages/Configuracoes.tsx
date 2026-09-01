@@ -105,11 +105,11 @@ function AcessosTab() {
     }
   }
 
-  // Staff (nao-aluno) que nunca acessou e o cadastro tem 24h+ — alunos ainda nao tem portal liberado
+  // Pessoas que nunca acessaram e o cadastro tem 24h+ (inclui alunos agora que o portal foi liberado)
   function pendentesDe24h(): Perfil[] {
     const agora = Date.now()
     return perfis.filter((p) => {
-      if (p.role === 'aluno' || !p.ativo) return false
+      if (!p.ativo) return false
       if (ultimoAcesso[p.user_id]) return false
       const criadoEm = new Date(p.created_at as any).getTime()
       return agora - criadoEm >= 24 * 60 * 60 * 1000
@@ -351,9 +351,7 @@ function AcessosTab() {
                 </span>
               </td>
               <td className="px-4 py-3">
-                {p.role === 'aluno' ? (
-                  <span className="text-xs text-gray-400">portal ainda não liberado</span>
-                ) : ultimoAcesso[p.user_id] ? (
+                {ultimoAcesso[p.user_id] ? (
                   <span className="text-xs text-gray-500">{new Date(ultimoAcesso[p.user_id]!).toLocaleDateString('pt-BR')}</span>
                 ) : (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Nunca acessou</span>
