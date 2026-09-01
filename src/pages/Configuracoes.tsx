@@ -83,16 +83,32 @@ function AcessosTab() {
   const [reenviandoLote, setReenviandoLote] = useState(false)
   const [showPendentes, setShowPendentes] = useState(false)
   const [selecionadosPendentes, setSelecionadosPendentes] = useState<Set<string>>(new Set())
+  const [alunosSemAcesso, setAlunosSemAcesso] = useState<{ id: string; nome: string; email: string; telefone: string | null }[]>([])
+  const [alunosSemEmail, setAlunosSemEmail] = useState(0)
+  const [showBulkAlunos, setShowBulkAlunos] = useState(false)
+  const [selecionadosBulk, setSelecionadosBulk] = useState<Set<string>>(new Set())
+  const [criandoBulk, setCriandoBulk] = useState(false)
+  const [progressoBulk, setProgressoBulk] = useState('')
 
   useEffect(() => { load() }, [])
 
   async function load() {
-    const [{ data: p }, { data: profs }] = await Promise.all([
+    const [{ data: p }, { data: profs }, { data: alunosAtivos }] = await Promise.all([
       supabase.from('perfis').select('*').order('nome'),
       supabase.from('professores').select('id, nome').eq('ativo', true).order('nome'),
+      supabase.from('alunos').select('id, nome, email, telefone').eq('status', 'ativo'),
     ])
     if (p) setPerfis(p)
     if (profs) setProfessores(profs)
+
+    // Alunos ativos que ainda não têm login (base do "criar acessos em lote")
+    if (alunosAtivos && p) {
+      const emailsComAcesso = new Set(p.map((x) => x.email.toLowerCase()))
+      setAlunosSemEmail(alunosAtivos.filter((a) => !a.email).length)
+      setAlunosSemAcesso(
+        alunosAtivos.filter((a) => a.email && !emailsComAcesso.has(a.email.toLowerCase())) as any
+      )
+    }
 
     // Busca ultimo_acesso via Admin API (auth.users nao e' consultavel pelo client normal)
     try {
@@ -141,6 +157,56 @@ function AcessosTab() {
       else next.add(id)
       return next
     })
+  }
+
+  function toggleSelecionadoBulk(id: string) {
+    setSelecionadosBulk(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleCriarAcessosLote() {
+    const selecionados = alunosSemAcesso.filter(a => selecionadosBulk.has(a.id))
+    if (selecionados.length === 0) { alert('Selecione ao menos um aluno.'); return }
+    if (!confirm(`Criar acesso e enviar email de convite para ${selecionados.length} aluno(s)?`)) return
+    setCriandoBulk(true)
+    let ok = 0
+    const falhas: string[] = []
+    for (const a of selecionados) {
+      setProgressoBulk(`${ok + falhas.length + 1}/${selecionados.length}: ${a.nome}`)
+      const tempSenha = crypto.randomUUID()
+      const { data: created, error: errCreate } = await supabaseAdmin.auth.admin.createUser({
+        email: a.email,
+        password: tempSenha,
+        email_confirm: true,
+        user_metadata: { nome: a.nome, role: 'aluno' },
+      })
+      if (errCreate || !created.user) { falhas.push(`${a.nome} (${errCreate?.message ?? 'erro ao criar usuário'})`); continue }
+
+      const { error: errPerfil } = await supabase.from('perfis').insert({
+        user_id: created.user.id,
+        nome: a.nome,
+        email: a.email,
+        role: 'aluno',
+        telefone: a.telefone ? normalizePhone(a.telefone) : null,
+        ativo: true,
+      })
+      if (errPerfil) { falhas.push(`${a.nome} (perfil: ${errPerfil.message})`); continue }
+
+      await supabase.auth.resetPasswordForEmail(a.email, {
+        redirectTo: `${window.location.origin}/definir-senha`,
+      })
+      ok++
+    }
+    setCriandoBulk(false)
+    setProgressoBulk('')
+    setSelecionadosBulk(new Set())
+    setShowBulkAlunos(false)
+    setSuccessMsg(`${ok} acesso(s) criado(s) e email de convite enviado.${falhas.length ? ` Falhas: ${falhas.join(', ')}` : ''}`)
+    load()
   }
 
   async function handleSave(form: { nome: string; email: string; role: UserRole; professor_id: string; telefone: string }) {
@@ -264,6 +330,15 @@ function AcessosTab() {
       <div className="flex items-center justify-between px-5 py-3 border-b bg-gray-50">
         <h3 className="font-semibold text-gray-900">Usuários do Sistema</h3>
         <div className="flex items-center gap-2">
+          {alunosSemAcesso.length > 0 && (
+            <button
+              onClick={() => { setSelecionadosBulk(new Set(alunosSemAcesso.map(a => a.id))); setShowBulkAlunos(true) }}
+              className="flex items-center gap-2 border border-green-300 bg-green-50 text-green-700 px-3 py-1.5 rounded-lg text-sm hover:bg-green-100"
+              title="Alunos ativos que ainda não têm login no sistema"
+            >
+              <Users className="w-4 h-4" /> {`${alunosSemAcesso.length} aluno(s) sem acesso`}
+            </button>
+          )}
           {pendentesDe24h().length > 0 && (
             <button
               onClick={() => setShowPendentes(true)}
@@ -372,6 +447,42 @@ function AcessosTab() {
         </tbody>
       </table>
       {perfis.length === 0 && <div className="text-center py-10 text-gray-400">Nenhum acesso cadastrado</div>}
+
+      {showBulkAlunos && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => !criandoBulk && setShowBulkAlunos(false)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-1">Criar acessos de alunos</h2>
+            <p className="text-sm text-gray-500 mb-3">Alunos ativos que ainda não têm login. Desmarque quem não deve receber agora.</p>
+            {alunosSemEmail > 0 && (
+              <p className="text-xs bg-amber-50 text-amber-700 rounded-lg px-3 py-2 mb-3">
+                {alunosSemEmail} aluno(s) ativo(s) não têm email cadastrado e por isso não aparecem aqui — cadastre o email na ficha do aluno primeiro.
+              </p>
+            )}
+            <div className="space-y-1 max-h-64 overflow-y-auto border rounded-lg divide-y">
+              {alunosSemAcesso.map((a) => (
+                <label key={a.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
+                  <input type="checkbox" checked={selecionadosBulk.has(a.id)} onChange={() => toggleSelecionadoBulk(a.id)} className="w-4 h-4" disabled={criandoBulk} />
+                  <span className="flex-1">{a.nome}</span>
+                  <span className="text-xs text-gray-400">{a.email}</span>
+                </label>
+              ))}
+            </div>
+            {criandoBulk && <p className="text-xs text-gray-500 mt-3">Criando... {progressoBulk}</p>}
+            <div className="flex justify-end gap-3 mt-4">
+              <button onClick={() => setShowBulkAlunos(false)} disabled={criandoBulk} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50">
+                Cancelar
+              </button>
+              <button
+                onClick={handleCriarAcessosLote}
+                disabled={criandoBulk || selecionadosBulk.size === 0}
+                className="px-4 py-2 text-sm text-white rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-50"
+              >
+                {criandoBulk ? 'Criando...' : `Criar e enviar (${selecionadosBulk.size})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showPendentes && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowPendentes(false)}>
