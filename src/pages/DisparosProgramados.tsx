@@ -313,10 +313,9 @@ export default function DisparosProgramados() {
         <HistoricoView formatarGrupo={formatarGrupo} />
       ) : (
       <>
-      <LembreteExperimentalCard />
-
       {/* Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <LembreteExperimentalCard />
         {disparos.map((d) => {
           const Icon = TIPO_ICONS[d.tipo] || MessageSquare
           return (
@@ -843,6 +842,8 @@ interface LembreteExpConfig {
   ativo: boolean
   mensagem_1d: string
   mensagem_3h: string
+  dias_antes: number
+  horas_antes: number
 }
 
 function LembreteExperimentalCard() {
@@ -871,7 +872,13 @@ function LembreteExperimentalCard() {
     setSaving(true)
     const { error } = await supabase
       .from('lembrete_experimental_config')
-      .update({ mensagem_1d: cfg.mensagem_1d, mensagem_3h: cfg.mensagem_3h, updated_at: new Date().toISOString() })
+      .update({
+        mensagem_1d: cfg.mensagem_1d,
+        mensagem_3h: cfg.mensagem_3h,
+        dias_antes: cfg.dias_antes,
+        horas_antes: cfg.horas_antes,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', 1)
     setSaving(false)
     if (error) { alert('Erro ao salvar: ' + error.message); return }
@@ -881,13 +888,13 @@ function LembreteExperimentalCard() {
   if (!cfg) return null
 
   return (
-    <div className={`bg-white rounded-xl shadow-sm border p-5 ${!cfg.ativo ? 'opacity-60' : ''}`}>
+    <div className={`bg-white rounded-xl shadow-sm border p-5 transition-opacity ${!cfg.ativo ? 'opacity-60' : ''}`}>
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-teal-100 text-teal-700"><Bell className="w-5 h-5" /></div>
           <div>
             <h3 className="font-semibold text-gray-900">Lembrete de Aula Experimental</h3>
-            <p className="text-xs text-gray-500">Envio automático 1 dia antes e 3h antes de cada aula experimental confirmada — processado pelo GitHub Actions a cada 15 min</p>
+            <p className="text-xs text-gray-500">Envio automático {cfg.dias_antes} dia(s) antes e {cfg.horas_antes}h antes de cada aula experimental confirmada — processado pelo GitHub Actions a cada 15 min</p>
           </div>
         </div>
         <button onClick={toggleAtivo} title={cfg.ativo ? 'Desativar' : 'Ativar'}>
@@ -896,11 +903,33 @@ function LembreteExperimentalCard() {
       </div>
 
       <button onClick={() => setExpanded(!expanded)} className="text-xs text-brand-600 hover:underline mt-3">
-        {expanded ? 'Ocultar mensagens' : 'Editar mensagens'}
+        {expanded ? 'Ocultar mensagens' : 'Editar mensagens e regra'}
       </button>
 
       {expanded && (
         <div className="mt-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Dias de antecedência (1º lembrete)</label>
+              <input
+                type="number"
+                min="0"
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                value={cfg.dias_antes}
+                onChange={(e) => setCfg({ ...cfg, dias_antes: Number(e.target.value) })}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Horas de antecedência (2º lembrete)</label>
+              <input
+                type="number"
+                min="0"
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                value={cfg.horas_antes}
+                onChange={(e) => setCfg({ ...cfg, horas_antes: Number(e.target.value) })}
+              />
+            </div>
+          </div>
           <p className="text-xs text-gray-400">Variáveis: {'{nome}'}, {'{hora}'}</p>
           <div>
             <label className="text-xs text-gray-500 block mb-1">Mensagem — 1 dia antes</label>
