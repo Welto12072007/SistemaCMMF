@@ -256,16 +256,22 @@ def processar_disparos_programados(br: dt.datetime) -> None:
     disparos = sb_get("disparos_programados", {"ativo": "eq.true", "order": "created_at.asc"})
     log.info(f"Disparos programados ativos: {len(disparos)}")
 
+    # Tipos disparados por trigger no banco (matrícula/primeira aula), nunca por lista.
+    TIPOS_EVENTO_TRIGGER = {"boas_vindas", "personalizado", "avaliacao_google"}
+
     for d in disparos:
         recorrencia = (d.get("recorrencia") or "mensal").lower()
         disparar_agora = d.get("disparar_agora") is True
         deve = False
 
         # Trava de segurança: recorrencia='unico' sem data_unica é convenção
-        # para "disparo por evento" (ex.: boas-vindas/manual do aluno, feito
-        # por trigger no banco). NUNCA deve virar blast pra todo o grupo de
-        # uma vez, mesmo que disparar_agora tenha sido setado por engano.
-        if recorrencia == "unico" and not d.get("data_unica"):
+        # para "disparo por evento" (ex.: boas-vindas/manual do aluno/avaliação
+        # google, feito por trigger no banco). NUNCA deve virar blast pra todo
+        # o grupo de uma vez, mesmo que disparar_agora tenha sido setado por
+        # engano. Campanhas ad-hoc (promoção/comunicado) usam a mesma
+        # combinação só que são disparadas manualmente pelo botão "Disparar
+        # agora" — para essas, disparar_agora=true é o comportamento esperado.
+        if recorrencia == "unico" and not d.get("data_unica") and d.get("tipo") in TIPOS_EVENTO_TRIGGER:
             if disparar_agora:
                 log.warning(
                     f'Disparo "{d["nome"]}" é gatilho por evento (unico sem data) '

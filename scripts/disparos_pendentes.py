@@ -34,6 +34,7 @@ TIPOS_PERMITIDOS = [
     "lembrete_experimental_1d",
     "lembrete_experimental_3h",
     "juridico_advogada",
+    "avaliacao_google",
 ]
 
 SB_HEADERS = {

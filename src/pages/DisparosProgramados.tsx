@@ -113,11 +113,16 @@ const GRUPO_LABELS: Record<string, string> = {
 
 type Tab = 'disparos' | 'historico'
 
+// Tipos disparados por trigger no banco (matrícula/primeira aula), nunca por lista.
+const TIPOS_EVENTO_TRIGGER = ['boas_vindas', 'personalizado', 'avaliacao_google']
+
 // Convenção: recorrência 'unico' + sem data_unica = disparo automático por
-// evento (matrícula), disparado por trigger no banco — não por lista/blast.
+// evento, disparado por trigger no banco — não por lista/blast.
 // "Disparar agora" nesses casos mandaria pra TODOS os alunos do grupo de uma vez.
-function ehGatilhoDeEvento(d: { recorrencia?: string; data_unica?: string | null }) {
-  return (d.recorrencia || '') === 'unico' && !d.data_unica
+// Campanhas ad-hoc (promoção/comunicado) usam a mesma combinação só que são
+// disparadas manualmente pelo botão "Disparar agora" — isso é esperado pra elas.
+function ehGatilhoDeEvento(d: { tipo?: string; recorrencia?: string; data_unica?: string | null }) {
+  return TIPOS_EVENTO_TRIGGER.includes(d.tipo || '') && (d.recorrencia || '') === 'unico' && !d.data_unica
 }
 
 interface DisparoPublico {

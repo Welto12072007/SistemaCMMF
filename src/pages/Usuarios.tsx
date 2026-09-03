@@ -55,6 +55,7 @@ interface Aluno {
   motivo_saida?: string
   motivo_saida_detalhe?: string
   data_saida?: string
+  asaas_subscription_id?: string | null
 }
 
 const MOTIVOS_SAIDA: { value: string; label: string }[] = [
@@ -282,6 +283,29 @@ export default function Usuarios() {
       p_novo_status: 'perdido',
     })
     if (error) { alert(`Erro: ${error.message}`); return }
+
+    // Cancela a assinatura recorrente no Asaas junto com a saída do aluno
+    if (removendo.asaas_subscription_id) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/asaas-subscriptions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({
+            action: 'cancel',
+            subscription_id: removendo.asaas_subscription_id,
+            aluno_id: removendo.id,
+          }),
+        })
+      } catch (e) {
+        console.warn('[Usuarios] Erro ao cancelar assinatura Asaas:', e)
+        alert('Aluno marcado como saída, mas houve erro ao cancelar a cobrança no Asaas. Cancele manualmente na aba Assinaturas.')
+      }
+    }
+
     setRemovendo(null)
     loadAlunos()
   }
