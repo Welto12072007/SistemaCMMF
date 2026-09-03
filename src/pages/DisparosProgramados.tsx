@@ -889,12 +889,12 @@ function LembreteExperimentalCard() {
 
   return (
     <div className={`bg-white rounded-xl shadow-sm border p-5 transition-opacity ${!cfg.ativo ? 'opacity-60' : ''}`}>
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-teal-100 text-teal-700"><Bell className="w-5 h-5" /></div>
           <div>
             <h3 className="font-semibold text-gray-900">Lembrete de Aula Experimental</h3>
-            <p className="text-xs text-gray-500">Envio automático {cfg.dias_antes} dia(s) antes e {cfg.horas_antes}h antes de cada aula experimental confirmada — processado pelo GitHub Actions a cada 15 min</p>
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">Aula Experimental</span>
           </div>
         </div>
         <button onClick={toggleAtivo} title={cfg.ativo ? 'Desativar' : 'Ativar'}>
@@ -902,12 +902,34 @@ function LembreteExperimentalCard() {
         </button>
       </div>
 
-      <button onClick={() => setExpanded(!expanded)} className="text-xs text-brand-600 hover:underline mt-3">
-        {expanded ? 'Ocultar mensagens' : 'Editar mensagens e regra'}
-      </button>
+      <p className="text-sm text-gray-600 mb-3 line-clamp-2">{cfg.mensagem_1d}</p>
+
+      <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
+        <span className="flex items-center gap-1">
+          <Users className="w-3 h-3" />
+          Aluno com aula experimental confirmada
+        </span>
+        <span className="flex items-center gap-1">
+          <Clock className="w-3 h-3" />
+          {cfg.dias_antes}d + {cfg.horas_antes}h antes
+        </span>
+      </div>
+
+      <p className="text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded px-2 py-1 mb-3">
+        Disparo automático por evento — envia {cfg.dias_antes} dia(s) e {cfg.horas_antes} hora(s) antes da aula, individualmente por aluno.
+      </p>
+
+      <div className="flex items-center gap-2 pt-2 border-t flex-wrap">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600 px-2 py-1 rounded"
+        >
+          <Pencil className="w-3 h-3" /> {expanded ? 'Ocultar' : 'Editar'}
+        </button>
+      </div>
 
       {expanded && (
-        <div className="mt-3 space-y-3">
+        <div className="mt-3 space-y-3 pt-3 border-t">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-gray-500 block mb-1">Dias de antecedência (1º lembrete)</label>
