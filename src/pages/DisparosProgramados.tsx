@@ -506,6 +506,7 @@ function DisparoForm({
 
   // Boas-vindas e Manual do Aluno são disparos por evento (matrícula), não por lista
   const isMatriculaGatilho = form.tipo === 'boas_vindas' || form.nome.trim().toLowerCase() === 'manual do aluno'
+  const isRegraDiasMensalidade = form.tipo === 'vencimento' || form.tipo === 'cobranca_atraso'
 
   useEffect(() => {
     if (!form.media_type) {
@@ -598,7 +599,7 @@ function DisparoForm({
             value={form.mensagem}
             onChange={(e) => setForm({ ...form, mensagem: e.target.value })}
           />
-          <p className="text-xs text-gray-400">Variáveis: {'{nome}'}, {'{instrumento}'}, {'{telefone}'}, {'{professor}'}, {'{referencia_mes}'}, {'{data_evento}'}</p>
+          <p className="text-xs text-gray-400">Variáveis: {'{nome}'}, {'{instrumento}'}, {'{telefone}'}, {'{professor}'}, {'{referencia_mes}'}, {'{data_evento}'}. Vencimento/Cobrança também aceitam: {'{valor}'}, {'{data_vencimento}'}, {'{dias_atraso}'}, {'{link_pagamento}'}</p>
           <select
             className="w-full border rounded-lg px-3 py-2 text-sm"
             value={form.grupo_alvo}
@@ -658,6 +659,25 @@ function DisparoForm({
                 value={form.dia_disparo}
                 onChange={(e) => setForm({ ...form, dia_disparo: e.target.value })}
               />
+            </div>
+          )}
+
+          {form.recorrencia === 'diario' && isRegraDiasMensalidade && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                {form.tipo === 'vencimento' ? 'Dias de antecedência antes do vencimento' : 'Dias mínimos de atraso para cobrar'}
+              </label>
+              <input
+                type="number"
+                min="0"
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                placeholder={form.tipo === 'vencimento' ? 'Ex: 5' : 'Ex: 3'}
+                value={form.dia_disparo}
+                onChange={(e) => setForm({ ...form, dia_disparo: e.target.value })}
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Processado às 8h por rotina dedicada (dados reais de cada aluno) — não pelo motor genérico. Use {'{link_pagamento}'} na mensagem para incluir o link de pagamento (ou PIX, quando não houver link).
+              </p>
             </div>
           )}
 

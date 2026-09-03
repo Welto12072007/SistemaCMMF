@@ -259,7 +259,14 @@ def processar_disparos_programados(br: dt.datetime) -> None:
     # Tipos disparados por trigger no banco (matrícula/primeira aula), nunca por lista.
     TIPOS_EVENTO_TRIGGER = {"boas_vindas", "personalizado", "avaliacao_google"}
 
+    # Vencimento e cobrança são processados por função dedicada (dados reais por
+    # aluno via tabela mensalidades) — nunca pelo motor genérico abaixo.
+    TIPOS_GERENCIADOS_SEPARADAMENTE = {"vencimento", "cobranca_atraso", "cobranca_regua"}
+
     for d in disparos:
+        if d.get("tipo") in TIPOS_GERENCIADOS_SEPARADAMENTE:
+            continue
+
         recorrencia = (d.get("recorrencia") or "mensal").lower()
         disparar_agora = d.get("disparar_agora") is True
         deve = False
@@ -385,12 +392,35 @@ MESES_PT_LONGO = [
 ]
 
 
+def buscar_config_disparo(tipo: str) -> dict | None:
+    """Busca mensagem/regra/ativo editáveis na tela Disparos Programados para tipos
+    que são processados por função dedicada (vencimento, cobranca_atraso) em vez
+    do motor genérico. Usa dia_disparo como campo de regra (dias de antecedência
+    ou dias mínimos de atraso, conforme o tipo)."""
+    rows = sb_get("disparos_programados", {
+        "tipo": f"eq.{tipo}",
+        "select": "id,ativo,mensagem,dia_disparo",
+        "limit": "1",
+    })
+    return rows[0] if rows else None
+
+
 def lembretes_vencimento_mensalidade() -> None:
-    """8h BRT — envia lembrete de vencimento para mensalidades que vencem em até 5 dias."""
-    registros = rpc("buscar_mensalidades_para_lembrete", {"p_dias_antes": 5})
+    """8h BRT — envia lembrete de vencimento. Mensagem, dias de antecedência e
+    liga/desliga são controlados pelo card 'Lembrete Vencimento' em Disparos
+    Programados (dia_disparo = dias de antecedência)."""
+    cfg = buscar_config_disparo("vencimento")
+    if not cfg or not cfg.get("ativo"):
+        log.info("Lembrete vencimento: desativado em Disparos Programados, pulando")
+        return
+    dias_antes = cfg.get("dia_disparo") or 5
+    template = cfg.get("mensagem") or ""
+
+    registros = rpc("buscar_mensalidades_para_lembrete", {"p_dias_antes": dias_antes})
     if not isinstance(registros, list):
         return
     log.info(f"Lembretes vencimento mensalidade: {len(registros)}")
+    enviados = 0
     for r in registros:
         tel = normalizar_tel(r.get("aluno_telefone", ""))
         if not tel:
@@ -405,35 +435,52 @@ def lembretes_vencimento_mensalidade() -> None:
         except Exception:
             venc_fmt = venc
 
-        msg = (
-            f"Oi {nome}! 👋\n\n"
-            f"Lembrete: sua mensalidade de {instr} vence em breve.\n\n"
-            f"💰 *Valor:* R$ {valor:,.2f}\n"
-            f"📅 *Vencimento:* {venc_fmt}\n\n"
-        )
         link = r.get("asaas_payment_url")
-        if link:
-            msg += f"📲 *Pagar agora (PIX ou cartão):*\n{link}\n\n"
-        else:
-            msg += f"🏦 *PIX CNPJ:* 29.247.149/0001-51\n\n"
-        msg += (
-            f"Após o pagamento, é só responder esta mensagem! 😊\n"
-            f"— Centro de Música Murilo Finger"
+        link_txt = f"📲 *Pagar agora (PIX ou cartão):*\n{link}" if link else "🏦 *PIX CNPJ:* 29.247.149/0001-51"
+
+        msg = (
+            template
+            .replace("{nome}", nome)
+            .replace("{instrumento}", instr)
+            .replace("{valor}", f"{valor:,.2f}")
+            .replace("{data_vencimento}", venc_fmt)
+            .replace("{link_pagamento}", link_txt)
         )
         if send_whatsapp(tel, msg):
             rpc("marcar_notificacao_mensalidade", {
                 "p_mensalidade_id": r["mensalidade_id"],
                 "p_tipo": "vencimento",
             })
+            sb_post("disparos_programados_log", {
+                "disparo_id": cfg["id"],
+                "disparo_nome": "Lembrete Vencimento",
+                "destinatario_id": r.get("aluno_id"),
+                "destinatario_nome": r.get("aluno_nome"),
+                "destinatario_telefone": tel,
+                "status": "enviado",
+            })
+            enviados += 1
             log.info(f"Lembrete vencimento mensalidade → {tel}")
+    if enviados:
+        rpc("marcar_disparo_processado", {"p_disparo_id": cfg["id"], "p_total_enviados": enviados})
 
 
 def cobrar_inadimplentes_mensalidade() -> None:
-    """8h BRT — cobra alunos com mensalidade atrasada há 3+ dias."""
-    registros = rpc("buscar_mensalidades_para_cobrar", {"p_dias_min": 3})
+    """8h BRT — cobra alunos com mensalidade atrasada. Mensagem, dias mínimos de
+    atraso e liga/desliga são controlados pelo card 'Cobrança Mensalidade Atrasada'
+    em Disparos Programados (dia_disparo = dias mínimos de atraso)."""
+    cfg = buscar_config_disparo("cobranca_atraso")
+    if not cfg or not cfg.get("ativo"):
+        log.info("Cobrança atraso: desativado em Disparos Programados, pulando")
+        return
+    dias_min = cfg.get("dia_disparo") or 3
+    template = cfg.get("mensagem") or ""
+
+    registros = rpc("buscar_mensalidades_para_cobrar", {"p_dias_min": dias_min})
     if not isinstance(registros, list):
         return
     log.info(f"Cobranças inadimplentes: {len(registros)}")
+    enviados = 0
     for r in registros:
         tel = normalizar_tel(r.get("aluno_telefone", ""))
         if not tel:
@@ -454,28 +501,36 @@ def cobrar_inadimplentes_mensalidade() -> None:
         except Exception:
             venc_fmt = venc
 
-        msg = (
-            f"Oi {nome}! 👋\n\n"
-            f"Sua mensalidade de {instr} referente a {ref_mes} ainda está em aberto.\n\n"
-            f"💰 *Valor:* R$ {valor:,.2f}\n"
-            f"📅 *Venceu em:* {venc_fmt}\n"
-            f"⏰ *Atraso:* {dias} dia{'s' if dias != 1 else ''}\n\n"
-        )
         link = r.get("asaas_payment_url")
-        if link:
-            msg += f"📲 *Regularizar agora (PIX ou cartão):*\n{link}\n\n"
-        else:
-            msg += (
-                f"Para regularizar, pague via PIX:\n"
-                f"🏦 *CNPJ:* 29.247.149/0001-51\n\n"
-            )
-        msg += f"Qualquer dúvida estamos aqui! — Centro de Música Murilo Finger"
+        link_txt = f"📲 *Regularizar agora (PIX ou cartão):*\n{link}" if link else "🏦 *PIX CNPJ:* 29.247.149/0001-51"
+
+        msg = (
+            template
+            .replace("{nome}", nome)
+            .replace("{instrumento}", instr)
+            .replace("{referencia_mes}", ref_mes)
+            .replace("{valor}", f"{valor:,.2f}")
+            .replace("{data_vencimento}", venc_fmt)
+            .replace("{dias_atraso}", f"{dias} dia{'s' if dias != 1 else ''}")
+            .replace("{link_pagamento}", link_txt)
+        )
         if send_whatsapp(tel, msg):
             rpc("marcar_notificacao_mensalidade", {
                 "p_mensalidade_id": r["mensalidade_id"],
                 "p_tipo": "cobranca",
             })
+            sb_post("disparos_programados_log", {
+                "disparo_id": cfg["id"],
+                "disparo_nome": "Cobrança Mensalidade Atrasada",
+                "destinatario_id": r.get("aluno_id"),
+                "destinatario_nome": r.get("aluno_nome"),
+                "destinatario_telefone": tel,
+                "status": "enviado",
+            })
+            enviados += 1
             log.info(f"Cobrança inadimplente → {tel}")
+    if enviados:
+        rpc("marcar_disparo_processado", {"p_disparo_id": cfg["id"], "p_total_enviados": enviados})
 
 
 # ── main ───────────────────────────────────────────────────────────────────────
