@@ -29,3 +29,8 @@ npm run dev
 - **Follow-up** — Acompanhamento de retornos
 - **Relatórios** — Funil de conversão e análises
 - **Configurações** — Professores, Cursos, Salas, Planos
+
+## Documentação técnica
+
+Ver [docs/README.md](./docs/README.md) — arquitetura, banco de dados, runbook de incidentes, changelog.
+
