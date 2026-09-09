@@ -1,11 +1,11 @@
 name: Automações Agendadas
 
 on:
-  # schedule:
-  #   # A cada hora UTC — cobre todos os horários BRT (UTC-3):
-  #   # ex: 09h BRT=12h UTC, 11h BRT=14h UTC, 15h BRT=18h UTC, 18h BRT=21h UTC
-  #   # (*/2 não cobria 21h UTC = 18h BRT necessário para lembretes amanhã)
-  #   - cron: "0 * * * *"
+  schedule:
+    # A cada hora UTC — cobre todos os horários BRT (UTC-3):
+    # ex: 09h BRT=12h UTC, 11h BRT=14h UTC, 15h BRT=18h UTC, 18h BRT=21h UTC
+    # (*/2 não cobria 21h UTC = 18h BRT necessário para lembretes amanhã)
+    - cron: "0 * * * *"
   workflow_dispatch:
     # Permite rodar manualmente pela aba Actions do GitHub
 

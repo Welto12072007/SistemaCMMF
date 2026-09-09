@@ -7,8 +7,8 @@ que loga corretamente no disparos_programados_log para deduplicação.
 Roda via GitHub Actions (baixo custo de execuções, ao contrário do n8n Cloud).
 
 Por segurança, só processa os tipos em TIPOS_PERMITIDOS — há registros antigos de
-outros tipos (cobranca_atraso, lembrete_mensalidade, pos_experimental etc.) na fila
-que não devem ser reenviados sem revisão manual antes.
+outros tipos (pos_experimental etc.) na fila que não devem ser reenviados sem
+revisão manual antes.
 """
 import os
 import re
@@ -35,6 +35,8 @@ TIPOS_PERMITIDOS = [
     "lembrete_experimental_3h",
     "juridico_advogada",
     "avaliacao_google",
+    "lembrete_mensalidade",
+    "cobranca_atraso",
 ]
 
 SB_HEADERS = {
