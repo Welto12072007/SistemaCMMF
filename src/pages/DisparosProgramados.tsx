@@ -621,32 +621,38 @@ function DisparoForm({
               </option>
             ))}
           </select>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Recorrência</label>
-              <select
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-                value={form.recorrencia}
-                onChange={(e) => setForm({ ...form, recorrencia: e.target.value, dia_disparo: '', dia_semana: '', data_unica: '' })}
-              >
-                <option value="mensal">Mensal (dia fixo)</option>
-                <option value="semanal">Semanal (dia da semana)</option>
-                <option value="diario">Diário</option>
-                <option value="unico">Único (data específica)</option>
-              </select>
+          {isRegraDiasMensalidade ? (
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Este tipo roda automaticamente todo dia às 8h (rotina dedicada). Recorrência/Horário não se aplicam aqui — use o campo "Dias de antecedência/atraso" abaixo.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Recorrência</label>
+                <select
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  value={form.recorrencia}
+                  onChange={(e) => setForm({ ...form, recorrencia: e.target.value, dia_disparo: '', dia_semana: '', data_unica: '' })}
+                >
+                  <option value="mensal">Mensal (dia fixo)</option>
+                  <option value="semanal">Semanal (dia da semana)</option>
+                  <option value="diario">Diário</option>
+                  <option value="unico">Único (data específica)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Horário</label>
+                <input
+                  type="time"
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  value={form.hora_disparo}
+                  onChange={(e) => setForm({ ...form, hora_disparo: e.target.value })}
+                />
+              </div>
             </div>
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Horário</label>
-              <input
-                type="time"
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-                value={form.hora_disparo}
-                onChange={(e) => setForm({ ...form, hora_disparo: e.target.value })}
-              />
-            </div>
-          </div>
+          )}
 
-          {form.recorrencia === 'mensal' && (
+          {!isRegraDiasMensalidade && form.recorrencia === 'mensal' && (
             <div>
               <label className="text-xs text-gray-500 block mb-1">Dia do mês (1-31)</label>
               <input
