@@ -2,7 +2,7 @@ name: Disparos Pendentes
 
 on:
   schedule:
-    # A cada 15 minutos (GitHub Actions usa UTC) — só processa lembrete_experimental_1d/3h
+    # A cada 15 minutos (GitHub Actions usa UTC) — processa os tipos em TIPOS_PERMITIDOS (disparos_pendentes.py)
     - cron: "*/15 * * * *"
   workflow_dispatch:
     # Permite rodar manualmente pela aba Actions do GitHub
