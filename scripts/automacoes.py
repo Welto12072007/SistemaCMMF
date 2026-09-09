@@ -311,8 +311,11 @@ def processar_disparos_programados(br: dt.datetime) -> None:
                 continue
             if h != br_hour:
                 continue
-            if abs(m - br_minute) > 5:
-                continue
+            # Sem checagem de minuto: o cron roda 1x/hora mas com atraso
+            # variável do GitHub Actions (às vezes 10-20min) — exigir minuto
+            # próximo de "m" fazia o disparo nunca cair na janela e pular pra
+            # sempre. Duplicidade já é evitada pelo log em get_destinatarios_disparo
+            # (só retorna quem ainda não recebeu neste dia/semana/mês).
 
             if recorrencia == "diario":
                 deve = True
