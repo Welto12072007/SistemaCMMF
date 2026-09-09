@@ -30,6 +30,8 @@ EVO_URL      = os.environ.get("EVOLUTION_API_URL", "https://api.centrodemusicamu
 EVO_KEY      = os.environ.get("EVOLUTION_API_KEY", "CentroMusica2026ApiKey")
 EVO_INSTANCE = os.environ.get("EVOLUTION_INSTANCE", "CentroMusica")
 CHEFE_TEL    = os.environ.get("CHEFE_TEL", "5551998042607")
+ASAAS_KEY    = os.environ.get("ASAAS_API_KEY", "")
+ASAAS_BASE   = "https://api.asaas.com/v3"
 
 SB_HEADERS = {
     "apikey": SB_KEY,
@@ -392,6 +394,60 @@ MESES_PT_LONGO = [
 ]
 
 
+def reconciliar_assinaturas_asaas() -> None:
+    """Liga a cobrança que o Asaas já gerou sozinho (assinatura recorrente) à
+    mensalidade do mês, sem depender só do webhook (que pode chegar antes da
+    mensalidade existir e nunca mais ser reprocessado). Roda todo dia — não
+    cria cobrança nenhuma, só liga o que já existe no Asaas à linha certa."""
+    if not ASAAS_KEY:
+        log.info("Reconciliação assinaturas: ASAAS_API_KEY não configurada, pulando")
+        return
+    hoje = now_brt()
+    referencia = hoje.strftime("%Y-%m-01")
+    mes_prefixo = hoje.strftime("%Y-%m")
+
+    sem_charge = sb_get("mensalidades", {
+        "referencia": f"eq.{referencia}",
+        "status": "in.(pendente,atrasado)",
+        "asaas_charge_id": "is.null",
+        "select": "id,aluno_id",
+    })
+    if not sem_charge:
+        return
+    aluno_ids = list({m["aluno_id"] for m in sem_charge if m.get("aluno_id")})
+    if not aluno_ids:
+        return
+    alunos = sb_get("alunos", {
+        "id": f"in.({','.join(aluno_ids)})",
+        "asaas_subscription_id": "not.is.null",
+        "select": "id,asaas_subscription_id",
+    })
+    sub_por_aluno = {a["id"]: a["asaas_subscription_id"] for a in alunos}
+    linkados = 0
+    for m in sem_charge:
+        sub_id = sub_por_aluno.get(m["aluno_id"])
+        if not sub_id:
+            continue
+        try:
+            r = requests.get(f"{ASAAS_BASE}/payments", params={"subscription": sub_id, "limit": 10},
+                              headers={"access_token": ASAAS_KEY}, timeout=15)
+            pays = r.json().get("data", [])
+        except Exception as e:
+            log.error(f"Reconciliação assinatura {sub_id}: {e}")
+            continue
+        pay = next((p for p in pays if p.get("dueDate", "").startswith(mes_prefixo)), None)
+        if not pay:
+            continue
+        sb_patch("mensalidades", {"id": f"eq.{m['id']}"}, {
+            "asaas_charge_id": pay["id"],
+            "asaas_payment_url": pay.get("invoiceUrl"),
+            "asaas_billing_type": pay.get("billingType"),
+        })
+        linkados += 1
+    if linkados:
+        log.info(f"Reconciliação assinaturas: {linkados} mensalidade(s) ligada(s) à cobrança da assinatura")
+
+
 def buscar_config_disparo(tipo: str) -> dict | None:
     """Busca mensagem/regra/ativo editáveis na tela Disparos Programados para tipos
     que são processados por função dedicada (vencimento, cobranca_atraso) em vez
@@ -587,6 +643,10 @@ def main() -> None:
             log.info("marcar_mensalidades_atrasadas executado")
         except Exception as e:
             log.error(f"marcar_mensalidades_atrasadas: {e}")
+        try:
+            reconciliar_assinaturas_asaas()
+        except Exception as e:
+            log.error(f"reconciliar_assinaturas_asaas: {e}")
         try:
             lembretes_vencimento_mensalidade()
         except Exception as e:

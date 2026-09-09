@@ -166,12 +166,28 @@ Deno.serve(async (req) => {
       return jsonResp({ ok: true, criadas: 0, mensagem: 'Nenhuma mensalidade pendente sem cobrança Asaas' })
     }
 
+    // Alunos com assinatura recorrente no Asaas já têm cobrança gerada automaticamente
+    // pelo próprio Asaas todo mês — criar uma cobrança avulsa aqui duplicaria a cobrança
+    const alunoIds = [...new Set(mensalidades.map((m) => m.aluno_id).filter(Boolean))]
+    const { data: assinantes } = await supabase
+      .from('alunos')
+      .select('id')
+      .in('id', alunoIds)
+      .not('asaas_subscription_id', 'is', null)
+    const idsComAssinatura = new Set((assinantes ?? []).map((a) => a.id))
+    const puladosAssinatura = mensalidades.filter((m) => idsComAssinatura.has(m.aluno_id)).length
+    const mensalidadesSemAssinatura = mensalidades.filter((m) => !idsComAssinatura.has(m.aluno_id))
+
+    if (mensalidadesSemAssinatura.length === 0) {
+      return jsonResp({ ok: true, criadas: 0, pulados_assinatura: puladosAssinatura, mensagem: 'Todas as mensalidades pendentes já são de alunos com assinatura recorrente (cobrança automática do Asaas)' })
+    }
+
     let criadas = 0
     let erros = 0
     let sem_cpf = 0
     const resultados: Array<{ aluno: string; status: string; pix?: string; motivo?: string }> = []
 
-    for (const m of mensalidades) {
+    for (const m of mensalidadesSemAssinatura) {
       try {
         const nome    = m.aluno_nome ?? 'Aluno'
         const tel     = m.aluno_telefone ?? ''
@@ -253,7 +269,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return jsonResp({ ok: true, criadas, erros, sem_cpf, total: mensalidades.length, resultados })
+    return jsonResp({ ok: true, criadas, erros, sem_cpf, pulados_assinatura: puladosAssinatura, total: mensalidadesSemAssinatura.length, resultados })
   } catch (err) {
     console.error('asaas-bulk-pix error:', err)
     return jsonResp({ error: String(err) }, 500)
