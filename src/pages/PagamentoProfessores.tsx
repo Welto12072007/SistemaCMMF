@@ -53,6 +53,21 @@ interface Fechamento {
   pago_em: string | null
 }
 
+interface PropostaExtra {
+  id: string
+  professor_id: string
+  professor_nome?: string
+  data_aula: string
+  hora_inicio: string
+  hora_fim: string
+  aluno_nome: string
+  instrumento?: string
+  justificativa: string
+  valor_extra: number
+  status: 'pendente' | 'aprovada' | 'rejeitada'
+  observacao_admin?: string | null
+}
+
 // ─── helpers ───────────────────────────────────────────────────────────────
 
 function fmtMoeda(v: number) {
@@ -86,7 +101,39 @@ export default function PagamentoProfessores() {
   const [obsFechar, setObsFechar] = useState('')
   const [salvando, setSalvando] = useState(false)
 
-  useEffect(() => { carregar() }, [mes, ano])
+  // solicitações de honorário extra feitas pelo professor (Portal do Professor)
+  const [propostas, setPropostas] = useState<PropostaExtra[]>([])
+  const [obsProposta, setObsProposta] = useState<Record<string, string>>({})
+
+  useEffect(() => { carregar(); carregarPropostas() }, [mes, ano])
+
+  async function carregarPropostas() {
+    const { data } = await supabase
+      .from('propostas_horario_extra')
+      .select('*, professor:professores(nome)')
+      .eq('status', 'pendente')
+      .order('criado_em', { ascending: true })
+    if (data) {
+      setPropostas(data.map((p: any) => ({ ...p, professor_nome: p.professor?.nome || '—', valor_extra: Number(p.valor_extra) })))
+    }
+  }
+
+  async function aprovarProposta(p: PropostaExtra, status: 'aprovada' | 'rejeitada') {
+    const obs = obsProposta[p.id]?.trim() || null
+    await supabase.from('propostas_horario_extra').update({ status, observacao_admin: obs }).eq('id', p.id)
+    if (status === 'aprovada') {
+      await supabase.from('extras_professor').insert({
+        professor_id: p.professor_id,
+        mes: Number(p.data_aula.slice(5, 7)),
+        ano: Number(p.data_aula.slice(0, 4)),
+        descricao: `Aula extra — ${p.aluno_nome} (${p.justificativa})`.slice(0, 200),
+        valor: p.valor_extra || 0,
+        aprovado: true,
+      })
+    }
+    carregarPropostas()
+    carregar()
+  }
 
   async function carregar() {
     setLoading(true)
@@ -311,6 +358,45 @@ export default function PagamentoProfessores() {
 
   return (
     <div className="p-4 md:p-6 space-y-6">
+      {/* Solicitações de honorário extra dos professores (Portal do Professor) */}
+      {propostas.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+          <div className="bg-amber-600 text-white px-4 py-3 flex items-center gap-2">
+            <span className="text-sm font-bold uppercase tracking-wider">Solicitações de Honorário Extra — Pendentes</span>
+            <span className="bg-white/20 text-white text-xs font-bold px-2 py-0.5 rounded-full">{propostas.length}</span>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {propostas.map(p => (
+              <div key={p.id} className="px-5 py-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <span className="font-semibold text-gray-900">{p.professor_nome}</span>
+                  <span className="text-gray-500">{new Date(p.data_aula + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                  <span className="text-gray-500">{p.hora_inicio?.slice(0, 5)}–{p.hora_fim?.slice(0, 5)}</span>
+                  <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs">{p.aluno_nome}</span>
+                  {p.instrumento && <span className="text-gray-400 text-xs">{p.instrumento}</span>}
+                  {p.valor_extra > 0 && <span className="text-green-700 font-semibold text-xs">+{fmtMoeda(p.valor_extra)}</span>}
+                </div>
+                <p className="text-xs text-gray-600 italic">{p.justificativa}</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={obsProposta[p.id] ?? ''}
+                    onChange={e => setObsProposta(o => ({ ...o, [p.id]: e.target.value }))}
+                    placeholder="Observação (opcional)"
+                    className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs"
+                  />
+                  <button onClick={() => aprovarProposta(p, 'aprovada')} className="text-xs font-semibold text-green-700 bg-green-100 hover:bg-green-200 px-3 py-1.5 rounded-lg">
+                    Aprovar
+                  </button>
+                  <button onClick={() => aprovarProposta(p, 'rejeitada')} className="text-xs font-semibold text-red-700 bg-red-100 hover:bg-red-200 px-3 py-1.5 rounded-lg">
+                    Rejeitar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Cabeçalho */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3">
         <div className="flex items-center gap-2">
