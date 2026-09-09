@@ -64,7 +64,8 @@ const TIPO_ICONS: Record<string, typeof Gift> = {
   avaliacao_google: Star,
   personalizado: MessageSquare,
   cobranca_atraso: AlertTriangle,
-  alerta_falta: AlertTriangle,
+  alerta_falta_consecutiva: AlertTriangle,
+  alerta_falta_avulsa: AlertTriangle,
   reativacao: RefreshCw,
   convite_evento: PartyPopper,
   pesquisa_satisfacao: ClipboardList,
@@ -80,7 +81,8 @@ const TIPO_COLORS: Record<string, string> = {
   avaliacao_google: 'bg-yellow-100 text-yellow-700',
   personalizado: 'bg-purple-100 text-purple-700',
   cobranca_atraso: 'bg-red-100 text-red-700',
-  alerta_falta: 'bg-rose-100 text-rose-700',
+  alerta_falta_consecutiva: 'bg-rose-100 text-rose-700',
+  alerta_falta_avulsa: 'bg-rose-100 text-rose-700',
   reativacao: 'bg-amber-100 text-amber-700',
   convite_evento: 'bg-indigo-100 text-indigo-700',
   pesquisa_satisfacao: 'bg-cyan-100 text-cyan-700',
@@ -96,7 +98,8 @@ const TIPO_LABELS: Record<string, string> = {
   avaliacao_google: 'Avaliação Google',
   personalizado: 'Personalizado',
   cobranca_atraso: 'Cobrança em atraso',
-  alerta_falta: 'Alerta de Falta',
+  alerta_falta_consecutiva: 'Alerta de Faltas Consecutivas',
+  alerta_falta_avulsa: 'Alerta de Falta Avulsa',
   reativacao: 'Reativação ex-aluno',
   convite_evento: 'Convite/Evento',
   pesquisa_satisfacao: 'Pesquisa NPS',
@@ -117,15 +120,19 @@ const GRUPO_LABELS: Record<string, string> = {
 type Tab = 'disparos' | 'historico'
 
 // Tipos disparados por trigger no banco (matrícula/primeira aula), nunca por lista.
-const TIPOS_EVENTO_TRIGGER = ['boas_vindas', 'personalizado', 'avaliacao_google', 'alerta_falta']
+const TIPOS_EVENTO_TRIGGER = ['boas_vindas', 'personalizado', 'avaliacao_google', 'alerta_falta_consecutiva', 'alerta_falta_avulsa']
 
 // Convenção: recorrência 'unico' + sem data_unica = disparo automático por
 // evento, disparado por trigger no banco — não por lista/blast.
 // "Disparar agora" nesses casos mandaria pra TODOS os alunos do grupo de uma vez.
 // Campanhas ad-hoc (promoção/comunicado) usam a mesma combinação só que são
 // disparadas manualmente pelo botão "Disparar agora" — isso é esperado pra elas.
+function ehAlertaFalta(tipo?: string) {
+  return tipo === 'alerta_falta_consecutiva' || tipo === 'alerta_falta_avulsa'
+}
+
 function ehGatilhoDeEvento(d: { tipo?: string; recorrencia?: string; data_unica?: string | null }) {
-  if (d.tipo === 'alerta_falta') return true
+  if (ehAlertaFalta(d.tipo)) return true
   return TIPOS_EVENTO_TRIGGER.includes(d.tipo || '') && (d.recorrencia || '') === 'unico' && !d.data_unica
 }
 
@@ -402,14 +409,19 @@ export default function DisparosProgramados() {
                 </p>
               )}
 
-              {ehGatilhoDeEvento(d) && d.tipo !== 'alerta_falta' && (
+              {ehGatilhoDeEvento(d) && !ehAlertaFalta(d.tipo) && (
                 <p className="text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded px-2 py-1 mb-3">
                   Disparo automático por matrícula — envia {d.dia_disparo ?? 1} dia(s) depois, individualmente por aluno.
                 </p>
               )}
-              {d.tipo === 'alerta_falta' && (
+              {d.tipo === 'alerta_falta_consecutiva' && (
                 <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1 mb-3">
-                  Disparo automático quando um aluno falta — gerado por evento em tempo real, individualmente por aluno.
+                  Disparo automático quando um aluno acumula 2+ faltas seguidas ou no mês — gerado em lote, individualmente por aluno.
+                </p>
+              )}
+              {d.tipo === 'alerta_falta_avulsa' && (
+                <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1 mb-3">
+                  Disparo automático a cada falta avulsa — gerado por evento em tempo real, individualmente por aluno.
                 </p>
               )}
 
@@ -515,7 +527,7 @@ function DisparoForm({
   // Boas-vindas e Manual do Aluno são disparos por evento (matrícula), não por lista
   const isMatriculaGatilho = form.tipo === 'boas_vindas' || form.nome.trim().toLowerCase() === 'manual do aluno'
   const isRegraDiasMensalidade = form.tipo === 'vencimento' || form.tipo === 'cobranca_atraso'
-  const isAlertaFalta = form.tipo === 'alerta_falta'
+  const isAlertaFalta = form.tipo === 'alerta_falta_consecutiva' || form.tipo === 'alerta_falta_avulsa'
 
   useEffect(() => {
     if (!form.media_type) {
@@ -591,7 +603,8 @@ function DisparoForm({
             <option value="aniversario">Aniversário</option>
             <option value="vencimento">Lembrete de Vencimento</option>
             <option value="cobranca_atraso">Cobrança em Atraso</option>
-            <option value="alerta_falta">Alerta de Falta</option>
+            <option value="alerta_falta_consecutiva">Alerta de Faltas Consecutivas</option>
+            <option value="alerta_falta_avulsa">Alerta de Falta Avulsa</option>
             <option value="boas_vindas">Boas-vindas</option>
             <option value="reativacao">Reativação Ex-aluno</option>
             <option value="convite_evento">Convite/Evento</option>
@@ -609,7 +622,7 @@ function DisparoForm({
             value={form.mensagem}
             onChange={(e) => setForm({ ...form, mensagem: e.target.value })}
           />
-          <p className="text-xs text-gray-400">Variáveis: {'{nome}'}, {'{instrumento}'}, {'{telefone}'}, {'{professor}'}, {'{referencia_mes}'}, {'{data_evento}'}. Vencimento/Cobrança também aceitam: {'{valor}'}, {'{data_vencimento}'}, {'{dias_atraso}'}, {'{link_pagamento}'}</p>
+          <p className="text-xs text-gray-400">Variáveis: {'{nome}'}, {'{instrumento}'}, {'{telefone}'}, {'{professor}'}, {'{referencia_mes}'}, {'{data_evento}'}. Vencimento/Cobrança também aceitam: {'{valor}'}, {'{data_vencimento}'}, {'{dias_atraso}'}, {'{link_pagamento}'}. Alerta de Faltas Consecutivas aceita {'{detalhe_faltas}'} (frase pronta com a contagem). Alerta de Falta Avulsa aceita {'{instrumento}'}/{'{hora}'}</p>
           <select
             className="w-full border rounded-lg px-3 py-2 text-sm"
             value={form.grupo_alvo}
@@ -634,7 +647,10 @@ function DisparoForm({
           </select>
           {isAlertaFalta ? (
             <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
-              Dispara automaticamente sempre que uma falta é registrada (tempo real, individual por aluno). Recorrência/Horário não se aplicam aqui — use o botão Ativar/Desativar para ligar ou pausar os alertas.
+              {form.tipo === 'alerta_falta_consecutiva'
+                ? 'Dispara quando um aluno acumula 2+ faltas seguidas ou no mês (checado junto com o envio dos alertas aprovados).'
+                : 'Dispara em tempo real a cada falta avulsa registrada.'}{' '}
+              Recorrência/Horário não se aplicam aqui — use o botão Ativar/Desativar para ligar ou pausar este alerta.
             </p>
           ) : isRegraDiasMensalidade ? (
             <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">

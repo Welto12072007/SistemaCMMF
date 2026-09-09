@@ -229,14 +229,15 @@ def fechamento() -> None:
 
 def alertas_faltas() -> None:
     """Sempre — detectar faltas e enviar alertas aprovados. Liga/desliga e
-    mensagem-padrão são controlados pelo card 'Alerta de Falta' em Disparos
-    Programados (detectar_alertas_faltas já verifica ativo no banco antes de
-    criar novos alertas; aqui verificamos de novo antes de enviar os aprovados)."""
-    cfg = buscar_config_disparo("alerta_falta")
-    if not cfg or not cfg.get("ativo"):
-        log.info("Alerta de falta: desativado em Disparos Programados, pulando")
-        return
-    rpc("detectar_alertas_faltas")
+    mensagem-padrão da detecção em lote (faltas consecutivas/no mês) são
+    controlados pelo card 'Alerta de Faltas Consecutivas' em Disparos
+    Programados (a mensagem avulsa em tempo real tem seu próprio card
+    'Alerta de Falta Avulsa', lido direto pelo trigger no banco)."""
+    cfg = buscar_config_disparo("alerta_falta_consecutiva")
+    if cfg and not cfg.get("ativo"):
+        log.info("Alerta de faltas consecutivas: desativado em Disparos Programados, pulando detecção")
+    else:
+        rpc("detectar_alertas_faltas")
     alertas = sb_get(
         "alertas_faltas_fila",
         {"status": "eq.aprovado", "limit": "50"},
@@ -251,7 +252,7 @@ def alertas_faltas() -> None:
             sb_patch("alertas_faltas_fila", {"id": f"eq.{a['id']}"}, {"status": "enviado"})
             enviados += 1
             log.info(f"Alerta falta → {tel}")
-    if enviados:
+    if enviados and cfg:
         rpc("marcar_disparo_processado", {"p_disparo_id": cfg["id"], "p_total_enviados": enviados})
 
 
