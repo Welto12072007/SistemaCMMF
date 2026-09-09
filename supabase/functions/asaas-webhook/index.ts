@@ -154,6 +154,7 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
+  try {
   // Buscar mensalidade pelo asaas_charge_id (cobrança normal ou ID do payment link)
   let { data: mensa, error: findErr } = await supabase
     .from('mensalidades')
@@ -163,8 +164,8 @@ Deno.serve(async (req) => {
 
   if (findErr) {
     console.error('Erro ao buscar mensalidade:', findErr.message)
+    // Nunca retornar 500 pro Asaas: isso faz a plataforma pausar a sincronização de webhooks
     return new Response(JSON.stringify({ ok: false, error: findErr.message }), {
-      status: 500,
       headers: { 'Content-Type': 'application/json' },
     })
   }
@@ -266,8 +267,8 @@ Deno.serve(async (req) => {
 
     if (upErr) {
       console.error('Erro ao marcar pago:', upErr.message)
+      // Nunca retornar 500 pro Asaas: isso faz a plataforma pausar a sincronização de webhooks
       return new Response(JSON.stringify({ ok: false, error: upErr.message }), {
-        status: 500,
         headers: { 'Content-Type': 'application/json' },
       })
     }
@@ -290,5 +291,14 @@ Deno.serve(async (req) => {
   return new Response(JSON.stringify({ ok: true, mensalidade_id: mensa.id }), {
     headers: { 'Content-Type': 'application/json' },
   })
+  } catch (e) {
+    // Qualquer exceção não tratada aqui (rede, etc.) travava a função e virava 500 pro Asaas,
+    // fazendo a Asaas pausar a sincronização de webhooks após falhas repetidas. Logamos e
+    // respondemos 200 mesmo assim — o pagamento fica só sem sincronizar dessa vez.
+    console.error('Erro inesperado no webhook Asaas:', e instanceof Error ? e.message : e)
+    return new Response(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }), {
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
 })
 
