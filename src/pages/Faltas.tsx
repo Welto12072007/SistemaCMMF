@@ -443,7 +443,7 @@ export default function Faltas() {
                           criado {formatBR(a.created_at)}
                         </div>
                         {a.mensagem_sugerida && (
-                          <div className="bg-gray-50 border border-gray-200 rounded p-3 text-sm text-gray-700 italic">
+                          <div className="bg-gray-50 border border-gray-200 rounded p-3 text-sm text-gray-700 italic whitespace-pre-wrap">
                             {a.mensagem_sugerida}
                           </div>
                         )}

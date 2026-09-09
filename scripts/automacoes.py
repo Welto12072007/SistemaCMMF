@@ -228,20 +228,31 @@ def fechamento() -> None:
 
 
 def alertas_faltas() -> None:
-    """Sempre — detectar faltas e enviar alertas aprovados."""
+    """Sempre — detectar faltas e enviar alertas aprovados. Liga/desliga e
+    mensagem-padrão são controlados pelo card 'Alerta de Falta' em Disparos
+    Programados (detectar_alertas_faltas já verifica ativo no banco antes de
+    criar novos alertas; aqui verificamos de novo antes de enviar os aprovados)."""
+    cfg = buscar_config_disparo("alerta_falta")
+    if not cfg or not cfg.get("ativo"):
+        log.info("Alerta de falta: desativado em Disparos Programados, pulando")
+        return
     rpc("detectar_alertas_faltas")
     alertas = sb_get(
         "alertas_faltas_fila",
         {"status": "eq.aprovado", "limit": "50"},
     )
     log.info(f"Alertas faltas aprovados: {len(alertas)}")
+    enviados = 0
     for a in alertas:
         tel = normalizar_tel(a.get("telefone", ""))
         if not tel:
             continue
-        if send_whatsapp(tel, a.get("mensagem", "")):
+        if send_whatsapp(tel, a.get("mensagem_sugerida", "")):
             sb_patch("alertas_faltas_fila", {"id": f"eq.{a['id']}"}, {"status": "enviado"})
+            enviados += 1
             log.info(f"Alerta falta → {tel}")
+    if enviados:
+        rpc("marcar_disparo_processado", {"p_disparo_id": cfg["id"], "p_total_enviados": enviados})
 
 
 def processar_disparos_programados(br: dt.datetime) -> None:

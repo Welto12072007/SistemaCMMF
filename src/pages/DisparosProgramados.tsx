@@ -64,6 +64,7 @@ const TIPO_ICONS: Record<string, typeof Gift> = {
   avaliacao_google: Star,
   personalizado: MessageSquare,
   cobranca_atraso: AlertTriangle,
+  alerta_falta: AlertTriangle,
   reativacao: RefreshCw,
   convite_evento: PartyPopper,
   pesquisa_satisfacao: ClipboardList,
@@ -79,6 +80,7 @@ const TIPO_COLORS: Record<string, string> = {
   avaliacao_google: 'bg-yellow-100 text-yellow-700',
   personalizado: 'bg-purple-100 text-purple-700',
   cobranca_atraso: 'bg-red-100 text-red-700',
+  alerta_falta: 'bg-rose-100 text-rose-700',
   reativacao: 'bg-amber-100 text-amber-700',
   convite_evento: 'bg-indigo-100 text-indigo-700',
   pesquisa_satisfacao: 'bg-cyan-100 text-cyan-700',
@@ -94,6 +96,7 @@ const TIPO_LABELS: Record<string, string> = {
   avaliacao_google: 'Avaliação Google',
   personalizado: 'Personalizado',
   cobranca_atraso: 'Cobrança em atraso',
+  alerta_falta: 'Alerta de Falta',
   reativacao: 'Reativação ex-aluno',
   convite_evento: 'Convite/Evento',
   pesquisa_satisfacao: 'Pesquisa NPS',
@@ -114,7 +117,7 @@ const GRUPO_LABELS: Record<string, string> = {
 type Tab = 'disparos' | 'historico'
 
 // Tipos disparados por trigger no banco (matrícula/primeira aula), nunca por lista.
-const TIPOS_EVENTO_TRIGGER = ['boas_vindas', 'personalizado', 'avaliacao_google']
+const TIPOS_EVENTO_TRIGGER = ['boas_vindas', 'personalizado', 'avaliacao_google', 'alerta_falta']
 
 // Convenção: recorrência 'unico' + sem data_unica = disparo automático por
 // evento, disparado por trigger no banco — não por lista/blast.
@@ -122,6 +125,7 @@ const TIPOS_EVENTO_TRIGGER = ['boas_vindas', 'personalizado', 'avaliacao_google'
 // Campanhas ad-hoc (promoção/comunicado) usam a mesma combinação só que são
 // disparadas manualmente pelo botão "Disparar agora" — isso é esperado pra elas.
 function ehGatilhoDeEvento(d: { tipo?: string; recorrencia?: string; data_unica?: string | null }) {
+  if (d.tipo === 'alerta_falta') return true
   return TIPOS_EVENTO_TRIGGER.includes(d.tipo || '') && (d.recorrencia || '') === 'unico' && !d.data_unica
 }
 
@@ -398,9 +402,14 @@ export default function DisparosProgramados() {
                 </p>
               )}
 
-              {ehGatilhoDeEvento(d) && (
+              {ehGatilhoDeEvento(d) && d.tipo !== 'alerta_falta' && (
                 <p className="text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded px-2 py-1 mb-3">
                   Disparo automático por matrícula — envia {d.dia_disparo ?? 1} dia(s) depois, individualmente por aluno.
+                </p>
+              )}
+              {d.tipo === 'alerta_falta' && (
+                <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1 mb-3">
+                  Disparo automático quando um aluno falta — gerado por evento em tempo real, individualmente por aluno.
                 </p>
               )}
 
@@ -506,6 +515,7 @@ function DisparoForm({
   // Boas-vindas e Manual do Aluno são disparos por evento (matrícula), não por lista
   const isMatriculaGatilho = form.tipo === 'boas_vindas' || form.nome.trim().toLowerCase() === 'manual do aluno'
   const isRegraDiasMensalidade = form.tipo === 'vencimento' || form.tipo === 'cobranca_atraso'
+  const isAlertaFalta = form.tipo === 'alerta_falta'
 
   useEffect(() => {
     if (!form.media_type) {
@@ -581,6 +591,7 @@ function DisparoForm({
             <option value="aniversario">Aniversário</option>
             <option value="vencimento">Lembrete de Vencimento</option>
             <option value="cobranca_atraso">Cobrança em Atraso</option>
+            <option value="alerta_falta">Alerta de Falta</option>
             <option value="boas_vindas">Boas-vindas</option>
             <option value="reativacao">Reativação Ex-aluno</option>
             <option value="convite_evento">Convite/Evento</option>
@@ -621,7 +632,11 @@ function DisparoForm({
               </option>
             ))}
           </select>
-          {isRegraDiasMensalidade ? (
+          {isAlertaFalta ? (
+            <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+              Dispara automaticamente sempre que uma falta é registrada (tempo real, individual por aluno). Recorrência/Horário não se aplicam aqui — use o botão Ativar/Desativar para ligar ou pausar os alertas.
+            </p>
+          ) : isRegraDiasMensalidade ? (
             <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               Este tipo roda automaticamente todo dia às 8h (rotina dedicada). Recorrência/Horário não se aplicam aqui — use o campo "Dias de antecedência/atraso" abaixo.
             </p>
