@@ -152,12 +152,46 @@ export default function DisparosProgramados() {
   const [editing, setEditing] = useState<DisparoProgramado | null>(null)
   const [tab, setTab] = useState<Tab>('disparos')
   const [showPublicos, setShowPublicos] = useState(false)
+  const [aniversarioCounts, setAniversarioCounts] = useState<Record<string, { hoje: number; mes: number }>>({})
 
   useEffect(() => {
     loadDisparos()
     void loadSegmentos()
     void loadPublicos()
   }, [])
+
+  useEffect(() => {
+    const cards = disparos.filter((d) => d.tipo === 'aniversario')
+    if (cards.length > 0) void loadAniversarioCounts(cards)
+  }, [disparos])
+
+  async function loadAniversarioCounts(cards: DisparoProgramado[]) {
+    const statusPorGrupo: Record<string, string[]> = {
+      alunos_ativos: ['ativo'],
+      ex_alunos: ['inativo', 'perdido', 'cancelado', 'concluido'],
+    }
+    const hoje = new Date()
+    const mesAtual = hoje.getMonth()
+    const diaAtual = hoje.getDate()
+    const resultado: Record<string, { hoje: number; mes: number }> = {}
+    for (const d of cards) {
+      const status = statusPorGrupo[d.grupo_alvo]
+      let q = supabase.from('alunos').select('data_nascimento').not('data_nascimento', 'is', null)
+      if (status) q = q.in('status', status)
+      const { data } = await q
+      let contHoje = 0
+      let contMes = 0
+      for (const row of (data as { data_nascimento: string }[]) || []) {
+        const nasc = new Date(row.data_nascimento + 'T12:00')
+        if (nasc.getMonth() === mesAtual) {
+          contMes++
+          if (nasc.getDate() === diaAtual) contHoje++
+        }
+      }
+      resultado[d.id] = { hoje: contHoje, mes: contMes }
+    }
+    setAniversarioCounts(resultado)
+  }
 
   async function loadPublicos() {
     const { data } = await supabase.from('disparos_publicos').select('*').order('nome')
@@ -409,6 +443,11 @@ export default function DisparosProgramados() {
                 </p>
               )}
 
+              {d.tipo === 'aniversario' && aniversarioCounts[d.id] && (
+                <p className="text-xs text-pink-700 bg-pink-50 border border-pink-200 rounded px-2 py-1 mb-3">
+                  🎂 {aniversarioCounts[d.id]!.hoje} aniversariante(s) hoje · {aniversarioCounts[d.id]!.mes} este mês
+                </p>
+              )}
               {ehGatilhoDeEvento(d) && !ehAlertaFalta(d.tipo) && (
                 <p className="text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded px-2 py-1 mb-3">
                   Disparo automático por matrícula — envia {d.dia_disparo ?? 1} dia(s) depois, individualmente por aluno.
