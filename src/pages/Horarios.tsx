@@ -542,6 +542,35 @@ export default function Horarios() {
     setSaving(false)
   }
 
+  // Vincula e salva na hora ao adicionar aluno/nome no grupo — não depende do botão "Salvar"
+  const saveGrupoLinkImediato = async (alunoIds: string[], unmatchedNames: { nome: string; telefone: string }[]) => {
+    if (!editCell) return
+    setSaving(true)
+    const matchedNames = alunoIds.map(id => alunos.find(a => a.id === id)?.nome || '').filter(Boolean)
+    const alunoNome = [...matchedNames, ...unmatchedNames.map(u => u.nome)].join('\n') || null
+    const firstAluno = alunoIds.length > 0 ? alunos.find(a => a.id === alunoIds[0]) : null
+    const instrumento = firstAluno?.instrumento_interesse || editCell.instrumento || null
+    const { error } = await supabase.from('horarios').update({
+      status: 'ocupado',
+      tipo: 'grupo',
+      aluno_nome: alunoNome,
+      aluno_ids: alunoIds.length > 0 ? alunoIds : null,
+      capacidade: editCapacidade,
+      instrumento,
+    }).eq('id', editCell.id)
+    if (error) {
+      alert('Erro ao vincular aluno:\n' + error.message)
+      setSaving(false)
+      return
+    }
+    setHorarios(prev => prev.map(h =>
+      h.id === editCell.id
+        ? { ...h, status: 'ocupado', tipo: 'grupo', aluno_nome: alunoNome, aluno_ids: alunoIds.length > 0 ? alunoIds : null, capacidade: editCapacidade, instrumento }
+        : h
+    ))
+    setSaving(false)
+  }
+
   const handleSave = async () => {
     if (!editCell) return
     setSaving(true)
@@ -1280,10 +1309,12 @@ export default function Horarios() {
                                   key={a.id}
                                   onMouseDown={(e) => {
                                     e.preventDefault()
-                                    setEditAlunoIds(prev => [...prev, a.id])
+                                    const newIds = [...editAlunoIds, a.id]
+                                    setEditAlunoIds(newIds)
                                     setEditAlunoSearch('')
                                     setEditShowSearch(false)
                                     setEditStatus('ocupado')
+                                    void saveGrupoLinkImediato(newIds, editGrupoUnmatchedNames)
                                   }}
                                   className="px-3 py-1.5 hover:bg-purple-50 cursor-pointer text-sm flex items-center justify-between"
                                 >
@@ -1299,10 +1330,12 @@ export default function Horarios() {
                             <li
                               onMouseDown={(e) => {
                                 e.preventDefault()
-                                setEditGrupoUnmatchedNames(prev => [...prev, { nome: editAlunoSearch.trim(), telefone: '' }])
+                                const newUnmatched = [...editGrupoUnmatchedNames, { nome: editAlunoSearch.trim(), telefone: '' }]
+                                setEditGrupoUnmatchedNames(newUnmatched)
                                 setEditAlunoSearch('')
                                 setEditShowSearch(false)
                                 setEditStatus('ocupado')
+                                void saveGrupoLinkImediato(editAlunoIds, newUnmatched)
                               }}
                               className="px-3 py-1.5 cursor-pointer text-sm text-brand-600 hover:bg-brand-50 border-t border-gray-100"
                             >
