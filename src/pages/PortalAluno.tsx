@@ -12,6 +12,9 @@ import {
   PartyPopper,
   Megaphone,
   Repeat,
+  Wallet,
+  CheckCircle,
+  ExternalLink,
 } from 'lucide-react'
 
 interface AulaAgendada {
@@ -68,6 +71,27 @@ interface SlotReposicao {
   hora_fim: string
 }
 
+interface Mensalidade {
+  id: string
+  referencia: string
+  valor: number
+  desconto: number
+  valor_pago: number | null
+  data_vencimento: string
+  data_pagamento: string | null
+  status: string
+  asaas_payment_url: string | null
+  asaas_pix_copy_paste: string | null
+}
+
+const MENS_STATUS_LABEL: Record<string, string> = {
+  pendente: 'Pendente',
+  pago: 'Pago',
+  atrasado: 'Atrasado',
+  isento: 'Isento',
+  cancelado: 'Cancelado',
+}
+
 const REP_STATUS_LABEL: Record<string, string> = {
   pendente: 'Escolha um horário',
   aguardando_confirmacao: 'Aguardando o professor confirmar',
@@ -96,13 +120,43 @@ export default function PortalAluno() {
   const [slotsRep, setSlotsRep] = useState<SlotReposicao[]>([])
   const [carregandoSlots, setCarregandoSlots] = useState(false)
   const [enviandoRep, setEnviandoRep] = useState(false)
+  const [aba, setAba] = useState<'aulas' | 'pagamentos'>('aulas')
+  const [mensalidades, setMensalidades] = useState<Mensalidade[]>([])
+  const [loadingMensalidades, setLoadingMensalidades] = useState(true)
 
   useEffect(() => {
     loadAulas()
     loadUltimaRemarcacao()
     loadEventosAgenda()
     loadReposicoes()
+    loadMensalidades()
   }, [perfil?.id])
+
+  async function loadMensalidades() {
+    if (!perfil?.email) return
+    setLoadingMensalidades(true)
+
+    const { data: alunoRes } = await supabase
+      .from('alunos')
+      .select('id')
+      .eq('email', perfil.email)
+      .single()
+
+    if (!alunoRes) {
+      setLoadingMensalidades(false)
+      return
+    }
+
+    const { data } = await supabase
+      .from('mensalidades')
+      .select('id, referencia, valor, desconto, valor_pago, data_vencimento, data_pagamento, status, asaas_payment_url, asaas_pix_copy_paste')
+      .eq('aluno_id', alunoRes.id)
+      .order('referencia', { ascending: false })
+      .limit(12)
+
+    setMensalidades((data || []) as Mensalidade[])
+    setLoadingMensalidades(false)
+  }
 
   async function loadEventosAgenda() {
     const hoje = new Date().toISOString().slice(0, 10)
@@ -379,7 +433,7 @@ export default function PortalAluno() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Minhas Aulas</h1>
-        <p className="text-gray-500 mt-1">Veja seus agendamentos e remarque quando necessário</p>
+        <p className="text-gray-500 mt-1">Veja seus agendamentos, remarque e acompanhe seus pagamentos</p>
       </div>
 
       {/* Mensagens */}
@@ -406,6 +460,90 @@ export default function PortalAluno() {
         </div>
       )}
 
+      {/* Abas */}
+      <div className="flex gap-2 border-b border-gray-200">
+        <button
+          onClick={() => setAba('aulas')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            aba === 'aulas' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Minhas Aulas
+        </button>
+        <button
+          onClick={() => setAba('pagamentos')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
+            aba === 'pagamentos' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Wallet className="w-4 h-4" />
+          Pagamentos
+        </button>
+      </div>
+
+      {aba === 'pagamentos' && (
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">Mensalidades</h2>
+          <p className="text-sm text-gray-500 mb-4">Últimas cobranças da sua matrícula</p>
+
+          {loadingMensalidades ? (
+            <div className="text-center py-8">
+              <div className="w-6 h-6 border-3 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <p className="text-sm text-gray-500">Carregando pagamentos...</p>
+            </div>
+          ) : mensalidades.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <Wallet className="w-12 h-12 mx-auto mb-3 opacity-40" />
+              <p className="font-medium">Nenhuma mensalidade encontrada</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {mensalidades.map((m) => {
+                const ref = new Date(m.referencia + 'T12:00:00')
+                const venc = new Date(m.data_vencimento + 'T12:00:00')
+                const corStatus =
+                  m.status === 'pago' ? 'bg-green-100 text-green-700'
+                    : m.status === 'atrasado' ? 'bg-red-100 text-red-700'
+                    : m.status === 'isento' ? 'bg-blue-100 text-blue-700'
+                    : m.status === 'cancelado' ? 'bg-gray-100 text-gray-500'
+                    : 'bg-yellow-100 text-yellow-700'
+                return (
+                  <div key={m.id} className="border rounded-lg p-4 flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="font-medium text-gray-900 capitalize">
+                        {ref.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                      </p>
+                      <p className="text-xs text-gray-500">Vencimento: {venc.toLocaleDateString('pt-BR')}</p>
+                      <p className="text-sm text-gray-700 mt-1">
+                        R$ {Number(m.valor - (m.desconto || 0)).toFixed(2).replace('.', ',')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${corStatus}`}>
+                        {m.status === 'pago' && <CheckCircle className="w-3 h-3" />}
+                        {MENS_STATUS_LABEL[m.status] || m.status}
+                      </span>
+                      {m.status !== 'pago' && m.status !== 'cancelado' && m.asaas_payment_url && (
+                        <a
+                          href={m.asaas_payment_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs px-3 py-1.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 flex items-center gap-1"
+                        >
+                          Pagar <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {aba === 'aulas' && (
+      <>
       {/* Próximos Eventos da Agenda */}
       {eventosAgenda.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border p-5">
@@ -605,6 +743,8 @@ export default function PortalAluno() {
             )
           })}
         </div>
+      )}
+      </>
       )}
 
       {escolhendoRep && (
