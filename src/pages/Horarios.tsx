@@ -1139,6 +1139,9 @@ export default function Horarios() {
                         onBlur={() => setTimeout(() => setEditShowSearch(false), 150)}
                         placeholder="Buscar aluno cadastrado..."
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        spellCheck={false}
                         autoFocus
                       />
                       {editShowSearch && (editAlunoSearch || editCell?.aluno_nome) && (
@@ -1237,6 +1240,7 @@ export default function Horarios() {
                           onBlur={() => setTimeout(() => setEditShowSearch(false), 150)}
                           placeholder="Adicionar aluno ao grupo..."
                           className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          autoComplete="off"
                         />
                         {editShowSearch && editAlunoSearch && (
                           <ul className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-36 overflow-y-auto mt-0.5">
@@ -1411,6 +1415,9 @@ export default function Horarios() {
                         onBlur={() => setTimeout(() => setNovoShowSearch(false), 150)}
                         placeholder="Buscar aluno cadastrado..."
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        spellCheck={false}
                       />
                       {novoShowSearch && novoAlunoSearch && (
                         <ul className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto mt-0.5">
@@ -1502,6 +1509,7 @@ export default function Horarios() {
                           onBlur={() => setTimeout(() => setNovoShowSearch(false), 150)}
                           placeholder="Adicionar aluno ao grupo..."
                           className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          autoComplete="off"
                         />
                         {novoShowSearch && novoAlunoSearch && (
                           <ul className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-36 overflow-y-auto mt-0.5">
