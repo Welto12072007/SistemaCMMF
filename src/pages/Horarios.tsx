@@ -516,6 +516,32 @@ export default function Horarios() {
     setDisparoResultado({ enviados, erros })
   }
 
+  // Vincula e salva na hora (usado ao clicar numa sugestão individual) — não depende do botão "Salvar"
+  const saveAlunoLinkImediato = async (aluno: Aluno) => {
+    if (!editCell) return
+    setSaving(true)
+    const instrumento = aluno.instrumento_interesse || editCell.instrumento || null
+    const { error } = await supabase.from('horarios').update({
+      status: 'ocupado',
+      tipo: 'individual',
+      aluno_nome: aluno.nome,
+      aluno_ids: [aluno.id],
+      capacidade: 1,
+      instrumento,
+    }).eq('id', editCell.id)
+    if (error) {
+      alert('Erro ao vincular aluno:\n' + error.message)
+      setSaving(false)
+      return
+    }
+    setHorarios(prev => prev.map(h =>
+      h.id === editCell.id
+        ? { ...h, status: 'ocupado', tipo: 'individual', aluno_nome: aluno.nome, aluno_ids: [aluno.id], capacidade: 1, instrumento }
+        : h
+    ))
+    setSaving(false)
+  }
+
   const handleSave = async () => {
     if (!editCell) return
     setSaving(true)
@@ -1158,6 +1184,8 @@ export default function Horarios() {
                                   setEditAlunoSearch(a.nome)
                                   setEditShowSearch(false)
                                   setEditStatus('ocupado')
+                                  // Salva na hora: vincular pela sugestão não deve depender de clicar "Salvar" depois
+                                  void saveAlunoLinkImediato(a)
                                 }}
                                 className="px-3 py-2 hover:bg-brand-50 cursor-pointer text-sm flex items-center justify-between gap-2"
                               >
