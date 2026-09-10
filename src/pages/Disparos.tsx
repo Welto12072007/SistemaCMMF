@@ -346,7 +346,41 @@ export default function Disparos() {
         const apiKey = import.meta.env.VITE_EVOLUTION_KEY || ''
 
         let res: Response
-        if (mediaType !== 'text' && mediaUrl.trim()) {
+        if (mediaType === 'audio' && mediaUrl.trim()) {
+          // Áudio precisa do endpoint dedicado: converte pra ogg/opus (ptt) e toca no WhatsApp.
+          // sendMedia com mediatype=audio manda o arquivo cru (webm) e a mensagem chega muda.
+          res = await fetch(
+            `${baseUrl}/message/sendWhatsAppAudio/CentroMusica`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                apikey: apiKey,
+              },
+              body: JSON.stringify({
+                number: tel,
+                audio: mediaUrl.trim(),
+              }),
+            }
+          )
+          // Áudio (ptt) não aceita legenda no WhatsApp — manda o texto como mensagem separada
+          if (res.ok && mensagem.trim()) {
+            await fetch(
+              `${baseUrl}/message/sendText/CentroMusica`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  apikey: apiKey,
+                },
+                body: JSON.stringify({
+                  number: tel,
+                  text: interpolate(mensagem, dest),
+                }),
+              }
+            )
+          }
+        } else if (mediaType !== 'text' && mediaUrl.trim()) {
           // Send media message
           res = await fetch(
             `${baseUrl}/message/sendMedia/CentroMusica`,
