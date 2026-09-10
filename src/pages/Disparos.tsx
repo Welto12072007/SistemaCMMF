@@ -96,10 +96,11 @@ export default function Disparos() {
   }
 
   function interpolate(texto: string, dest: Destinatario): string {
-    const primeiroNome = dest.nome.trim().split(/\s+/)[0] ?? dest.nome
+    const nomeCompleto = (dest.nome ?? '').trim()
+    const primeiroNome = nomeCompleto.split(/\s+/)[0] || nomeCompleto
     return texto
       .replace(/\{nome\}/gi, primeiroNome)
-      .replace(/\{nome_completo\}/gi, dest.nome)
+      .replace(/\{nome_completo\}/gi, nomeCompleto)
       .replace(/\{instrumento\}/gi, dest.instrumento_interesse ?? '')
   }
 
