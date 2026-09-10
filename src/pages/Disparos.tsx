@@ -102,6 +102,9 @@ export default function Disparos() {
       .replace(/\{nome\}/gi, primeiroNome)
       .replace(/\{nome_completo\}/gi, nomeCompleto)
       .replace(/\{instrumento\}/gi, dest.instrumento_interesse ?? '')
+      // contato sem nome cadastrado deixa espaço duplo/sobrando - normaliza
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/^ +| +$/gm, '')
   }
 
   useEffect(() => {
@@ -301,6 +304,7 @@ export default function Disparos() {
   }, [contatos, segmentos, grupoBase, instrumentosSelecionados, busca, publicoMembros])
 
   const selecionados = contatos.filter((c) => c.selected)
+  const semNome = selecionados.filter((c) => !c.nome?.trim())
 
   function toggleAll(selected: boolean) {
     const filtradoIds = new Set(filtrados.map((f) => f.id))
@@ -753,11 +757,17 @@ export default function Disparos() {
               const preview = interpolate(mensagem, primeiro)
               return (
                 <div className="mt-1.5 p-2.5 bg-gray-50 border border-gray-200 rounded-lg">
-                  <p className="text-xs text-gray-400 mb-1">Preview para <strong className="text-gray-600">{primeiro.nome}</strong>:</p>
+                  <p className="text-xs text-gray-400 mb-1">Preview para <strong className="text-gray-600">{primeiro.nome || '(sem nome)'}</strong>:</p>
                   <p className="text-xs text-gray-700 whitespace-pre-wrap">{preview}</p>
                 </div>
               )
             })()}
+
+            {mensagem.toLowerCase().includes('{nome') && semNome.length > 0 && (
+              <p className="text-xs text-amber-600 mt-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                ⚠️ {semNome.length} contato{semNome.length !== 1 ? 's' : ''} sem nome cadastrado — {'{nome}'} vai ficar em branco pra {semNome.length !== 1 ? 'eles' : 'ele'}.
+              </p>
+            )}
 
             <p className="text-xs text-gray-400 mt-1">
               {mensagem.length} caracteres
