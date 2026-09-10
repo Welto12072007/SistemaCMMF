@@ -275,7 +275,14 @@ def processar_disparos_programados(br: dt.datetime) -> None:
 
     # Vencimento e cobrança são processados por função dedicada (dados reais por
     # aluno via tabela mensalidades) — nunca pelo motor genérico abaixo.
-    TIPOS_GERENCIADOS_SEPARADAMENTE = {"vencimento", "cobranca_atraso", "cobranca_regua"}
+    # Alertas de falta são gerados numa fila que exige aprovação manual
+    # (alertas_faltas_fila) e enviados só pela função alertas_faltas() —
+    # nunca pelo motor genérico, que não respeita aprovação e mandaria pra
+    # todo mundo do grupo_alvo de uma vez.
+    TIPOS_GERENCIADOS_SEPARADAMENTE = {
+        "vencimento", "cobranca_atraso", "cobranca_regua",
+        "alerta_falta_consecutiva", "alerta_falta_avulsa",
+    }
 
     for d in disparos:
         if d.get("tipo") in TIPOS_GERENCIADOS_SEPARADAMENTE:
