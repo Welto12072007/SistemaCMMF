@@ -306,9 +306,15 @@ export default function Disparos() {
   const selecionados = contatos.filter((c) => c.selected)
   const semNome = selecionados.filter((c) => !c.nome?.trim())
 
-  // Edição local (só pra esse disparo) do nome de contatos sem cadastro — não grava no banco
+  // Atualiza na tela na hora; grava em dados_contato ao sair do campo (trigger sincroniza com alunos)
   function updateNomeLocal(id: string, novoNome: string) {
     setContatos((prev) => prev.map((c) => (c.id === id ? { ...c, nome: novoNome } : c)))
+  }
+
+  async function salvarNomeContato(telefone: string, nome: string) {
+    const nomeTrim = nome.trim()
+    if (!nomeTrim) return
+    await supabase.from('dados_contato').upsert({ telefone, nome: nomeTrim }, { onConflict: 'telefone' })
   }
 
   function toggleAll(selected: boolean) {
@@ -771,7 +777,7 @@ export default function Disparos() {
             {mensagem.toLowerCase().includes('{nome') && semNome.length > 0 && (
               <div className="mt-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
                 <p className="text-xs text-amber-600">
-                  ⚠️ {semNome.length} contato{semNome.length !== 1 ? 's' : ''} sem nome cadastrado — {'{nome}'} vai ficar em branco pra {semNome.length !== 1 ? 'eles' : 'ele'}. Preencha abaixo (vale só pra esse disparo):
+                  ⚠️ {semNome.length} contato{semNome.length !== 1 ? 's' : ''} sem nome cadastrado — {'{nome}'} vai ficar em branco pra {semNome.length !== 1 ? 'eles' : 'ele'}. Preencha abaixo (salva no cadastro ao sair do campo):
                 </p>
                 <div className="mt-1.5 space-y-1.5">
                   {semNome.map((c) => (
@@ -782,6 +788,7 @@ export default function Disparos() {
                         placeholder="Nome do contato"
                         value={c.nome}
                         onChange={(e) => updateNomeLocal(c.id, e.target.value)}
+                        onBlur={(e) => { void salvarNomeContato(c.telefone, e.target.value) }}
                         className="flex-1 px-2 py-1 rounded border border-amber-300 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
                       />
                     </div>
