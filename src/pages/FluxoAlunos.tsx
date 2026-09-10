@@ -27,6 +27,7 @@ interface AlunoFluxo {
   valor_plano: number
   plano_frequencia: number
   professor_nome?: string
+  asaas_subscription_id: string | null
 }
 
 interface ProfessorFluxo {
@@ -135,7 +136,7 @@ export default function FluxoAlunos() {
     // Entradas no período
     const { data: entradas } = await supabase
       .from('alunos')
-      .select('id,nome,instrumento_interesse,status,data_matricula,data_saida,motivo_saida,motivo_saida_detalhe,taxa_matricula,desconto_matricula,valor_plano,plano_frequencia')
+      .select('id,nome,instrumento_interesse,status,data_matricula,data_saida,motivo_saida,motivo_saida_detalhe,taxa_matricula,desconto_matricula,valor_plano,plano_frequencia,asaas_subscription_id')
       .gte('data_matricula', dataInicio)
       .lte('data_matricula', dataFim)
       .order('data_matricula', { ascending: false })
@@ -143,7 +144,7 @@ export default function FluxoAlunos() {
     // Saídas no período
     const { data: saidas } = await supabase
       .from('alunos')
-      .select('id,nome,instrumento_interesse,status,data_matricula,data_saida,motivo_saida,motivo_saida_detalhe,taxa_matricula,desconto_matricula,valor_plano,plano_frequencia')
+      .select('id,nome,instrumento_interesse,status,data_matricula,data_saida,motivo_saida,motivo_saida_detalhe,taxa_matricula,desconto_matricula,valor_plano,plano_frequencia,asaas_subscription_id')
       .gte('data_saida', dataInicio)
       .lte('data_saida', dataFim)
       .order('data_saida', { ascending: false })
@@ -263,6 +264,30 @@ export default function FluxoAlunos() {
         status: 'inativo',
       })
       .eq('id', modalSaida.id)
+
+    // Cancela a assinatura recorrente no Asaas junto com a saída — senão o Asaas
+    // continua gerando cobrança mensal pra aluno que já não estuda mais aqui
+    if (modalSaida.asaas_subscription_id) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/asaas-subscriptions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({
+            action: 'cancel',
+            subscription_id: modalSaida.asaas_subscription_id,
+            aluno_id: modalSaida.id,
+          }),
+        })
+      } catch (e) {
+        console.warn('[FluxoAlunos] Erro ao cancelar assinatura Asaas:', e)
+        alert('Saída registrada, mas houve erro ao cancelar a cobrança no Asaas. Cancele manualmente na aba Assinaturas.')
+      }
+    }
+
     setSalvando(false)
     setModalSaida(null)
     setFormSaida({ data_saida: '', motivo_saida: '', motivo_saida_detalhe: '' })
