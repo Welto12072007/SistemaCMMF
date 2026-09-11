@@ -85,7 +85,7 @@ def buscar_pendentes() -> list:
         r = requests.get(
             f"{SB_URL}/rest/v1/disparos_pendentes",
             params={
-                "select": "id,aluno_id,tipo,canal,mensagem,telefone_destinatario,agendado_para",
+                "select": "id,aluno_id,tipo,canal,mensagem,telefone_destinatario,agendado_para,aula_experimental_id",
                 "status": "eq.pendente",
                 "tipo": f"in.({','.join(TIPOS_PERMITIDOS)})",
                 "criado_em": f"gte.{cutoff}",
@@ -106,6 +106,26 @@ def buscar_pendentes() -> list:
         row for row in rows
         if not row.get("agendado_para") or row["agendado_para"] <= now_utc
     ]
+
+
+def aula_experimental_ainda_confirmada(aula_id: str) -> bool:
+    """Confere o status ATUAL da aula na hora do disparo — evita mandar lembrete
+    de uma aula que foi remarcada/cancelada depois de o lembrete ter sido agendado."""
+    try:
+        r = requests.get(
+            f"{SB_URL}/rest/v1/aulas_experimentais",
+            params={"select": "status", "id": f"eq.{aula_id}"},
+            headers=SB_HEADERS,
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        if not rows:
+            return False
+        return rows[0].get("status") in ("confirmado_professor", "agendada")
+    except Exception as e:
+        log.error(f"aula_experimental_ainda_confirmada erro: {e}")
+        return False
 
 
 def buscar_tel_aluno(aluno_id: str) -> str | None:
@@ -151,6 +171,12 @@ def processar_pendentes() -> tuple[int, int]:
     enviados = erros = 0
 
     for item in pendentes:
+        if item.get("tipo") in ("lembrete_experimental_1d", "lembrete_experimental_3h") and item.get("aula_experimental_id"):
+            if not aula_experimental_ainda_confirmada(item["aula_experimental_id"]):
+                marcar_pendente(item["id"], "cancelado", "Aula não está mais confirmada/agendada")
+                log.info(f'[pendentes] cancelado (aula remarcada/cancelada): {item["id"]}')
+                continue
+
         tel = item.get("telefone_destinatario")
         if not tel and item.get("aluno_id"):
             tel = buscar_tel_aluno(item["aluno_id"])
