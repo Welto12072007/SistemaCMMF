@@ -13,6 +13,8 @@ import {
   Trash2,
   Edit3,
   Loader2,
+  MousePointerClick,
+  CheckSquare,
 } from 'lucide-react'
 
 interface Evento {
@@ -57,6 +59,15 @@ export default function Agenda() {
   const [showModal, setShowModal] = useState(false)
   const [editEvento, setEditEvento] = useState<Evento | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Seleção de múltiplos dias (feriados/férias em lote)
+  const [modoSelecao, setModoSelecao] = useState(false)
+  const [diasSelecionados, setDiasSelecionados] = useState<Set<string>>(new Set())
+  const [showBulkModal, setShowBulkModal] = useState(false)
+  const [bulkTipo, setBulkTipo] = useState<'feriado' | 'recesso'>('feriado')
+  const [bulkTitulo, setBulkTitulo] = useState('')
+  const [bulkVisivelAluno, setBulkVisivelAluno] = useState(true)
+  const [bulkSaving, setBulkSaving] = useState(false)
 
   // Form state
   const [form, setForm] = useState({
@@ -195,6 +206,47 @@ export default function Agenda() {
     void loadEventos()
   }
 
+  function toggleDiaSelecionado(dateStr: string) {
+    setDiasSelecionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(dateStr)) next.delete(dateStr)
+      else next.add(dateStr)
+      return next
+    })
+  }
+
+  function toggleModoSelecao() {
+    setModoSelecao((prev) => !prev)
+    setDiasSelecionados(new Set())
+  }
+
+  function openBulkModal(tipo: 'feriado' | 'recesso') {
+    setBulkTipo(tipo)
+    setBulkTitulo(tipo === 'feriado' ? 'Feriado' : 'Recesso / Férias')
+    setBulkVisivelAluno(true)
+    setShowBulkModal(true)
+  }
+
+  async function handleBulkSave() {
+    if (!bulkTitulo.trim() || diasSelecionados.size === 0) return
+    setBulkSaving(true)
+    const cor = TIPO_CONFIG[bulkTipo]!.defaultCor
+    const payload = Array.from(diasSelecionados).map((dateStr) => ({
+      titulo: bulkTitulo.trim(),
+      data_inicio: dateStr,
+      tipo: bulkTipo,
+      cor,
+      visivel_aluno: bulkVisivelAluno,
+    }))
+    const { error } = await supabase.from('eventos_agenda').insert(payload)
+    setBulkSaving(false)
+    if (error) { alert('Erro:\n' + error.message); return }
+    setShowBulkModal(false)
+    setDiasSelecionados(new Set())
+    setModoSelecao(false)
+    void loadEventos()
+  }
+
   function prevMonth() {
     if (mes === 0) { setMes(11); setAno(ano - 1) } else setMes(mes - 1)
   }
@@ -230,15 +282,60 @@ export default function Agenda() {
           <p className="text-gray-500">Eventos, feriados e datas importantes</p>
         </div>
         {isAdmin && (
-          <button
-            onClick={() => openCreate()}
-            className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2 rounded-lg hover:bg-brand-600 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Novo evento
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleModoSelecao}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                modoSelecao
+                  ? 'bg-brand-500 text-white hover:bg-brand-600'
+                  : 'bg-white border text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {modoSelecao ? <CheckSquare className="w-4 h-4" /> : <MousePointerClick className="w-4 h-4" />}
+              {modoSelecao ? 'Selecionando dias...' : 'Selecionar vários dias'}
+            </button>
+            <button
+              onClick={() => openCreate()}
+              className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2 rounded-lg hover:bg-brand-600 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Novo evento
+            </button>
+          </div>
         )}
       </div>
+
+      {modoSelecao && (
+        <div className="flex flex-wrap items-center gap-3 bg-brand-50 border border-brand-200 rounded-xl px-4 py-3">
+          <span className="text-sm text-brand-700 font-medium">
+            {diasSelecionados.size === 0
+              ? 'Clique nos dias do calendário para selecionar (ex: todos os dias das férias)'
+              : `${diasSelecionados.size} dia(s) selecionado(s)`}
+          </span>
+          {diasSelecionados.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 ml-auto">
+              <button
+                onClick={() => openBulkModal('feriado')}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500 text-white hover:bg-red-600"
+              >
+                Marcar como Feriado
+              </button>
+              <button
+                onClick={() => openBulkModal('recesso')}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600"
+              >
+                Marcar como Recesso/Férias
+              </button>
+              <button
+                onClick={() => setDiasSelecionados(new Set())}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border text-gray-600 hover:bg-gray-50"
+              >
+                Limpar seleção
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
         {/* Calendar */}
@@ -277,14 +374,20 @@ export default function Agenda() {
             </div>
           ) : (
             <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-lg overflow-hidden">
-              {grid.map((cell, i) => (
+              {grid.map((cell, i) => {
+                const selecionado = cell.dia > 0 && diasSelecionados.has(cell.dateStr)
+                return (
                 <div
                   key={i}
                   className={`min-h-[90px] bg-white p-1.5 ${
                     cell.dia === 0 ? 'bg-gray-50' : 'cursor-pointer hover:bg-gray-50'
-                  } ${cell.isToday ? 'ring-2 ring-inset ring-brand-500' : ''}`}
+                  } ${cell.isToday ? 'ring-2 ring-inset ring-brand-500' : ''} ${
+                    selecionado ? 'bg-brand-50 ring-2 ring-inset ring-brand-400' : ''
+                  }`}
                   onClick={() => {
-                    if (cell.dia > 0 && isAdmin) openCreate(cell.dateStr)
+                    if (cell.dia === 0 || !isAdmin) return
+                    if (modoSelecao) toggleDiaSelecionado(cell.dateStr)
+                    else openCreate(cell.dateStr)
                   }}
                 >
                   {cell.dia > 0 && (
@@ -320,7 +423,8 @@ export default function Agenda() {
                     </>
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -516,6 +620,77 @@ export default function Agenda() {
                   {editEvento ? 'Salvar' : 'Criar'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal criar em lote (feriados/férias em vários dias de uma vez) */}
+      {showBulkModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-800">
+                Marcar {diasSelecionados.size} dia(s) selecionado(s)
+              </h3>
+              <button onClick={() => setShowBulkModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
+                <input
+                  value={bulkTitulo}
+                  onChange={(e) => setBulkTitulo(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+                  placeholder="Ex: Feriado Nacional / Férias de Verão"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+                <select
+                  value={bulkTipo}
+                  onChange={(e) => setBulkTipo(e.target.value as 'feriado' | 'recesso')}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+                >
+                  <option value="feriado">Feriado</option>
+                  <option value="recesso">Recesso / Férias</option>
+                </select>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={bulkVisivelAluno}
+                  onChange={(e) => setBulkVisivelAluno(e.target.checked)}
+                  className="rounded border-gray-300"
+                />
+                Visível para alunos
+              </label>
+
+              <p className="text-xs text-gray-400">
+                Será criado um evento independente em cada um dos {diasSelecionados.size} dia(s) selecionado(s).
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setShowBulkModal(false)}
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleBulkSave}
+                disabled={bulkSaving || !bulkTitulo.trim()}
+                className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50 flex items-center gap-2"
+              >
+                {bulkSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                Criar {diasSelecionados.size} evento(s)
+              </button>
             </div>
           </div>
         </div>
