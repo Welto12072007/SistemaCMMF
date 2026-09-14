@@ -67,7 +67,6 @@ export default function Agenda() {
   const [bulkTipo, setBulkTipo] = useState<'feriado' | 'recesso'>('feriado')
   const [bulkTitulo, setBulkTitulo] = useState('')
   const [bulkVisivelAluno, setBulkVisivelAluno] = useState(true)
-  const [bulkAvisarWhatsapp, setBulkAvisarWhatsapp] = useState(true)
   const [bulkSaving, setBulkSaving] = useState(false)
 
   // Form state
@@ -228,86 +227,11 @@ export default function Agenda() {
     setShowBulkModal(true)
   }
 
-  // Nome do dia da semana igual à convenção usada em horarios.dia_semana (Segunda..Sábado, sem Domingo)
-  const DIA_SEMANA_HORARIOS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
-
-  async function avisarAlunosEProfessores(datas: string[], titulo: string) {
-    const porDiaSemana = new Map<string, string[]>() // dia_semana -> datas (dd/mm) daquele dia
-    for (const dateStr of datas) {
-      const diaSemana = DIA_SEMANA_HORARIOS[new Date(dateStr + 'T12:00:00').getDay()]!
-      const [, m, d] = dateStr.split('-')
-      const lista = porDiaSemana.get(diaSemana) || []
-      lista.push(`${d}/${m}`)
-      porDiaSemana.set(diaSemana, lista)
-    }
-
-    const diasSemana = Array.from(porDiaSemana.keys())
-    if (diasSemana.length === 0) return { enviados: 0, erros: 0 }
-
-    const { data: horarios } = await supabase
-      .from('horarios')
-      .select('dia_semana, aluno_ids, professor_id, professores(telefone)')
-      .eq('status', 'ocupado')
-      .in('dia_semana', diasSemana)
-
-    // destinatário -> lista de datas (dd/mm) afetadas
-    const destinatarios = new Map<string, Set<string>>()
-    for (const h of horarios || []) {
-      const datasStr = porDiaSemana.get((h as any).dia_semana) || []
-      const telProf = (h as any).professores?.telefone as string | undefined
-      if (telProf) {
-        const s = destinatarios.get(telProf) || new Set<string>()
-        datasStr.forEach((ds) => s.add(ds))
-        destinatarios.set(telProf, s)
-      }
-    }
-
-    // Alunos vinculados via aluno_ids
-    const alunoIds = Array.from(new Set((horarios || []).flatMap((h: any) => h.aluno_ids || [])))
-    let alunoTelPorId = new Map<string, string>()
-    if (alunoIds.length > 0) {
-      const { data: alunosData } = await supabase.from('alunos').select('id, telefone').in('id', alunoIds)
-      alunoTelPorId = new Map((alunosData || []).map((a: any) => [a.id, a.telefone]))
-    }
-    for (const h of horarios || []) {
-      const datasStr = porDiaSemana.get((h as any).dia_semana) || []
-      for (const aid of (h as any).aluno_ids || []) {
-        const tel = alunoTelPorId.get(aid)
-        if (!tel) continue
-        const s = destinatarios.get(tel) || new Set<string>()
-        datasStr.forEach((ds) => s.add(ds))
-        destinatarios.set(tel, s)
-      }
-    }
-
-    let enviados = 0
-    let erros = 0
-    const baseUrl = import.meta.env.VITE_EVOLUTION_URL || 'https://api.centrodemusicamurilofinger.com'
-    const apiKey = import.meta.env.VITE_EVOLUTION_KEY || 'CentroMusica2026ApiKey'
-    for (const [telefone, datasSet] of destinatarios) {
-      const datasTxt = Array.from(datasSet).join(', ')
-      const texto = `Olá! 🎵 Aviso do Centro de Música Murilo Finger: não haverá aula em ${datasTxt} (${titulo}). Qualquer dúvida, estamos à disposição!`
-      try {
-        const resp = await fetch(`${baseUrl}/message/sendText/CentroMusica`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', apikey: apiKey },
-          body: JSON.stringify({ number: telefone, text: texto }),
-        })
-        if (resp.ok) enviados++
-        else erros++
-      } catch {
-        erros++
-      }
-    }
-    return { enviados, erros }
-  }
-
   async function handleBulkSave() {
     if (!bulkTitulo.trim() || diasSelecionados.size === 0) return
     setBulkSaving(true)
     const cor = TIPO_CONFIG[bulkTipo]!.defaultCor
-    const datas = Array.from(diasSelecionados)
-    const payload = datas.map((dateStr) => ({
+    const payload = Array.from(diasSelecionados).map((dateStr) => ({
       titulo: bulkTitulo.trim(),
       data_inicio: dateStr,
       tipo: bulkTipo,
@@ -315,14 +239,8 @@ export default function Agenda() {
       visivel_aluno: bulkVisivelAluno,
     }))
     const { error } = await supabase.from('eventos_agenda').insert(payload)
-    if (error) { setBulkSaving(false); alert('Erro:\n' + error.message); return }
-
-    if (bulkAvisarWhatsapp) {
-      const { enviados, erros } = await avisarAlunosEProfessores(datas, bulkTitulo.trim())
-      alert(`Evento(s) criado(s)!\n\nAvisos por WhatsApp: ${enviados} enviado(s)${erros ? `, ${erros} com erro` : ''}.`)
-    }
-
     setBulkSaving(false)
+    if (error) { alert('Erro:\n' + error.message); return }
     setShowBulkModal(false)
     setDiasSelecionados(new Set())
     setModoSelecao(false)
@@ -751,16 +669,6 @@ export default function Agenda() {
                   className="rounded border-gray-300"
                 />
                 Visível para alunos
-              </label>
-
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={bulkAvisarWhatsapp}
-                  onChange={(e) => setBulkAvisarWhatsapp(e.target.checked)}
-                  className="rounded border-gray-300"
-                />
-                Avisar alunos e professores por WhatsApp (das aulas afetadas nesses dias)
               </label>
 
               <p className="text-xs text-gray-400">
