@@ -76,15 +76,29 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
   const [histFiltro, setHistFiltro] = useState({ mes: new Date().getMonth() + 1, ano: new Date().getFullYear() })
   const [modalPresenca, setModalPresenca] = useState<{ item: AlunoPresenca; presente: boolean; tipoFalta?: string } | null>(null)
   const [obsTexto, setObsTexto] = useState('')
+  const [feriadoHoje, setFeriadoHoje] = useState<{ titulo: string; tipo: string } | null>(null)
+  const [forcarChamada, setForcarChamada] = useState(false)
 
   useEffect(() => {
     loadProfessores()
   }, [])
 
   useEffect(() => {
-    if (tab === 'chamada') loadPresencasDia()
+    if (tab === 'chamada') { loadPresencasDia(); loadFeriadoDia() }
     if (tab === 'historico') loadHistorico()
   }, [dataAtual, filtroProfessor, tab, histFiltro])
+
+  async function loadFeriadoDia() {
+    setForcarChamada(false)
+    const { data } = await supabase
+      .from('eventos_agenda')
+      .select('titulo, tipo, data_inicio, data_fim')
+      .in('tipo', ['feriado', 'recesso'])
+      .lte('data_inicio', dataAtual)
+      .or(`data_fim.gte.${dataAtual},data_fim.is.null`)
+    const encontrado = (data || []).find((e: any) => (e.data_fim || e.data_inicio) >= dataAtual)
+    setFeriadoHoje(encontrado ? { titulo: encontrado.titulo, tipo: encontrado.tipo } : null)
+  }
 
   useEffect(() => {
     loadAlertas()
@@ -554,6 +568,25 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
             </div>
           </div>
 
+          {feriadoHoje && (
+            <div className="flex flex-wrap items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
+              <span className="text-sm text-red-700 font-medium">
+                {feriadoHoje.tipo === 'feriado' ? 'Feriado' : 'Recesso/Férias'}: {feriadoHoje.titulo} — não há aula neste dia, as faltas não devem ser registradas.
+              </span>
+              {!forcarChamada && (
+                <button
+                  onClick={() => setForcarChamada(true)}
+                  className="ml-auto text-xs font-medium text-red-600 hover:underline"
+                >
+                  Fazer chamada mesmo assim
+                </button>
+              )}
+            </div>
+          )}
+
+          {(!feriadoHoje || forcarChamada) && (
+          <>
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white rounded-xl shadow-sm border p-4">
@@ -694,6 +727,8 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
               </tbody>
             </table>
           </div>
+          </>
+          )}
         </>
       )}
 
