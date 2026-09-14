@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { supabase, supabaseAdmin } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
+import { adminListUsers, adminCreateUser, adminDeleteUser, adminGenerateLink } from '@/lib/adminApi'
 import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard, Shield, Mail, Target, Copy, CheckCircle2, Link } from 'lucide-react'
 import { maskPhone, normalizePhone, formatPhoneDisplay, maskPixKey, normalizePixKey } from '@/lib/utils'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
@@ -112,9 +113,9 @@ function AcessosTab() {
 
     // Busca ultimo_acesso via Admin API (auth.users nao e' consultavel pelo client normal)
     try {
-      const { data: usersData } = await supabaseAdmin.auth.admin.listUsers({ perPage: 200 })
+      const { users } = await adminListUsers()
       const map: Record<string, string | null> = {}
-      for (const u of usersData?.users || []) map[u.id] = u.last_sign_in_at ?? null
+      for (const u of users) map[u.id] = u.last_sign_in_at ?? null
       setUltimoAcesso(map)
     } catch {
       // Se falhar, so' nao mostramos o status de acesso — nao trava a tela
@@ -177,14 +178,13 @@ function AcessosTab() {
     const falhas: string[] = []
     for (const a of selecionados) {
       setProgressoBulk(`${ok + falhas.length + 1}/${selecionados.length}: ${a.nome}`)
-      const tempSenha = crypto.randomUUID()
-      const { data: created, error: errCreate } = await supabaseAdmin.auth.admin.createUser({
-        email: a.email,
-        password: tempSenha,
-        email_confirm: true,
-        user_metadata: { nome: a.nome, role: 'aluno' },
-      })
-      if (errCreate || !created.user) { falhas.push(`${a.nome} (${errCreate?.message ?? 'erro ao criar usuário'})`); continue }
+      let created: { user: { id: string } } | null = null
+      try {
+        created = await adminCreateUser(a.email, a.nome, 'aluno')
+      } catch (err: any) {
+        falhas.push(`${a.nome} (${err.message ?? 'erro ao criar usuário'})`)
+        continue
+      }
 
       const { error: errPerfil } = await supabase.from('perfis').insert({
         user_id: created.user.id,
@@ -223,17 +223,12 @@ function AcessosTab() {
         telefone: telNorm,
       }).eq('id', editando.id)
     } else {
-      // 1. Cria o usuário com senha temporária (necessário para Auth)
-      const tempSenha = crypto.randomUUID()
-      const { data: created, error: errCreate } = await supabaseAdmin.auth.admin.createUser({
-        email: form.email,
-        password: tempSenha,
-        email_confirm: true,
-        user_metadata: { nome: form.nome, role: form.role },
-      })
-
-      if (errCreate || !created.user) {
-        setErro(errCreate?.message ?? 'Erro ao criar usuário')
+      // 1. Cria o usuário via API de administração (service role fica no servidor)
+      let created: { user: { id: string } } | null = null
+      try {
+        created = await adminCreateUser(form.email, form.nome, form.role)
+      } catch (err: any) {
+        setErro(err.message ?? 'Erro ao criar usuário')
         setLoading(false)
         return
       }
@@ -255,19 +250,15 @@ function AcessosTab() {
       })
 
       // 4. Gera link manual como backup (caso email não chegue)
-      const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'recovery',
-        email: form.email,
-        options: { redirectTo: `${window.location.origin}/definir-senha` },
-      })
+      const linkData = await adminGenerateLink(form.email, `${window.location.origin}/definir-senha`).catch(() => null)
 
       setShowForm(false)
       setEditando(null)
       setLoading(false)
       load()
 
-      if (linkData) {
-        setLinkConvite((linkData.properties as any).action_link ?? null)
+      if (linkData?.action_link) {
+        setLinkConvite(linkData.action_link)
       }
       setSuccessMsg(errReset
         ? `Acesso criado! O email não pôde ser enviado — use o link abaixo.`
@@ -289,7 +280,7 @@ function AcessosTab() {
 
   async function handleDelete(perfil: Perfil) {
     if (!confirm(`Excluir acesso de ${perfil.nome}? Isso remove o login da pessoa.`)) return
-    await supabaseAdmin.auth.admin.deleteUser(perfil.user_id)
+    await adminDeleteUser(perfil.user_id).catch(() => null)
     await supabase.from('perfis').delete().eq('id', perfil.id)
     load()
   }
@@ -302,13 +293,9 @@ function AcessosTab() {
       redirectTo: `${window.location.origin}/definir-senha`,
     })
     // Gera link manual também (caso queira mandar por WhatsApp em vez de email)
-    const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'recovery',
-      email: perfil.email,
-      options: { redirectTo: `${window.location.origin}/definir-senha` },
-    })
-    if (linkData) {
-      setLinkConvite((linkData.properties as any).action_link ?? null)
+    const linkData = await adminGenerateLink(perfil.email, `${window.location.origin}/definir-senha`).catch(() => null)
+    if (linkData?.action_link) {
+      setLinkConvite(linkData.action_link)
     }
     if (error) {
       setErro('Erro ao enviar email: ' + error.message)

@@ -6,7 +6,7 @@ const ASAAS_BASE = Deno.env.get('ASAAS_SANDBOX') === 'true'
 
 const ASAAS_KEY = Deno.env.get('ASAAS_API_KEY') ?? ''
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
-const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+const SUPABASE_SERVICE_KEY = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',

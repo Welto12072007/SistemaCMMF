@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase, supabaseAdmin } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
+import { adminCreateUser } from '@/lib/adminApi'
 import { useAuth } from '@/contexts/AuthContext'
 import { Plus, Calendar, Music, User, X, UserPlus, CheckCircle2, List, RefreshCw, Download, Pencil, Trash2 } from 'lucide-react'
 import type { AulaExperimental, Professor } from '@/types'
@@ -725,14 +726,8 @@ function ConverterModal({ aula, onClose, onDone }: {
           .eq('email', emailAluno)
           .maybeSingle()
         if (!perfilExiste) {
-          const tempSenha = crypto.randomUUID()
-          const { data: created, error: errCreate } = await supabaseAdmin.auth.admin.createUser({
-            email: emailAluno,
-            password: tempSenha,
-            email_confirm: true,
-            user_metadata: { nome: aluno.nome, role: 'aluno' },
-          })
-          if (!errCreate && created.user) {
+          try {
+            const created = await adminCreateUser(emailAluno, aluno.nome, 'aluno')
             await supabase.from('perfis').insert({
               user_id: created.user.id,
               nome: aluno.nome,
@@ -743,6 +738,8 @@ function ConverterModal({ aula, onClose, onDone }: {
             await supabase.auth.resetPasswordForEmail(emailAluno, {
               redirectTo: `${window.location.origin}/definir-senha`,
             })
+          } catch (err) {
+            console.warn('[ConverterModal] Erro ao criar login automático:', err)
           }
         }
       }

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { supabase, supabaseAdmin } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
+import { adminCreateUser } from '@/lib/adminApi'
 import {
   Plus, Search, Filter, Phone, Mail, ChevronDown, ChevronUp,
   Users, Music, Edit2, Trash2, FileText,
@@ -239,14 +240,8 @@ export default function Usuarios() {
               .eq('email', emailAluno)
               .maybeSingle()
             if (!perfilExiste) {
-              const tempSenha = crypto.randomUUID()
-              const { data: created, error: errCreate } = await supabaseAdmin.auth.admin.createUser({
-                email: emailAluno,
-                password: tempSenha,
-                email_confirm: true,
-                user_metadata: { nome: (saved as Aluno).nome, role: 'aluno' },
-              })
-              if (!errCreate && created.user) {
+              try {
+                const created = await adminCreateUser(emailAluno, (saved as Aluno).nome, 'aluno')
                 await supabase.from('perfis').insert({
                   user_id: created.user.id,
                   nome: (saved as Aluno).nome,
@@ -258,6 +253,8 @@ export default function Usuarios() {
                 await supabase.auth.resetPasswordForEmail(emailAluno, {
                   redirectTo: `${window.location.origin}/definir-senha`,
                 })
+              } catch (e) {
+                console.warn('[Usuarios] Erro ao criar login automático:', e)
               }
             }
           } catch (e) {

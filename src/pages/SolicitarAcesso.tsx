@@ -1,16 +1,7 @@
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
 import { Link } from 'react-router-dom'
 import logoHorizontal from '@/assets/logos/cmmf-logo-horizontal-branco.png'
 import { Mail, ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react'
-
-// Admin client for creating users (same pattern as Configuracoes)
-import { createClient } from '@supabase/supabase-js'
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://oykrtlkksqekvjiiqafy.supabase.co'
-const supabaseServiceKey = import.meta.env.VITE_SUPABASE_SERVICE_KEY || ''
-const adminClient = supabaseServiceKey
-  ? createClient(supabaseUrl, supabaseServiceKey, { auth: { autoRefreshToken: false, persistSession: false } })
-  : null
 
 type Step = 'form' | 'success' | 'error'
 
@@ -27,19 +18,26 @@ export default function SolicitarAcesso() {
     setLoading(true)
 
     try {
-      // 1. Validar email via RPC
-      const { data, error } = await supabase.rpc('validar_email_acesso', {
-        p_email: email.trim().toLowerCase(),
+      // Validação, criação de usuário e envio de email ficam todos no servidor
+      // (a chave de serviço nunca chega ao navegador)
+      const resp = await fetch('/api/solicitar-acesso', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          redirectTo: `${window.location.origin}/definir-senha`,
+        }),
       })
+      const data = await resp.json()
 
-      if (error) {
-        setErrorMsg('Erro ao verificar email. Tente novamente.')
+      if (!resp.ok) {
+        setErrorMsg(data.error || 'Erro ao verificar email. Tente novamente.')
         setLoading(false)
         return
       }
 
-      if (!data?.ok) {
-        if (data?.motivo === 'ja_cadastrado') {
+      if (!data.ok) {
+        if (data.motivo === 'ja_cadastrado') {
           setErrorMsg('Este email já possui acesso ao sistema. Use "Esqueci minha senha" na tela de login.')
         } else {
           setErrorMsg('Email não encontrado no cadastro da escola. Verifique se digitou corretamente ou entre em contato com a secretaria.')
@@ -48,60 +46,7 @@ export default function SolicitarAcesso() {
         return
       }
 
-      if (!adminClient) {
-        setErrorMsg('Configuração do sistema incompleta. Entre em contato com a administração.')
-        setLoading(false)
-        return
-      }
-
-      const { role, nome, ref_id } = data
-      setNomeUsuario(nome?.split(' ')[0] || '')
-
-      // 2. Criar usuário no Supabase Auth
-      const tempPassword = crypto.randomUUID()
-      const { data: created, error: errCreate } = await adminClient.auth.admin.createUser({
-        email: email.trim().toLowerCase(),
-        password: tempPassword,
-        email_confirm: true,
-        user_metadata: { nome, role },
-      })
-
-      if (errCreate) {
-        // Se o usuário já existe no Auth mas não tem perfil ativo, enviar reset
-        if (errCreate.message?.includes('already been registered')) {
-          await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-            redirectTo: `${window.location.origin}/definir-senha`,
-          })
-          setStep('success')
-          setLoading(false)
-          return
-        }
-        setErrorMsg('Erro ao criar acesso: ' + errCreate.message)
-        setLoading(false)
-        return
-      }
-
-      if (!created?.user) {
-        setErrorMsg('Erro inesperado ao criar conta.')
-        setLoading(false)
-        return
-      }
-
-      // 3. Criar perfil
-      await supabase.from('perfis').insert({
-        user_id: created.user.id,
-        nome: nome,
-        email: email.trim().toLowerCase(),
-        role: role,
-        professor_id: role === 'professor' ? ref_id : null,
-        ativo: true,
-      })
-
-      // 4. Enviar email de redefinição de senha (funciona como convite)
-      await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-        redirectTo: `${window.location.origin}/definir-senha`,
-      })
-
+      setNomeUsuario(data.nome?.split(' ')[0] || '')
       setStep('success')
     } catch (err: any) {
       setErrorMsg('Erro inesperado. Tente novamente.')
