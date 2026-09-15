@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cmmf-v8'
+const CACHE_NAME = 'cmmf-v9'
 
 self.addEventListener('install', () => {
   self.skipWaiting()
@@ -31,7 +31,8 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    fetch(request)
+    // 'reload' bypasses the browser's HTTP cache so a new deploy is never masked by a stale disk-cached response
+    fetch(request, { cache: 'reload' })
       .then((response) => {
         if (response.status === 200) {
           const clone = response.clone()
