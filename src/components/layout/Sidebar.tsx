@@ -33,6 +33,7 @@ import {
   Home,
   CalendarRange,
   Gift,
+  ListChecks,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -63,6 +64,13 @@ const sections: NavSection[] = [
       { to: '/minha-grade', label: 'Minha Grade', icon: CalendarClock, roles: ['professor'] },
       { to: '/presencas', label: 'Presenças & Faltas', icon: ClipboardCheck, roles: ['admin', 'recepcao'] },
       { to: '/portal-aluno', label: 'Minhas Aulas', icon: Calendar, roles: ['aluno'] },
+    ],
+  },
+  {
+    title: 'Gestão',
+    roles: ['admin', 'recepcao', 'professor'],
+    items: [
+      { to: '/gestao/acoes', label: 'Ações', icon: ListChecks, roles: ['admin', 'recepcao', 'professor'] },
     ],
   },
   {

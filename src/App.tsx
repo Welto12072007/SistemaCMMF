@@ -41,6 +41,7 @@ const PortalProfessor = lazy(() => import('./pages/PortalProfessor'))
 const MinhaGrade = lazy(() => import('./pages/MinhaGrade'))
 const PosVenda = lazy(() => import('./pages/PosVenda'))
 const Agenda = lazy(() => import('./pages/Agenda'))
+const GestaoAcoes = lazy(() => import('./pages/gestao/Acoes'))
 
 function PageLoader() {
   return (
@@ -128,6 +129,7 @@ export default function App() {
         <Route path="/configuracoes" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><Configuracoes /></Suspense></Guard>} />
         <Route path="/pos-venda" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><PosVenda /></Suspense></Guard>} />
         <Route path="/agenda" element={<Suspense fallback={<PageLoader />}><Agenda /></Suspense>} />
+        <Route path="/gestao/acoes" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><GestaoAcoes /></Suspense></Guard>} />
       </Route>
     </Routes>
   )
