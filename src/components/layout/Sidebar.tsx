@@ -34,6 +34,7 @@ import {
   CalendarRange,
   Gift,
   ListChecks,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -71,6 +72,7 @@ const sections: NavSection[] = [
     roles: ['admin', 'recepcao', 'professor'],
     items: [
       { to: '/gestao/acoes', label: 'Ações', icon: ListChecks, roles: ['admin', 'recepcao', 'professor'] },
+      { to: '/gestao/configuracoes', label: 'Configurações', icon: SlidersHorizontal, roles: ['admin'] },
     ],
   },
   {

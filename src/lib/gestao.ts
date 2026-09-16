@@ -75,6 +75,23 @@ export interface GestaoAcao {
   updated_at: string
 }
 
+export interface GestaoProjeto {
+  id: string
+  nome: string
+  descricao: string | null
+  area_id: string | null
+  ativo: boolean
+  arquivado_em: string | null
+}
+
+export interface GestaoTipoReuniao {
+  id: string
+  nome: string
+  cor: string | null
+  posicao: number
+  arquivado_em: string | null
+}
+
 export interface GestaoHistorico {
   id: number
   operacao: 'INSERT' | 'UPDATE' | 'DELETE'
