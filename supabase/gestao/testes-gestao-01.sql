@@ -79,62 +79,62 @@ begin
     -- ── Sincronização com o sistema principal ───────────────────────────────
     select case when m_will is not null and m_carlos is not null and m_ana is not null and m_admin is not null
                 then 'sim' else 'não' end into v_txt;
-    t_nome := t_nome || 'Professores e admin viram membros automaticamente'; t_esp := t_esp || 'sim'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Professores e admin viram membros automaticamente'::text; t_esp := t_esp || 'sim'::text; t_obt := t_obt || v_txt;
 
     select case when exists (select 1 from public.gestao_membros m join public.perfis pf on pf.id = m.perfil_id where pf.user_id = u_aluno)
                 then 'sim' else 'não' end into v_txt;
-    t_nome := t_nome || 'Aluno vira membro'; t_esp := t_esp || 'não'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Aluno vira membro'::text; t_esp := t_esp || 'não'::text; t_obt := t_obt || v_txt;
 
     select count(*) into v_n from public.gestao_membros where professor_id = pr_carlos;
     perform public.gestao_sincronizar_membros();
     select count(*) into v_n from public.gestao_membros where professor_id = pr_carlos;
-    t_nome := t_nome || 'Sincronizar de novo não duplica'; t_esp := t_esp || '1'; t_obt := t_obt || v_n::text;
+    t_nome := t_nome || 'Sincronizar de novo não duplica'::text; t_esp := t_esp || '1'::text; t_obt := t_obt || v_n::text;
 
     -- ── Carlos (professor) ──────────────────────────────────────────────────
     perform set_config('request.jwt.claims', json_build_object('sub', u_carlos, 'role', 'authenticated')::text, true);
     set local role authenticated;
 
     select count(*) into v_n from public.gestao_acoes where id = any(ids);
-    t_nome := t_nome || 'Carlos vê só a própria ação'; t_esp := t_esp || '1'; t_obt := t_obt || v_n::text;
+    t_nome := t_nome || 'Carlos vê só a própria ação'::text; t_esp := t_esp || '1'::text; t_obt := t_obt || v_n::text;
 
     update public.gestao_acoes set progresso = 40 where id = a1;
     get diagnostics v_n = row_count;
-    t_nome := t_nome || 'Carlos atualiza o progresso da própria ação'; t_esp := t_esp || '1'; t_obt := t_obt || v_n::text;
+    t_nome := t_nome || 'Carlos atualiza o progresso da própria ação'::text; t_esp := t_esp || '1'::text; t_obt := t_obt || v_n::text;
 
     begin
       update public.gestao_acoes set prazo = prazo + 5 where id = a1;
       v_txt := 'permitido';
     exception when others then v_txt := 'bloqueado';
     end;
-    t_nome := t_nome || 'Carlos muda o próprio prazo'; t_esp := t_esp || 'bloqueado'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Carlos muda o próprio prazo'::text; t_esp := t_esp || 'bloqueado'::text; t_obt := t_obt || v_txt;
 
     begin
       update public.gestao_acoes set status_id = st_concluida where id = a1;
       v_txt := 'permitido';
     exception when others then v_txt := 'bloqueado';
     end;
-    t_nome := t_nome || 'Carlos conclui ação que exige validação'; t_esp := t_esp || 'bloqueado'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Carlos conclui ação que exige validação'::text; t_esp := t_esp || 'bloqueado'::text; t_obt := t_obt || v_txt;
 
     update public.gestao_acoes set progresso = 90 where id = a2;
     get diagnostics v_n = row_count;
-    t_nome := t_nome || 'Carlos altera ação da Ana'; t_esp := t_esp || '0'; t_obt := t_obt || v_n::text;
+    t_nome := t_nome || 'Carlos altera ação da Ana'::text; t_esp := t_esp || '0'::text; t_obt := t_obt || v_n::text;
 
     begin
       insert into public.gestao_acoes (titulo, responsavel_id, area_id) values ('Ação para a Ana', m_ana, ar_violao);
       v_txt := 'permitido';
     exception when others then v_txt := 'bloqueado';
     end;
-    t_nome := t_nome || 'Carlos cria ação para outra pessoa'; t_esp := t_esp || 'bloqueado'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Carlos cria ação para outra pessoa'::text; t_esp := t_esp || 'bloqueado'::text; t_obt := t_obt || v_txt;
 
     begin
       insert into public.gestao_acoes (titulo, responsavel_id, area_id) values ('Estudar novo método', m_carlos, ar_violao);
       v_txt := 'permitido';
     exception when others then v_txt := 'bloqueado: ' || sqlerrm;
     end;
-    t_nome := t_nome || 'Carlos cria ação para si mesmo'; t_esp := t_esp || 'permitido'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Carlos cria ação para si mesmo'::text; t_esp := t_esp || 'permitido'::text; t_obt := t_obt || v_txt;
 
     select case when count(*) > 0 then 'sim' else 'não' end into v_txt from public.gestao_areas;
-    t_nome := t_nome || 'Carlos enxerga as áreas da escola'; t_esp := t_esp || 'sim'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Carlos enxerga as áreas da escola'::text; t_esp := t_esp || 'sim'::text; t_obt := t_obt || v_txt;
 
     reset role;
     perform set_config('request.jwt.claims', '', true);
@@ -143,7 +143,7 @@ begin
     perform set_config('request.jwt.claims', json_build_object('sub', u_ana, 'role', 'authenticated')::text, true);
     set local role authenticated;
     select count(*) into v_n from public.gestao_acoes where id = any(ids);
-    t_nome := t_nome || 'Ana vê só a própria ação'; t_esp := t_esp || '1'; t_obt := t_obt || v_n::text;
+    t_nome := t_nome || 'Ana vê só a própria ação'::text; t_esp := t_esp || '1'::text; t_obt := t_obt || v_n::text;
     reset role;
     perform set_config('request.jwt.claims', '', true);
 
@@ -152,24 +152,24 @@ begin
     set local role authenticated;
 
     select count(*) into v_n from public.gestao_acoes where area_id = ar_violao and id = any(ids || array(select id from public.gestao_acoes where criado_por = m_carlos));
-    t_nome := t_nome || 'Willian vê todas as ações de Violão'; t_esp := t_esp || '3'; t_obt := t_obt || v_n::text;
+    t_nome := t_nome || 'Willian vê todas as ações de Violão'::text; t_esp := t_esp || '3'::text; t_obt := t_obt || v_n::text;
 
     select count(*) into v_n from public.gestao_acoes where id = a2;
-    t_nome := t_nome || 'Willian não vê ações de Canto'; t_esp := t_esp || '0'; t_obt := t_obt || v_n::text;
+    t_nome := t_nome || 'Willian não vê ações de Canto'::text; t_esp := t_esp || '0'::text; t_obt := t_obt || v_n::text;
 
     begin
       update public.gestao_acoes set prazo = prazo + 7 where id = a1;
       v_txt := 'permitido';
     exception when others then v_txt := 'bloqueado: ' || sqlerrm;
     end;
-    t_nome := t_nome || 'Willian muda o prazo de ação de Violão'; t_esp := t_esp || 'permitido'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Willian muda o prazo de ação de Violão'::text; t_esp := t_esp || 'permitido'::text; t_obt := t_obt || v_txt;
 
     begin
       update public.gestao_acoes set status_id = st_concluida where id = a1;
       v_txt := 'permitido';
     exception when others then v_txt := 'bloqueado: ' || sqlerrm;
     end;
-    t_nome := t_nome || 'Willian conclui a ação que exige validação'; t_esp := t_esp || 'permitido'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Willian conclui a ação que exige validação'::text; t_esp := t_esp || 'permitido'::text; t_obt := t_obt || v_txt;
 
     reset role;
     perform set_config('request.jwt.claims', '', true);
@@ -178,26 +178,26 @@ begin
     select format('%s → %s', alteracoes -> 'prazo' ->> 'antes', alteracoes -> 'prazo' ->> 'depois') into v_txt
     from public.gestao_historico where registro_id = a1 and operacao = 'UPDATE' and alteracoes ? 'prazo'
     order by id desc limit 1;
-    t_nome := t_nome || 'Histórico registra o prazo anterior e o novo';
+    t_nome := t_nome || 'Histórico registra o prazo anterior e o novo'::text;
     t_esp := t_esp || format('%s → %s', public.gestao_hoje() + 10, public.gestao_hoje() + 17);
     t_obt := t_obt || coalesce(v_txt, 'nada registrado');
 
     select case when membro_id = m_will then 'Willian' else coalesce(membro_id::text, 'ninguém') end into v_txt
     from public.gestao_historico where registro_id = a1 and operacao = 'UPDATE' and alteracoes ? 'prazo'
     order by id desc limit 1;
-    t_nome := t_nome || 'Histórico registra quem alterou'; t_esp := t_esp || 'Willian'; t_obt := t_obt || coalesce(v_txt, 'nada');
+    t_nome := t_nome || 'Histórico registra quem alterou'::text; t_esp := t_esp || 'Willian'::text; t_obt := t_obt || coalesce(v_txt, 'nada');
 
     select progresso::text into v_txt from public.gestao_acoes where id = a1;
-    t_nome := t_nome || 'Concluir leva o progresso a 100%'; t_esp := t_esp || '100'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Concluir leva o progresso a 100%'::text; t_esp := t_esp || '100'::text; t_obt := t_obt || v_txt;
 
     perform set_config('request.jwt.claims', json_build_object('sub', u_carlos, 'role', 'authenticated')::text, true);
     set local role authenticated;
     select case when count(*) > 0 then 'sim' else 'não' end into v_txt from public.gestao_historico where registro_id = a1;
-    t_nome := t_nome || 'Carlos lê o histórico da própria ação'; t_esp := t_esp || 'sim'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Carlos lê o histórico da própria ação'::text; t_esp := t_esp || 'sim'::text; t_obt := t_obt || v_txt;
     select count(*) into v_n from public.gestao_historico where registro_id = a2;
-    t_nome := t_nome || 'Carlos lê o histórico da ação da Ana'; t_esp := t_esp || '0'; t_obt := t_obt || v_n::text;
+    t_nome := t_nome || 'Carlos lê o histórico da ação da Ana'::text; t_esp := t_esp || '0'::text; t_obt := t_obt || v_n::text;
     select count(*) into v_n from public.gestao_historico where tabela = 'gestao_atribuicoes';
-    t_nome := t_nome || 'Carlos lê o histórico de atribuições'; t_esp := t_esp || '0'; t_obt := t_obt || v_n::text;
+    t_nome := t_nome || 'Carlos lê o histórico de atribuições'::text; t_esp := t_esp || '0'::text; t_obt := t_obt || v_n::text;
     reset role;
     perform set_config('request.jwt.claims', '', true);
 
@@ -205,7 +205,7 @@ begin
     perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
     set local role authenticated;
     select count(*) into v_n from public.gestao_acoes where id = any(ids);
-    t_nome := t_nome || 'Admin do sistema vê todas as ações'; t_esp := t_esp || '3'; t_obt := t_obt || v_n::text;
+    t_nome := t_nome || 'Admin do sistema vê todas as ações'::text; t_esp := t_esp || '3'::text; t_obt := t_obt || v_n::text;
     reset role;
     perform set_config('request.jwt.claims', '', true);
 
@@ -214,13 +214,13 @@ begin
     set local role authenticated;
     select (select count(*) from public.gestao_acoes) + (select count(*) from public.gestao_membros)
          + (select count(*) from public.gestao_areas) into v_n;
-    t_nome := t_nome || 'Aluno logado vê algo do módulo'; t_esp := t_esp || '0'; t_obt := t_obt || v_n::text;
+    t_nome := t_nome || 'Aluno logado vê algo do módulo'::text; t_esp := t_esp || '0'::text; t_obt := t_obt || v_n::text;
     begin
       insert into public.gestao_acoes (titulo) values ('Tentativa de aluno');
       v_txt := 'permitido';
     exception when others then v_txt := 'bloqueado';
     end;
-    t_nome := t_nome || 'Aluno cria ação'; t_esp := t_esp || 'bloqueado'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Aluno cria ação'::text; t_esp := t_esp || 'bloqueado'::text; t_obt := t_obt || v_txt;
     reset role;
     perform set_config('request.jwt.claims', '', true);
 
@@ -232,7 +232,7 @@ begin
       v_txt := v_n::text || ' linhas';
     exception when others then v_txt := 'sem acesso';
     end;
-    t_nome := t_nome || 'Visitante sem login lê ações'; t_esp := t_esp || 'sem acesso'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Visitante sem login lê ações'::text; t_esp := t_esp || 'sem acesso'::text; t_obt := t_obt || v_txt;
     reset role;
     perform set_config('request.jwt.claims', '', true);
 
@@ -242,16 +242,16 @@ begin
       v_txt := 'permitido';
     exception when others then v_txt := 'bloqueado: ' || sqlerrm;
     end;
-    t_nome := t_nome || 'Excluir professor no Sistema CMMF continua funcionando'; t_esp := t_esp || 'permitido'; t_obt := t_obt || v_txt;
+    t_nome := t_nome || 'Excluir professor no Sistema CMMF continua funcionando'::text; t_esp := t_esp || 'permitido'::text; t_obt := t_obt || v_txt;
 
     select case when nome = 'Teste Sem Login' then 'mantido' else coalesce(nome, 'perdido') end into v_txt
     from public.gestao_membros where id = m_temp;
-    t_nome := t_nome || 'Nome do membro fica no histórico após a exclusão'; t_esp := t_esp || 'mantido'; t_obt := t_obt || coalesce(v_txt, 'perdido');
+    t_nome := t_nome || 'Nome do membro fica no histórico após a exclusão'::text; t_esp := t_esp || 'mantido'::text; t_obt := t_obt || coalesce(v_txt, 'perdido');
 
     raise exception 'fim_do_teste';
   exception when others then
     if sqlerrm <> 'fim_do_teste' then
-      t_nome := t_nome || 'ERRO INESPERADO'; t_esp := t_esp || '—'; t_obt := t_obt || sqlerrm;
+      t_nome := t_nome || 'ERRO INESPERADO'::text; t_esp := t_esp || '—'::text; t_obt := t_obt || sqlerrm;
     end if;
   end;
 
