@@ -5,6 +5,18 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/** Separa "aluno_nome" de aula em grupo (vírgula/quebra de linha/" e ") em nomes individuais. */
+export function splitNomesGrupo(nome: string): string[] {
+  const raw = nome.split(/[,\n]/).map((n) => n.trim()).filter(Boolean)
+  return raw.flatMap((n) => {
+    if (n.includes(' e ')) {
+      const partes = n.split(/\s+e\s+/).map((p) => p.trim()).filter(Boolean)
+      if (partes.length >= 2 && partes.every((p) => p.split(/\s+/).length >= 2)) return partes
+    }
+    return [n]
+  })
+}
+
 /** Aplica máscara (XX) XXXXX-XXXX enquanto digita */
 export function maskPhone(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, 11)

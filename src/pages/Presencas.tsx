@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { splitNomesGrupo } from '@/lib/utils'
 import {
   CheckCircle2,
   XCircle,
@@ -133,17 +134,6 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
       .from('presencas')
       .select('*')
       .eq('data', dataAtual)
-
-    const splitNomesGrupo = (nome: string): string[] => {
-      const rawNomes = nome.split(/[,\n]/).map((n: string) => n.trim()).filter(Boolean)
-      return rawNomes.flatMap((n: string) => {
-        if (n.includes(' e ')) {
-          const parts = n.split(/\s+e\s+/).map((p: string) => p.trim()).filter(Boolean)
-          if (parts.length >= 2 && parts.every((p: string) => p.split(/\s+/).length >= 2)) return parts
-        }
-        return [n]
-      })
-    }
 
     const lista: AlunoPresenca[] = []
     for (const h of (horariosOcupados || [])) {

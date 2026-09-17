@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { splitNomesGrupo } from '../lib/utils'
 import {
   CalendarClock,
   Save,
@@ -234,16 +235,7 @@ export default function Horarios() {
     setEditTipo(detectedTipo)
 
     const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
-    const splitNomesHorario = (nome: string): string[] => {
-      const rawNomes = nome.split(/[,\n]/).map(n => n.trim()).filter(Boolean)
-      return rawNomes.flatMap(n => {
-        if (n.includes(' e ')) {
-          const parts = n.split(/\s+e\s+/).map(p => p.trim()).filter(Boolean)
-          if (parts.length >= 2 && parts.every(p => p.split(/\s+/).length >= 2)) return parts
-        }
-        return [n]
-      })
-    }
+    const splitNomesHorario = splitNomesGrupo
     const matchAluno = (nome: string): string | null => {
       const hn = normalize(nome)
       const hWords = hn.split(/\s+/).filter(w => w.length > 2)
