@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { splitNomesGrupo } from '@/lib/utils'
 import {
   CheckCircle2, XCircle, Clock, ChevronLeft, ChevronRight,
   BookOpen, DollarSign, CalendarCheck, Loader2, AlertCircle,
@@ -46,16 +47,6 @@ function fmtData(iso: string) { const [y,m,d]=iso.split('-'); return `${d}/${m}/
 function fmtMoeda(v: number) { return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) }
 function fmtHora(t: string) { return t?.slice(0,5)??'' }
 function iniciais(nome: string) { return nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase() }
-function splitNomesGrupo(nome: string): string[] {
-  const raw = nome.split(/[,\n]/).map(n=>n.trim()).filter(Boolean)
-  return raw.flatMap(n => {
-    if (n.includes(' e ')) {
-      const p = n.split(/\s+e\s+/).map(x=>x.trim()).filter(Boolean)
-      if (p.length>=2 && p.every(x=>x.split(/\s+/).length>=2)) return p
-    }
-    return [n]
-  })
-}
 
 type TabKey = 'chamada'|'agenda'|'alunos'|'mes'
 
