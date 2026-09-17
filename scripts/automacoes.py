@@ -13,10 +13,10 @@ Lógica:
   - Dia 1, 1h:   expirar reposições do mês anterior
 """
 import os
-import re
 import logging
 import datetime as dt
 import requests
+from wa_utils import normalizar_tel, enviar_whatsapp as send_whatsapp
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,9 +26,6 @@ log = logging.getLogger(__name__)
 
 SB_URL       = os.environ["SUPABASE_URL"]
 SB_KEY       = os.environ["SUPABASE_SERVICE_KEY"]
-EVO_URL      = os.environ.get("EVOLUTION_API_URL", "https://api.centrodemusicamurilofinger.com")
-EVO_KEY      = os.environ.get("EVOLUTION_API_KEY", "CentroMusica2026ApiKey")
-EVO_INSTANCE = os.environ.get("EVOLUTION_INSTANCE", "CentroMusica")
 CHEFE_TEL    = os.environ.get("CHEFE_TEL", "5551998042607")
 ASAAS_KEY    = os.environ.get("ASAAS_API_KEY", "")
 ASAAS_BASE   = "https://api.asaas.com/v3"
@@ -49,29 +46,6 @@ MESES_PT = [
 
 def now_brt() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=3)
-
-
-def normalizar_tel(tel: str) -> str | None:
-    clean = re.sub(r"\D", "", str(tel or ""))
-    if not clean.startswith("55") and len(clean) >= 10:
-        clean = "55" + clean
-    if len(clean) == 12:
-        clean = clean[:4] + "9" + clean[4:]
-    return clean if len(clean) == 13 else None
-
-
-def send_whatsapp(number: str, text: str) -> bool:
-    try:
-        r = requests.post(
-            f"{EVO_URL}/message/sendText/{EVO_INSTANCE}",
-            json={"number": number, "text": text},
-            headers={"apikey": EVO_KEY, "Content-Type": "application/json"},
-            timeout=15,
-        )
-        return r.status_code < 300
-    except Exception as e:
-        log.error(f"Evolution API erro: {e}")
-        return False
 
 
 def rpc(name: str, params: dict | None = None) -> list | dict | None:
