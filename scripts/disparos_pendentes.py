@@ -11,10 +11,10 @@ outros tipos (pos_experimental etc.) na fila que não devem ser reenviados sem
 revisão manual antes.
 """
 import os
-import re
 import logging
 import datetime as dt
 import requests
+from wa_utils import normalizar_tel, enviar_whatsapp
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,9 +24,6 @@ log = logging.getLogger(__name__)
 
 SB_URL       = os.environ["SUPABASE_URL"]
 SB_KEY       = os.environ["SUPABASE_SERVICE_KEY"]
-EVO_URL      = os.environ.get("EVOLUTION_API_URL", "https://api.centrodemusicamurilofinger.com")
-EVO_KEY      = os.environ.get("EVOLUTION_API_KEY", "CentroMusica2026ApiKey")
-EVO_INSTANCE = os.environ.get("EVOLUTION_INSTANCE", "CentroMusica")
 
 TIPOS_PERMITIDOS = [
     "boas_vindas",
@@ -48,32 +45,6 @@ SB_HEADERS = {
 
 
 # ─── Utilitários ─────────────────────────────────────────────────────────────
-
-def normalizar_tel(tel: str) -> str | None:
-    clean = re.sub(r"\D", "", str(tel or ""))
-    if not clean.startswith("55") and len(clean) >= 10:
-        clean = "55" + clean
-    # Brasil: DDI(2) + DDD(2) + 9(1) + número(8) = 13 dígitos
-    if len(clean) == 12:
-        clean = clean[:4] + "9" + clean[4:]
-    return clean if len(clean) == 13 else None
-
-
-def enviar_whatsapp(number: str, text: str) -> bool:
-    try:
-        r = requests.post(
-            f"{EVO_URL}/message/sendText/{EVO_INSTANCE}",
-            json={"number": number, "text": text},
-            headers={"apikey": EVO_KEY, "Content-Type": "application/json"},
-            timeout=15,
-        )
-        if r.status_code >= 300:
-            log.error(f"Evolution API {r.status_code}: {r.text[:200]}")
-        return r.status_code < 300
-    except Exception as e:
-        log.error(f"Erro Evolution API: {e}")
-        return False
-
 
 # ─── disparos_pendentes ───────────────────────────────────────────────────────
 
