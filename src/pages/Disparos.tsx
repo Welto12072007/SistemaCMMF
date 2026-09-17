@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { getLabelGrupoBase } from '@/lib/crmSegmentos'
+import { getLabelGrupoBase, fetchSegmentosAtivos } from '@/lib/crmSegmentos'
 import { MEDIA_ACCEPT, uploadDisparoMedia, listDisparoMedia, deleteDisparoMedia } from '@/lib/disparosMedia'
 import type { MediaType } from '@/lib/disparosMedia'
 import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
@@ -141,24 +141,7 @@ export default function Disparos() {
   }, [mediaType])
 
   async function loadSegmentos() {
-    const { data } = await supabase
-      .from('crm_segmentos')
-      .select('*')
-      .eq('ativo', true)
-      .order('nome')
-
-    const parsed: CRMSegmento[] = (data || []).map((s: any) => ({
-      id: s.id,
-      nome: s.nome,
-      descricao: s.descricao || '',
-      grupoBase: s.grupo_base as GrupoBaseSegmento,
-      instrumento: s.instrumento || '',
-      apenasComTelefone: Boolean(s.apenas_com_telefone),
-      ativo: Boolean(s.ativo),
-      createdAt: s.created_at,
-    }))
-
-    setSegmentos(parsed)
+    setSegmentos(await fetchSegmentosAtivos(supabase))
   }
 
   async function loadContatos() {

@@ -51,3 +51,25 @@ export function getLabelGrupoBase(grupo: GrupoBaseSegmento) {
   if (grupo === 'leads') return 'Leads'
   return 'Ex-alunos'
 }
+
+/** Busca segmentos ativos salvos no banco (tabela crm_segmentos). */
+export async function fetchSegmentosAtivos(supabase: {
+  from: (table: string) => any
+}): Promise<CRMSegmento[]> {
+  const { data } = await supabase
+    .from('crm_segmentos')
+    .select('*')
+    .eq('ativo', true)
+    .order('nome')
+
+  return (data || []).map((s: any) => ({
+    id: s.id,
+    nome: s.nome,
+    descricao: s.descricao || '',
+    grupoBase: s.grupo_base as GrupoBaseSegmento,
+    instrumento: s.instrumento || '',
+    apenasComTelefone: Boolean(s.apenas_com_telefone),
+    ativo: Boolean(s.ativo),
+    createdAt: s.created_at,
+  }))
+}
