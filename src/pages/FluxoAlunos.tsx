@@ -10,6 +10,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend,
 } from 'recharts'
+import CancelamentoModal from '@/components/CancelamentoModal'
 
 // ─── tipos ─────────────────────────────────────────────────────────────────
 
@@ -110,7 +111,7 @@ export default function FluxoAlunos() {
 
   const [dataInicio, setDataInicio] = useState(primeiroDiaMes)
   const [dataFim, setDataFim] = useState(ultimoDiaMes)
-  const [aba, setAba] = useState<'entradas' | 'saidas' | 'professores' | 'grafico'>('entradas')
+  const [aba, setAba] = useState<'entradas' | 'saidas' | 'cancelamentos' | 'professores' | 'grafico'>('entradas')
   const [busca, setBusca] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -124,12 +125,25 @@ export default function FluxoAlunos() {
   const [formSaida, setFormSaida] = useState({ data_saida: '', motivo_saida: '', motivo_saida_detalhe: '' })
   const [salvando, setSalvando] = useState(false)
 
+  // modal cancelamento programado
+  const [modalCancelamento, setModalCancelamento] = useState<AlunoFluxo | null>(null)
+  const [cancelamentos, setCancelamentos] = useState<any[]>([])
+
   useEffect(() => { carregar() }, [dataInicio, dataFim])
 
   async function carregar() {
     setLoading(true)
-    await Promise.all([carregarAlunos(), carregarProfessores(), carregarGrafico()])
+    await Promise.all([carregarAlunos(), carregarProfessores(), carregarGrafico(), carregarCancelamentos()])
     setLoading(false)
+  }
+
+  async function carregarCancelamentos() {
+    const { data } = await supabase
+      .from('vw_cancelamentos_matricula')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(200)
+    setCancelamentos(data ?? [])
   }
 
   async function carregarAlunos() {
@@ -455,6 +469,7 @@ export default function FluxoAlunos() {
           {([
             ['entradas', `Entradas (${entradas.length})`],
             ['saidas', `Saídas (${saidas.length})`],
+            ['cancelamentos', `Cancelamentos (${cancelamentos.filter(c => c.status === 'programado').length})`],
             ['professores', 'Por Professor'],
             ['grafico', 'Gráfico'],
           ] as [typeof aba, string][]).map(([key, label]) => (
@@ -488,12 +503,22 @@ export default function FluxoAlunos() {
 
           {/* Aba Entradas */}
           {aba === 'entradas' && (
-            <TabelaEntradas alunos={filtrar(entradas)} onRegistrarSaida={setModalSaida} />
+            <TabelaEntradas alunos={filtrar(entradas)} onRegistrarSaida={setModalSaida} onProgramarCancelamento={setModalCancelamento} />
           )}
 
           {/* Aba Saídas */}
           {aba === 'saidas' && (
             <TabelaSaidas alunos={filtrar(saidas)} />
+          )}
+
+          {/* Aba Cancelamentos */}
+          {aba === 'cancelamentos' && (
+            <TabelaCancelamentos cancelamentos={cancelamentos} onCancelarProgramacao={async (id) => {
+              if (!confirm('Cancelar esta programação de cancelamento? O aluno volta ao status ativo normal.')) return
+              const { data, error } = await supabase.rpc('cancelar_programacao_cancelamento', { p_cancelamento_id: id })
+              if (error || !data?.ok) { alert(data?.error ?? error?.message ?? 'Erro ao cancelar'); return }
+              carregarCancelamentos()
+            }} />
           )}
 
           {/* Aba Professores */}
@@ -583,6 +608,15 @@ export default function FluxoAlunos() {
           </div>
         </div>
       )}
+
+      {/* Modal Programar Cancelamento de Matrícula */}
+      {modalCancelamento && (
+        <CancelamentoModal
+          alunoId={modalCancelamento.id}
+          onClose={() => setModalCancelamento(null)}
+          onSaved={carregarCancelamentos}
+        />
+      )}
     </div>
   )
 }
@@ -622,9 +656,11 @@ function KPICard({
 function TabelaEntradas({
   alunos,
   onRegistrarSaida,
+  onProgramarCancelamento,
 }: {
   alunos: AlunoFluxo[]
   onRegistrarSaida: (a: AlunoFluxo) => void
+  onProgramarCancelamento: (a: AlunoFluxo) => void
 }) {
   if (alunos.length === 0)
     return <p className="text-center text-gray-400 py-8">Nenhuma entrada no período</p>
@@ -678,12 +714,20 @@ function TabelaEntradas({
                 <td className="py-2.5 text-gray-600">{a.professor_nome ?? '—'}</td>
                 <td className="py-2.5">
                   {!a.data_saida && a.status === 'ativo' && (
-                    <button
-                      onClick={() => onRegistrarSaida(a)}
-                      className="text-xs text-red-500 hover:text-red-700 hover:underline"
-                    >
-                      Registrar saída
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => onRegistrarSaida(a)}
+                        className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                      >
+                        Registrar saída
+                      </button>
+                      <button
+                        onClick={() => onProgramarCancelamento(a)}
+                        className="text-xs text-orange-500 hover:text-orange-700 hover:underline"
+                      >
+                        Programar cancelamento
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -743,6 +787,80 @@ function TabelaSaidas({ alunos }: { alunos: AlunoFluxo[] }) {
               </tr>
             )
           })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function TabelaCancelamentos({
+  cancelamentos,
+  onCancelarProgramacao,
+}: {
+  cancelamentos: any[]
+  onCancelarProgramacao: (id: string) => void
+}) {
+  if (cancelamentos.length === 0)
+    return <p className="text-center text-gray-400 py-8">Nenhum cancelamento programado</p>
+
+  const statusLabel: Record<string, string> = {
+    programado: 'Programado', efetivado: 'Efetivado', cancelado: 'Cancelado',
+  }
+  const statusColor: Record<string, string> = {
+    programado: 'bg-orange-50 text-orange-700',
+    efetivado: 'bg-gray-100 text-gray-600',
+    cancelado: 'bg-red-50 text-red-500',
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+            <th className="pb-2 font-medium">Aluno</th>
+            <th className="pb-2 font-medium">Solicitação</th>
+            <th className="pb-2 font-medium">Efetiva</th>
+            <th className="pb-2 font-medium">Motivo</th>
+            <th className="pb-2 font-medium">Saldo</th>
+            <th className="pb-2 font-medium">Status</th>
+            <th className="pb-2 font-medium">Cobrança</th>
+            <th className="pb-2 font-medium">PDF</th>
+            <th className="pb-2 font-medium" />
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {cancelamentos.map(c => (
+            <tr key={c.id} className="hover:bg-gray-50">
+              <td className="py-2.5 font-medium text-gray-900">{c.aluno_nome}</td>
+              <td className="py-2.5 text-gray-600">{fmtData(c.data_solicitacao)}</td>
+              <td className="py-2.5 text-gray-600">{fmtData(c.data_efetiva)}</td>
+              <td className="py-2.5 text-gray-600">{MOTIVO_LABELS[c.motivo] ?? c.motivo}</td>
+              <td className="py-2.5 text-gray-600">{fmtMoeda(c.saldo_final)}</td>
+              <td className="py-2.5">
+                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs ${statusColor[c.status] ?? ''}`}>
+                  {statusLabel[c.status] ?? c.status}
+                </span>
+              </td>
+              <td className="py-2.5 text-gray-600">{c.cobranca_status ?? '—'}</td>
+              <td className="py-2.5">
+                {c.pdf_url ? (
+                  <a href={c.pdf_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-xs">
+                    Abrir
+                  </a>
+                ) : '—'}
+              </td>
+              <td className="py-2.5">
+                {c.status === 'programado' && (
+                  <button
+                    onClick={() => onCancelarProgramacao(c.id)}
+                    className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                  >
+                    Cancelar programação
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
