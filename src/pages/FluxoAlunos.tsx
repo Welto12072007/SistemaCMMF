@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { registrarLog } from '@/lib/logger'
 import {
   Users, TrendingUp, TrendingDown, UserMinus, UserPlus,
   RefreshCw, Download, Calendar, Search, ChevronDown, X,
@@ -516,7 +517,11 @@ export default function FluxoAlunos() {
             <TabelaCancelamentos cancelamentos={cancelamentos} onCancelarProgramacao={async (id) => {
               if (!confirm('Cancelar esta programação de cancelamento? O aluno volta ao status ativo normal.')) return
               const { data, error } = await supabase.rpc('cancelar_programacao_cancelamento', { p_cancelamento_id: id })
-              if (error || !data?.ok) { alert(data?.error ?? error?.message ?? 'Erro ao cancelar'); return }
+              if (error || !data?.ok) {
+                await registrarLog({ action: 'cancelar_programacao_cancelamento', entity: 'cancelamento_matricula', entity_id: id, level: 'error', status: 'erro', details: { error: data?.error ?? error?.message } })
+                alert(data?.error ?? error?.message ?? 'Erro ao cancelar'); return
+              }
+              await registrarLog({ action: 'cancelar_programacao_cancelamento', entity: 'cancelamento_matricula', entity_id: id })
               carregarCancelamentos()
             }} />
           )}

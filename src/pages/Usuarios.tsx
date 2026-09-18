@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { registrarLog } from '@/lib/logger'
 import { adminCreateUser } from '@/lib/adminApi'
 import {
   Plus, Search, Filter, Phone, Mail, ChevronDown, ChevronUp,
@@ -279,7 +280,11 @@ export default function Usuarios() {
       p_data_saida: data,
       p_novo_status: 'perdido',
     })
-    if (error) { alert(`Erro: ${error.message}`); return }
+    if (error) {
+      await registrarLog({ action: 'marcar_aluno_inativo', entity: 'aluno', entity_id: removendo.id, level: 'error', status: 'erro', details: { error: error.message } })
+      alert(`Erro: ${error.message}`); return
+    }
+    await registrarLog({ action: 'marcar_aluno_inativo', entity: 'aluno', entity_id: removendo.id, details: { motivo, data_saida: data } })
 
     // Cancela a assinatura recorrente no Asaas junto com a saída do aluno
     if (removendo.asaas_subscription_id) {

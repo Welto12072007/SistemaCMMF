@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { registrarLog } from '@/lib/logger'
 import { X, Calculator, AlertCircle, CheckCircle2, FileDown, Loader2 } from 'lucide-react'
 import jsPDF from 'jspdf'
 
@@ -123,8 +124,11 @@ export default function CancelamentoModal({
       p_vencimento_cobranca: vencimentoCobranca,
     })
     setSalvando(false)
-    if (error) { setErro(error.message); return }
-    if (!data?.ok) { setErro(data?.error ?? 'Erro ao programar cancelamento'); return }
+    if (error || !data?.ok) {
+      await registrarLog({ action: 'programar_cancelamento_matricula', entity: 'aluno', entity_id: alunoId, level: 'error', status: 'erro', details: { error: error?.message ?? data?.error } })
+      setErro(error?.message ?? data?.error ?? 'Erro ao programar cancelamento'); return
+    }
+    await registrarLog({ action: 'programar_cancelamento_matricula', entity: 'aluno', entity_id: alunoId, details: { motivo, data_efetiva: dataEfetiva } })
     setCancelamentoId(data.cancelamento_id)
     setCalculo(data as Calculo)
     setEtapa('sucesso')
