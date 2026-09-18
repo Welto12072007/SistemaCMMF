@@ -5,11 +5,10 @@ import { registrarLog } from '@/lib/logger'
 import { adminCreateUser } from '@/lib/adminApi'
 import {
   Plus, Search, Filter, Phone, Mail, ChevronDown, ChevronUp,
-  Users, Music, Edit2, Trash2, FileText, CalendarX2,
+  Users, Music, Edit2, Trash2, FileText,
 } from 'lucide-react'
 import CobrancaInicialModal, { type AlunoCobrancaInicial } from '@/components/CobrancaInicialModal'
 import ContratoModal from '@/components/ContratoModal'
-import CancelamentoModal from '@/components/CancelamentoModal'
 
 interface Aluno {
   id: string
@@ -90,7 +89,6 @@ export default function Usuarios() {
   const [experimentalId, setExperimentalId] = useState<string | null>(null)
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
   const [removendo, setRemovendo] = useState<Aluno | null>(null)
-  const [cancelando, setCancelando] = useState<Aluno | null>(null)
   const [fromExperimentalReativacao, setFromExperimentalReativacao] = useState<string | null>(null)
   const [cobrancaInicialAluno, setCobrancaInicialAluno] = useState<AlunoCobrancaInicial | null>(null)
   const [contratoAluno, setContratoAluno] = useState<Aluno | null>(null)
@@ -397,7 +395,6 @@ export default function Usuarios() {
                 onEdit={() => { setEditando(a); setShowForm(true) }}
                 onDelete={() => handleDelete(a.id)}
                 onContrato={() => setContratoAluno(a)}
-                onCancelamento={() => setCancelando(a)}
               />
             ))}
           </tbody>
@@ -422,13 +419,6 @@ export default function Usuarios() {
       )}
       {removendo && (
         <SaidaModal aluno={removendo} onConfirm={confirmarSaida} onClose={() => setRemovendo(null)} />
-      )}
-      {cancelando && (
-        <CancelamentoModal
-          alunoId={cancelando.id}
-          onClose={() => setCancelando(null)}
-          onSaved={() => { setCancelando(null); loadAlunos() }}
-        />
       )}
       {cobrancaInicialAluno && (
         <CobrancaInicialModal
@@ -456,8 +446,8 @@ export default function Usuarios() {
   )
 }
 
-function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete, onContrato, onCancelamento }: {
-  aluno: Aluno; expanded: boolean; onToggle: () => void; onEdit: () => void; onDelete: () => void; onContrato: () => void; onCancelamento: () => void
+function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete, onContrato }: {
+  aluno: Aluno; expanded: boolean; onToggle: () => void; onEdit: () => void; onDelete: () => void; onContrato: () => void
 }) {
   return (
     <>
@@ -491,11 +481,6 @@ function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete, onContrato, 
             <button onClick={onContrato} className="p-1.5 text-purple-500 hover:bg-purple-50 rounded" title="Gerar Contrato">
               <FileText className="w-3.5 h-3.5" />
             </button>
-            {a.status === 'ativo' && !a.data_saida && (
-              <button onClick={onCancelamento} className="p-1.5 text-orange-500 hover:bg-orange-50 rounded" title="Programar cancelamento">
-                <CalendarX2 className="w-3.5 h-3.5" />
-              </button>
-            )}
             <button onClick={onDelete} className="p-1.5 text-red-400 hover:bg-red-50 rounded" title="Remover">
               <Trash2 className="w-3.5 h-3.5" />
             </button>
