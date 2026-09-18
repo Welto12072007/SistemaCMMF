@@ -444,6 +444,83 @@ def reconciliar_assinaturas_asaas() -> None:
         log.info(f"Reconciliação assinaturas: {linkados} mensalidade(s) ligada(s) à cobrança da assinatura")
 
 
+def efetivar_cancelamentos_matricula() -> None:
+    """1h BRT — efetiva cancelamentos programados cuja data chegou: a RPC já
+    inativa a matrícula, cancela aulas futuras e cria a cobrança de encerramento
+    (avulsa) no banco. Aqui só falta o que precisa de HTTP externo: cancelar a
+    assinatura recorrente no Asaas e emitir a cobrança avulsa de fato."""
+    resultado = rpc("efetivar_cancelamentos_pendentes")
+    efetivados = (resultado or {}).get("efetivados") or []
+    if not efetivados:
+        return
+    log.info(f"Cancelamentos de matrícula efetivados: {len(efetivados)}")
+
+    for item in efetivados:
+        aluno_nome = item.get("aluno_nome", "?")
+
+        # Encerra a recorrência normal do aluno no Asaas (nunca apaga cobranças já existentes)
+        sub_id = item.get("asaas_subscription_id")
+        if sub_id and ASAAS_KEY:
+            try:
+                r = requests.delete(f"{ASAAS_BASE}/subscriptions/{sub_id}",
+                                     headers={"access_token": ASAAS_KEY}, timeout=15)
+                if r.ok:
+                    sb_patch("alunos", {"id": f"eq.{item['aluno_id']}"}, {"asaas_subscription_id": None})
+                    log.info(f"Assinatura Asaas encerrada (cancelamento programado) — {aluno_nome}")
+                else:
+                    log.error(f"Erro ao encerrar assinatura Asaas de {aluno_nome}: {r.text}")
+            except Exception as e:
+                log.error(f"Erro ao encerrar assinatura Asaas de {aluno_nome}: {e}")
+
+        # Cobrança avulsa de encerramento (multa + aviso prévio) — nunca assinatura
+        cobranca_id = item.get("cobranca_id")
+        valor = item.get("valor") or 0
+        if not cobranca_id or valor <= 0 or not ASAAS_KEY:
+            continue
+        try:
+            customer_id = item.get("asaas_customer_id")
+            if not customer_id:
+                # sem customer no Asaas ainda — busca/cria pelo externalReference do aluno
+                r = requests.get(f"{ASAAS_BASE}/customers", params={"externalReference": item["aluno_id"]},
+                                  headers={"access_token": ASAAS_KEY}, timeout=15)
+                found = (r.json() or {}).get("data") or []
+                customer_id = found[0]["id"] if found else None
+            if not customer_id:
+                sb_patch("cobrancas_encerramento", {"id": f"eq.{cobranca_id}"}, {
+                    "status": "erro_asaas", "erro_asaas": "Aluno sem asaas_customer_id",
+                })
+                continue
+
+            r = requests.post(f"{ASAAS_BASE}/payments", headers={"access_token": ASAAS_KEY, "Content-Type": "application/json"},
+                               json={
+                                   "customer": customer_id,
+                                   "billingType": "UNDEFINED",
+                                   "value": float(valor),
+                                   "dueDate": item.get("vencimento"),
+                                   "description": f"Cobrança de encerramento de matrícula — {aluno_nome}",
+                                   "externalReference": f"encerramento_{cobranca_id}",
+                                   "notifications": [],
+                               }, timeout=20)
+            data = r.json()
+            if r.ok:
+                sb_patch("cobrancas_encerramento", {"id": f"eq.{cobranca_id}"}, {
+                    "asaas_payment_id": data.get("id"),
+                    "asaas_customer_id": customer_id,
+                })
+                log.info(f"Cobrança de encerramento criada no Asaas — {aluno_nome} (R$ {valor})")
+            else:
+                erro = data.get("errors", [{}])[0].get("description", str(data))
+                sb_patch("cobrancas_encerramento", {"id": f"eq.{cobranca_id}"}, {
+                    "status": "erro_asaas", "erro_asaas": erro,
+                })
+                log.error(f"Erro ao criar cobrança de encerramento de {aluno_nome}: {erro}")
+        except Exception as e:
+            log.error(f"Erro ao criar cobrança de encerramento de {aluno_nome}: {e}")
+            sb_patch("cobrancas_encerramento", {"id": f"eq.{cobranca_id}"}, {
+                "status": "erro_asaas", "erro_asaas": str(e),
+            })
+
+
 def buscar_config_disparo(tipo: str) -> dict | None:
     """Busca mensagem/regra/ativo editáveis na tela Disparos Programados para tipos
     que são processados por função dedicada (vencimento, cobranca_atraso) em vez
@@ -597,6 +674,13 @@ def main() -> None:
             expirar_reposicoes()
         except Exception as e:
             log.error(f"expirar_reposicoes: {e}")
+
+    # 1h BRT — efetivar cancelamentos de matrícula programados p/ hoje ou antes
+    if br.hour == 1:
+        try:
+            efetivar_cancelamentos_matricula()
+        except Exception as e:
+            log.error(f"efetivar_cancelamentos_matricula: {e}")
 
     # Sempre — alertas de faltas
     try:
