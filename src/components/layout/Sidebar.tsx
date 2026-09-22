@@ -35,6 +35,7 @@ import {
   Gift,
   ListChecks,
   SlidersHorizontal,
+  Timer,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -65,6 +66,7 @@ const sections: NavSection[] = [
       { to: '/minha-grade', label: 'Minha Grade', icon: CalendarClock, roles: ['professor'] },
       { to: '/presencas', label: 'Presenças & Faltas', icon: ClipboardCheck, roles: ['admin', 'recepcao'] },
       { to: '/portal-aluno', label: 'Minhas Aulas', icon: Calendar, roles: ['aluno'] },
+      { to: '/portal-aluno', label: 'Pagamentos', icon: Wallet, roles: ['aluno'], query: '?tab=pagamentos' },
     ],
   },
   {
@@ -103,6 +105,7 @@ const sections: NavSection[] = [
       { to: '/fingertv', label: 'FingerTV', icon: Tv, roles: ['admin', 'recepcao', 'professor', 'aluno'] },
       { to: '/material-apoio', label: 'Material de Apoio', icon: FileText, roles: ['admin', 'professor', 'aluno'] },
       { to: '/agenda', label: 'Agenda', icon: CalendarPlus2, roles: ['admin', 'recepcao', 'professor', 'aluno'] },
+      { to: '/metronomo', label: 'Metrônomo', icon: Timer, roles: ['admin', 'recepcao', 'professor', 'aluno'] },
     ],
   },
   {

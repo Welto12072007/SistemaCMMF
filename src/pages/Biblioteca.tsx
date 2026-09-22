@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   BookOpen, Search, Plus, Filter, Music, FileText, Headphones, Video,
-  FolderOpen, FolderPlus, ArrowLeft, GripVertical, X, Pencil,
+  FolderOpen, FolderPlus, ArrowLeft, GripVertical, X, Pencil, ExternalLink,
 } from 'lucide-react'
 
 interface BibliotecaItem {
@@ -50,6 +50,16 @@ const tipoIcon: Record<string, string> = {
   video: '🎬',
   audio: '🎧',
   outro: '📄',
+}
+
+const tipoCor: Record<string, string> = {
+  partitura: '#6366f1',
+  cifra: '#f97316',
+  letra: '#eab308',
+  apostila: '#22c55e',
+  video: '#f43f5e',
+  audio: '#8b5cf6',
+  outro: '#64748b',
 }
 
 export default function Biblioteca() {
@@ -211,7 +221,8 @@ export default function Biblioteca() {
               key={item.id}
               draggable={canEdit}
               onDragStart={(e) => handleDragStart(e, item.id)}
-              className="bg-white rounded-xl shadow-sm border p-5 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
+              className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-lg hover:-translate-y-0.5 transition-all cursor-grab active:cursor-grabbing"
+              style={{ borderTop: `3px solid ${tipoCor[item.tipo] || '#64748b'}` }}
             >
               <ItemCard item={item} onDelete={canEdit ? handleDelete : undefined} onEdit={canEdit ? (i) => { setEditingItem(i); setShowForm(true) } : undefined} />
             </div>
@@ -340,44 +351,57 @@ export default function Biblioteca() {
         </select>
       </div>
 
-      <p className="text-sm text-gray-500 flex items-center gap-1">
-        <Filter className="w-3.5 h-3.5" />
-        {filtered.length} material(is){hasFilter ? '' : ' sem pasta'}
-      </p>
+      {(hasFilter || filtered.length > 0) && (
+        <p className="text-sm text-gray-500 flex items-center gap-1">
+          <Filter className="w-3.5 h-3.5" />
+          {filtered.length} material(is){hasFilter ? '' : ' sem pasta'}
+        </p>
+      )}
 
-      {/* Items grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map((item) => {
-          const pasta = item.pasta_id ? pastaMap.get(item.pasta_id) : null
-          return (
-            <div
-              key={item.id}
-              draggable={canEdit}
-              onDragStart={(e) => handleDragStart(e, item.id)}
-              className="bg-white rounded-xl shadow-sm border p-5 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
-            >
-              {pasta && (
-                <button
-                  onClick={() => setPastaAberta(pasta)}
-                  className="flex items-center gap-1.5 mb-3 text-xs px-2 py-1 rounded-full hover:opacity-80 transition-opacity"
-                  style={{ backgroundColor: pasta.cor + '15', color: pasta.cor }}
-                >
-                  <FolderOpen className="w-3 h-3" />
-                  {pasta.titulo}
-                </button>
-              )}
-              <ItemCard item={item} onDelete={canEdit ? handleDelete : undefined} onEdit={canEdit ? (i) => { setEditingItem(i); setShowForm(true) } : undefined} />
-            </div>
-          )
-        })}
-        {filtered.length === 0 && !pastas.length && (
-          <div className="col-span-full text-center py-12 text-gray-400">
-            <BookOpen className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p>Nenhum material na biblioteca ainda</p>
-            <p className="text-sm mt-1">Adicione partituras, cifras, apostilas e mais</p>
-          </div>
-        )}
-      </div>
+      {/* Items grid — só exibe se houver filtro ativo ou itens fora de pasta */}
+      {(hasFilter || filtered.length > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((item) => {
+            const pasta = item.pasta_id ? pastaMap.get(item.pasta_id) : null
+            return (
+              <div
+                key={item.id}
+                draggable={canEdit}
+                onDragStart={(e) => handleDragStart(e, item.id)}
+                className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-lg hover:-translate-y-0.5 transition-all cursor-grab active:cursor-grabbing"
+                style={{ borderTop: `3px solid ${tipoCor[item.tipo] || '#64748b'}` }}
+              >
+                {pasta && (
+                  <button
+                    onClick={() => setPastaAberta(pasta)}
+                    className="flex items-center gap-1.5 mb-3 text-xs px-2 py-1 rounded-full hover:opacity-80 transition-opacity"
+                    style={{ backgroundColor: pasta.cor + '15', color: pasta.cor }}
+                  >
+                    <FolderOpen className="w-3 h-3" />
+                    {pasta.titulo}
+                  </button>
+                )}
+                <ItemCard item={item} onDelete={canEdit ? handleDelete : undefined} onEdit={canEdit ? (i) => { setEditingItem(i); setShowForm(true) } : undefined} />
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {filtered.length === 0 && !hasFilter && !pastas.length && (
+        <div className="text-center py-12 text-gray-400">
+          <BookOpen className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+          <p>Nenhum material na biblioteca ainda</p>
+          <p className="text-sm mt-1">Adicione partituras, cifras, apostilas e mais</p>
+        </div>
+      )}
+
+      {hasFilter && filtered.length === 0 && (
+        <div className="text-center py-12 text-gray-400">
+          <Search className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+          <p>Nenhum material encontrado com esse filtro</p>
+        </div>
+      )}
 
       {showForm && <BibliotecaForm initial={editingItem} onSave={handleSave} onClose={() => { setShowForm(false); setEditingItem(null) }} />}
       {showPastaForm && <PastaForm initial={editingPasta} onSave={handleSavePasta} onClose={() => { setShowPastaForm(false); setEditingPasta(null) }} />}
@@ -386,15 +410,21 @@ export default function Biblioteca() {
 }
 
 function ItemCard({ item, onDelete, onEdit }: { item: BibliotecaItem; onDelete?: (id: string) => void; onEdit?: (item: BibliotecaItem) => void }) {
+  const cor = tipoCor[item.tipo] || '#64748b'
   return (
     <>
       <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {onDelete && <GripVertical className="w-4 h-4 text-gray-300 shrink-0" />}
-          <span className="text-2xl">{tipoIcon[item.tipo] || '📄'}</span>
+          <div
+            className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0"
+            style={{ backgroundColor: cor + '15' }}
+          >
+            {tipoIcon[item.tipo] || '📄'}
+          </div>
           <div>
-            <h4 className="font-medium text-gray-900 text-sm">{item.titulo}</h4>
-            {item.autor && <p className="text-xs text-gray-500">{item.autor}</p>}
+            <h4 className="font-semibold text-gray-900 text-sm leading-tight">{item.titulo}</h4>
+            {item.autor && <p className="text-xs text-gray-500 mt-0.5">{item.autor}</p>}
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -408,7 +438,7 @@ function ItemCard({ item, onDelete, onEdit }: { item: BibliotecaItem; onDelete?:
       </div>
       {item.descricao && <p className="text-xs text-gray-600 mb-3 line-clamp-2">{item.descricao}</p>}
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs px-2 py-1 rounded-full bg-brand-50 text-brand-700">
+        <span className="text-xs font-medium px-2 py-1 rounded-full" style={{ backgroundColor: cor + '15', color: cor }}>
           {TIPOS.find(t => t.value === item.tipo)?.label || item.tipo}
         </span>
         {item.instrumento && (
@@ -416,8 +446,14 @@ function ItemCard({ item, onDelete, onEdit }: { item: BibliotecaItem; onDelete?:
         )}
       </div>
       {item.url && (
-        <a href={item.url} target="_blank" rel="noopener noreferrer" className="mt-3 block text-xs text-brand-500 hover:underline">
-          Abrir material →
+        <a
+          href={item.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
+          style={{ backgroundColor: cor + '15', color: cor }}
+        >
+          Abrir material <ExternalLink className="w-3 h-3" />
         </a>
       )}
     </>
