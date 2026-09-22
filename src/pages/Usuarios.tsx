@@ -89,12 +89,14 @@ export default function Usuarios() {
   const [experimentalId, setExperimentalId] = useState<string | null>(null)
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
   const [removendo, setRemovendo] = useState<Aluno | null>(null)
+  const [verInativos, setVerInativos] = useState(false)
+  const [reativando, setReativando] = useState<string | null>(null)
   const [fromExperimentalReativacao, setFromExperimentalReativacao] = useState<string | null>(null)
   const [cobrancaInicialAluno, setCobrancaInicialAluno] = useState<AlunoCobrancaInicial | null>(null)
   const [contratoAluno, setContratoAluno] = useState<Aluno | null>(null)
   const [pendingCobrancaId, setPendingCobrancaId] = useState<string | null>(null)
 
-  useEffect(() => { loadAlunos() }, [])
+  useEffect(() => { loadAlunos() }, [verInativos])
 
   // Abre formulário pré-preenchido quando vindo de AulasExperimentais
   useEffect(() => {
@@ -126,9 +128,23 @@ export default function Usuarios() {
     const { data } = await supabase
       .from('alunos')
       .select('*')
-      .eq('status', 'ativo')
+      .eq('status', verInativos ? 'inativo' : 'ativo')
       .order('nome', { ascending: true })
     if (data) setAlunos(data)
+  }
+
+  async function reativarAluno(aluno: Aluno) {
+    if (!confirm(`Reativar ${aluno.nome}? Ele volta a aparecer como aluno ativo.`)) return
+    setReativando(aluno.id)
+    const { data, error } = await supabase.rpc('reativar_aluno', { p_aluno_id: aluno.id })
+    setReativando(null)
+    const result = data as { ok?: boolean; error?: string } | null
+    if (error || result?.ok === false) {
+      alert(`Erro ao reativar: ${error?.message || result?.error}`)
+      return
+    }
+    await registrarLog({ action: 'reativar_aluno', entity: 'aluno', entity_id: aluno.id })
+    loadAlunos()
   }
 
   const filtered = alunos.filter((a) => {
@@ -317,15 +333,31 @@ export default function Usuarios() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Usuários</h1>
-          <p className="text-gray-500">Alunos ativos matriculados no centro de música</p>
+          <p className="text-gray-500">{verInativos ? 'Alunos inativos/ex-alunos' : 'Alunos ativos matriculados no centro de música'}</p>
         </div>
-        <button
-          onClick={() => { setEditando(null); setShowForm(true) }}
-          className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Novo Aluno
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setVerInativos(false)}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${!verInativos ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-600'}`}
+            >
+              Ativos
+            </button>
+            <button
+              onClick={() => setVerInativos(true)}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${verInativos ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-600'}`}
+            >
+              Inativos
+            </button>
+          </div>
+          <button
+            onClick={() => { setEditando(null); setShowForm(true) }}
+            className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Aluno
+          </button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -395,6 +427,9 @@ export default function Usuarios() {
                 onEdit={() => { setEditando(a); setShowForm(true) }}
                 onDelete={() => handleDelete(a.id)}
                 onContrato={() => setContratoAluno(a)}
+                verInativos={verInativos}
+                onReativar={() => reativarAluno(a)}
+                reativando={reativando === a.id}
               />
             ))}
           </tbody>
@@ -446,8 +481,9 @@ export default function Usuarios() {
   )
 }
 
-function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete, onContrato }: {
+function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete, onContrato, verInativos, onReativar, reativando }: {
   aluno: Aluno; expanded: boolean; onToggle: () => void; onEdit: () => void; onDelete: () => void; onContrato: () => void
+  verInativos: boolean; onReativar: () => void; reativando: boolean
 }) {
   return (
     <>
@@ -481,9 +517,15 @@ function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete, onContrato }
             <button onClick={onContrato} className="p-1.5 text-purple-500 hover:bg-purple-50 rounded" title="Gerar Contrato">
               <FileText className="w-3.5 h-3.5" />
             </button>
-            <button onClick={onDelete} className="p-1.5 text-red-400 hover:bg-red-50 rounded" title="Remover">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            {verInativos ? (
+              <button onClick={onReativar} disabled={reativando} className="px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 rounded disabled:opacity-50" title="Reativar aluno">
+                {reativando ? 'Reativando...' : 'Reativar'}
+              </button>
+            ) : (
+              <button onClick={onDelete} className="p-1.5 text-red-400 hover:bg-red-50 rounded" title="Remover">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </td>
       </tr>

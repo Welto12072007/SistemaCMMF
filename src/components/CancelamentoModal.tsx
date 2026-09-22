@@ -74,6 +74,7 @@ export default function CancelamentoModal({
 
   const [calculando, setCalculando] = useState(false)
   const [calculo, setCalculo] = useState<Calculo | null>(null)
+  const [valorFinalEditado, setValorFinalEditado] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
   const [cancelamentoId, setCancelamentoId] = useState<string | null>(null)
@@ -107,12 +108,19 @@ export default function CancelamentoModal({
     if (error) { setErro(error.message); return }
     if (!data?.ok) { setErro(data?.error ?? 'Erro ao calcular'); return }
     setCalculo(data as Calculo)
+    setValorFinalEditado(String(data.saldo_final))
     setEtapa('conferencia')
   }
 
   async function confirmar() {
     setSalvando(true)
     setErro('')
+    // O valor final pode ter sido editado na conferência — ajusta os créditos/descontos
+    // pra bater com o que ficou combinado, sem inventar uma fórmula paralela de cálculo.
+    const valorFinal = parseFloat(valorFinalEditado.replace(',', '.'))
+    const creditosEfetivos = calculo
+      ? Math.max((calculo.multa + calculo.aviso_previo) - (isNaN(valorFinal) ? calculo.saldo_final : valorFinal), 0)
+      : parseFloat(creditos.replace(',', '.')) || 0
     const { data, error } = await supabase.rpc('programar_cancelamento_matricula', {
       p_aluno_id: alunoId,
       p_data_solicitacao: dataSolicitacao,
@@ -120,7 +128,7 @@ export default function CancelamentoModal({
       p_motivo: motivo,
       p_observacoes: observacoes || null,
       p_responsavel: (await supabase.auth.getUser()).data.user?.email ?? null,
-      p_creditos_descontos: parseFloat(creditos.replace(',', '.')) || 0,
+      p_creditos_descontos: creditosEfetivos,
       p_vencimento_cobranca: vencimentoCobranca,
     })
     setSalvando(false)
@@ -330,10 +338,18 @@ export default function CancelamentoModal({
                     <span className="text-gray-600">Créditos/descontos</span>
                     <span>- {fmt(calculo.creditos_descontos)}</span>
                   </div>
-                  <div className="flex justify-between text-base font-bold pt-2 border-t">
+                  <div className="flex justify-between text-base font-bold pt-2 border-t items-center">
                     <span>Saldo final (cobrança de encerramento)</span>
-                    <span className="text-indigo-700">{fmt(calculo.saldo_final)}</span>
+                    <span className="flex items-center gap-1 text-indigo-700">
+                      R$
+                      <input
+                        type="number" step="0.01" value={valorFinalEditado}
+                        onChange={e => setValorFinalEditado(e.target.value)}
+                        className="w-24 border border-indigo-200 rounded px-2 py-1 text-right font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </span>
                   </div>
+                  <p className="text-xs text-gray-400">Calculado automaticamente em {fmt(calculo.saldo_final)} — pode ajustar manualmente antes de confirmar.</p>
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
                   A cobrança será criada como <strong>cobrança avulsa</strong> (nunca assinatura) no Asaas,
