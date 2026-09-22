@@ -44,6 +44,27 @@ SB_HEADERS = {
 }
 
 
+def registrar_log(action: str, status: str = "sucesso", level: str = "info", details: dict | None = None) -> None:
+    """Grava no Controle de Logs (system_logs) — visível na tela /logs do CMMF."""
+    try:
+        requests.post(
+            f"{SB_URL}/rest/v1/system_logs",
+            json={
+                "user_nome": "GitHub Actions",
+                "action": action,
+                "entity": "disparos_pendentes",
+                "details": details,
+                "level": level,
+                "status": status,
+                "origem": "disparos_pendentes",
+            },
+            headers=SB_HEADERS,
+            timeout=10,
+        )
+    except Exception as e:
+        log.error(f"registrar_log erro: {e}")
+
+
 # ─── Utilitários ─────────────────────────────────────────────────────────────
 
 # ─── disparos_pendentes ───────────────────────────────────────────────────────
@@ -182,6 +203,12 @@ def main() -> None:
     env, err = processar_pendentes()
 
     log.info(f"=== Concluído: {env} enviados, {err} erros ===")
+    registrar_log(
+        "execucao_disparos_pendentes",
+        status="erro" if err else "sucesso",
+        level="warning" if err else "info",
+        details={"enviados": env, "erros": err},
+    )
 
 
 if __name__ == "__main__":
@@ -189,4 +216,5 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         log.error(f"Erro fatal: {e}")
+        registrar_log("execucao_disparos_pendentes", status="erro", level="error", details={"erro_fatal": str(e)})
         raise

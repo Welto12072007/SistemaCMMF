@@ -71,6 +71,9 @@ export interface SystemLog {
   entity?: string
   entity_id?: string
   details?: Record<string, unknown>
+  level?: 'info' | 'warning' | 'error'
+  origem?: string
+  status?: 'sucesso' | 'erro'
   created_at?: string
 }
 

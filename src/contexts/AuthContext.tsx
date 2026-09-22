@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { registrarLog, resetLogUserCache } from '@/lib/logger'
 import type { User } from '@supabase/supabase-js'
 
 export type UserRole = 'admin' | 'recepcao' | 'professor' | 'aluno'
@@ -78,13 +79,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signIn(email: string, password: string) {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) return { error: error.message }
+    if (error) {
+      await registrarLog({ action: 'login', entity: 'auth', details: { email }, level: 'warning', status: 'erro' })
+      return { error: error.message }
+    }
+    await registrarLog({ action: 'login', entity: 'auth', details: { email } })
     return { error: null }
   }
 
   async function signOut() {
+    await registrarLog({ action: 'logout', entity: 'auth' })
     await supabase.auth.signOut()
     setPerfil(null)
+    resetLogUserCache()
   }
 
   function hasRole(...roles: UserRole[]) {

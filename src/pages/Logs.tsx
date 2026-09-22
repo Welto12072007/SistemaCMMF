@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { ScrollText, Search, Filter, User, Clock } from 'lucide-react'
+import { ScrollText, Search, Filter, User, Clock, AlertTriangle } from 'lucide-react'
 
 interface LogItem {
   id: string
@@ -9,6 +9,9 @@ interface LogItem {
   entity?: string
   entity_id?: string
   details?: Record<string, unknown>
+  level?: 'info' | 'warning' | 'error'
+  origem?: string
+  status?: 'sucesso' | 'erro'
   created_at?: string
 }
 
@@ -20,12 +23,25 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   logout: { label: 'Logout', color: 'bg-gray-100 text-gray-700' },
   send_message: { label: 'Enviou mensagem', color: 'bg-cyan-100 text-cyan-700' },
   sync: { label: 'Sincronizou', color: 'bg-yellow-100 text-yellow-700' },
+  erro_js: { label: 'Erro no sistema', color: 'bg-red-100 text-red-700' },
+  promise_rejeitada: { label: 'Erro no sistema', color: 'bg-red-100 text-red-700' },
+  marcar_aluno_inativo: { label: 'Registrou saída de aluno', color: 'bg-orange-100 text-orange-700' },
+  programar_cancelamento_matricula: { label: 'Programou cancelamento', color: 'bg-orange-100 text-orange-700' },
+  cancelar_programacao_cancelamento: { label: 'Cancelou programação', color: 'bg-blue-100 text-blue-700' },
+}
+
+const LEVEL_STYLE: Record<string, string> = {
+  info: 'bg-gray-100 text-gray-600',
+  warning: 'bg-amber-100 text-amber-700',
+  error: 'bg-red-100 text-red-700',
 }
 
 export default function Logs() {
   const [logs, setLogs] = useState<LogItem[]>([])
   const [busca, setBusca] = useState('')
   const [filtroAction, setFiltroAction] = useState('Todas')
+  const [filtroOrigem, setFiltroOrigem] = useState('Todas')
+  const [filtroLevel, setFiltroLevel] = useState('Todos')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -46,10 +62,14 @@ export default function Logs() {
   const filtered = logs.filter((l) => {
     if (busca && !l.user_nome?.toLowerCase().includes(busca.toLowerCase()) && !l.entity?.toLowerCase().includes(busca.toLowerCase())) return false
     if (filtroAction !== 'Todas' && l.action !== filtroAction) return false
+    if (filtroOrigem !== 'Todas' && l.origem !== filtroOrigem) return false
+    if (filtroLevel !== 'Todos' && l.level !== filtroLevel) return false
     return true
   })
 
   const uniqueActions = [...new Set(logs.map(l => l.action))]
+  const uniqueOrigens = [...new Set(logs.map(l => l.origem).filter(Boolean))] as string[]
+  const totalErros = logs.filter(l => l.status === 'erro').length
 
   return (
     <div className="space-y-6">
@@ -70,7 +90,7 @@ export default function Logs() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white rounded-xl shadow-sm border p-4">
           <span className="text-sm text-gray-500">Total de Logs</span>
           <p className="text-xl font-bold mt-1">{logs.length}</p>
@@ -91,6 +111,10 @@ export default function Logs() {
           <span className="text-sm text-gray-500">Ações Distintas</span>
           <p className="text-xl font-bold mt-1">{uniqueActions.length}</p>
         </div>
+        <div className="bg-white rounded-xl shadow-sm border p-4">
+          <span className="text-sm text-gray-500 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 text-red-500" />Erros</span>
+          <p className="text-xl font-bold mt-1 text-red-600">{totalErros}</p>
+        </div>
       </div>
 
       {/* Filters */}
@@ -105,6 +129,18 @@ export default function Logs() {
             className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 text-sm"
           />
         </div>
+        <select value={filtroOrigem} onChange={(e) => setFiltroOrigem(e.target.value)} className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm">
+          <option>Todas</option>
+          {uniqueOrigens.map(o => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+        <select value={filtroLevel} onChange={(e) => setFiltroLevel(e.target.value)} className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm">
+          <option>Todos</option>
+          <option value="info">Info</option>
+          <option value="warning">Alerta</option>
+          <option value="error">Erro</option>
+        </select>
         <select value={filtroAction} onChange={(e) => setFiltroAction(e.target.value)} className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm">
           <option>Todas</option>
           {uniqueActions.map(a => (
@@ -126,6 +162,8 @@ export default function Logs() {
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Data/Hora</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Usuário</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Ação</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Origem</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Nível</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Entidade</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Detalhes</th>
             </tr>
@@ -152,6 +190,12 @@ export default function Logs() {
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${actionInfo.color}`}>
                       {actionInfo.label}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500">{l.origem || 'web'}</td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${LEVEL_STYLE[l.level || 'info']}`}>
+                      {l.level === 'error' ? 'Erro' : l.level === 'warning' ? 'Alerta' : 'Info'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">{l.entity || '—'}</td>

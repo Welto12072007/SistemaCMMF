@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { registrarLog } from '@/lib/logger'
 import { adminCreateUser } from '@/lib/adminApi'
 import {
   Plus, Search, Filter, Phone, Mail, ChevronDown, ChevronUp,
-  Users, Music, Edit2, Trash2, FileText,
+  Users, Music, Edit2, Trash2, FileText, CalendarX2,
 } from 'lucide-react'
 import CobrancaInicialModal, { type AlunoCobrancaInicial } from '@/components/CobrancaInicialModal'
 import ContratoModal from '@/components/ContratoModal'
+import CancelamentoModal from '@/components/CancelamentoModal'
 
 interface Aluno {
   id: string
@@ -59,20 +61,6 @@ interface Aluno {
   asaas_subscription_id?: string | null
 }
 
-const MOTIVOS_SAIDA: { value: string; label: string }[] = [
-  { value: 'mudanca_cidade', label: 'Mudança de cidade' },
-  { value: 'financeiro', label: 'Financeiro' },
-  { value: 'falta_tempo', label: 'Falta de tempo' },
-  { value: 'insatisfacao_aulas', label: 'Insatisfação com aulas' },
-  { value: 'problema_horario', label: 'Problema de horário' },
-  { value: 'problema_professor', label: 'Problema com professor' },
-  { value: 'recesso_temporario', label: 'Recesso temporário' },
-  { value: 'conflito_familiar', label: 'Conflito familiar' },
-  { value: 'concluiu_objetivo', label: 'Concluiu objetivo' },
-  { value: 'saude', label: 'Saúde' },
-  { value: 'outro', label: 'Outro' },
-]
-
 const INSTRUMENTOS = ['Piano', 'Violão', 'Guitarra', 'Bateria', 'Canto', 'Ukulele', 'Baixo', 'Teclado', 'Musicalização Infantil', 'Cavaquinho', 'Contrabaixo', 'Violino', 'Percussão']
 const SEXO_OPTIONS = ['Masculino', 'Feminino', 'Outro', 'Prefiro não informar']
 const ESTADOS_BR = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO']
@@ -87,13 +75,15 @@ export default function Usuarios() {
   const [editando, setEditando] = useState<Aluno | null>(null)
   const [experimentalId, setExperimentalId] = useState<string | null>(null)
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
-  const [removendo, setRemovendo] = useState<Aluno | null>(null)
+  const [cancelando, setCancelando] = useState<Aluno | null>(null)
+  const [verInativos, setVerInativos] = useState(false)
+  const [reativando, setReativando] = useState<string | null>(null)
   const [fromExperimentalReativacao, setFromExperimentalReativacao] = useState<string | null>(null)
   const [cobrancaInicialAluno, setCobrancaInicialAluno] = useState<AlunoCobrancaInicial | null>(null)
   const [contratoAluno, setContratoAluno] = useState<Aluno | null>(null)
   const [pendingCobrancaId, setPendingCobrancaId] = useState<string | null>(null)
 
-  useEffect(() => { loadAlunos() }, [])
+  useEffect(() => { loadAlunos() }, [verInativos])
 
   // Abre formulário pré-preenchido quando vindo de AulasExperimentais
   useEffect(() => {
@@ -125,9 +115,23 @@ export default function Usuarios() {
     const { data } = await supabase
       .from('alunos')
       .select('*')
-      .eq('status', 'ativo')
+      .eq('status', verInativos ? 'inativo' : 'ativo')
       .order('nome', { ascending: true })
     if (data) setAlunos(data)
+  }
+
+  async function reativarAluno(aluno: Aluno) {
+    if (!confirm(`Reativar ${aluno.nome}? Ele volta a aparecer como aluno ativo.`)) return
+    setReativando(aluno.id)
+    const { data, error } = await supabase.rpc('reativar_aluno', { p_aluno_id: aluno.id })
+    setReativando(null)
+    const result = data as { ok?: boolean; error?: string } | null
+    if (error || result?.ok === false) {
+      alert(`Erro ao reativar: ${error?.message || result?.error}`)
+      return
+    }
+    await registrarLog({ action: 'reativar_aluno', entity: 'aluno', entity_id: aluno.id })
+    loadAlunos()
   }
 
   const filtered = alunos.filter((a) => {
@@ -265,46 +269,9 @@ export default function Usuarios() {
     }
   }
 
-  async function handleDelete(id: string) {
+  function handleDelete(id: string) {
     const aluno = alunos.find(a => a.id === id)
-    if (aluno) setRemovendo(aluno)
-  }
-
-  async function confirmarSaida(motivo: string, detalhe: string, data: string) {
-    if (!removendo) return
-    const { error } = await supabase.rpc('marcar_aluno_inativo', {
-      p_aluno_id: removendo.id,
-      p_motivo: motivo,
-      p_detalhe: detalhe || null,
-      p_data_saida: data,
-      p_novo_status: 'perdido',
-    })
-    if (error) { alert(`Erro: ${error.message}`); return }
-
-    // Cancela a assinatura recorrente no Asaas junto com a saída do aluno
-    if (removendo.asaas_subscription_id) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/asaas-subscriptions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({
-            action: 'cancel',
-            subscription_id: removendo.asaas_subscription_id,
-            aluno_id: removendo.id,
-          }),
-        })
-      } catch (e) {
-        console.warn('[Usuarios] Erro ao cancelar assinatura Asaas:', e)
-        alert('Aluno marcado como saída, mas houve erro ao cancelar a cobrança no Asaas. Cancele manualmente na aba Assinaturas.')
-      }
-    }
-
-    setRemovendo(null)
-    loadAlunos()
+    if (aluno) setCancelando(aluno)
   }
 
   return (
@@ -312,15 +279,31 @@ export default function Usuarios() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Usuários</h1>
-          <p className="text-gray-500">Alunos ativos matriculados no centro de música</p>
+          <p className="text-gray-500">{verInativos ? 'Alunos inativos/ex-alunos' : 'Alunos ativos matriculados no centro de música'}</p>
         </div>
-        <button
-          onClick={() => { setEditando(null); setShowForm(true) }}
-          className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Novo Aluno
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setVerInativos(false)}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${!verInativos ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-600'}`}
+            >
+              Ativos
+            </button>
+            <button
+              onClick={() => setVerInativos(true)}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${verInativos ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-600'}`}
+            >
+              Inativos
+            </button>
+          </div>
+          <button
+            onClick={() => { setEditando(null); setShowForm(true) }}
+            className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Aluno
+          </button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -390,6 +373,9 @@ export default function Usuarios() {
                 onEdit={() => { setEditando(a); setShowForm(true) }}
                 onDelete={() => handleDelete(a.id)}
                 onContrato={() => setContratoAluno(a)}
+                verInativos={verInativos}
+                onReativar={() => reativarAluno(a)}
+                reativando={reativando === a.id}
               />
             ))}
           </tbody>
@@ -412,8 +398,12 @@ export default function Usuarios() {
           ) : undefined}
         />
       )}
-      {removendo && (
-        <SaidaModal aluno={removendo} onConfirm={confirmarSaida} onClose={() => setRemovendo(null)} />
+      {cancelando && (
+        <CancelamentoModal
+          alunoId={cancelando.id}
+          onClose={() => setCancelando(null)}
+          onSaved={() => { setCancelando(null); loadAlunos() }}
+        />
       )}
       {cobrancaInicialAluno && (
         <CobrancaInicialModal
@@ -441,8 +431,9 @@ export default function Usuarios() {
   )
 }
 
-function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete, onContrato }: {
+function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete, onContrato, verInativos, onReativar, reativando }: {
   aluno: Aluno; expanded: boolean; onToggle: () => void; onEdit: () => void; onDelete: () => void; onContrato: () => void
+  verInativos: boolean; onReativar: () => void; reativando: boolean
 }) {
   return (
     <>
@@ -476,9 +467,15 @@ function AlunoRow({ aluno: a, expanded, onToggle, onEdit, onDelete, onContrato }
             <button onClick={onContrato} className="p-1.5 text-purple-500 hover:bg-purple-50 rounded" title="Gerar Contrato">
               <FileText className="w-3.5 h-3.5" />
             </button>
-            <button onClick={onDelete} className="p-1.5 text-red-400 hover:bg-red-50 rounded" title="Remover">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            {verInativos ? (
+              <button onClick={onReativar} disabled={reativando} className="px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 rounded disabled:opacity-50" title="Reativar aluno">
+                {reativando ? 'Reativando...' : 'Reativar'}
+              </button>
+            ) : (
+              <button onClick={onDelete} className="p-1.5 text-orange-500 hover:bg-orange-50 rounded" title="Programar cancelamento">
+                <CalendarX2 className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </td>
       </tr>
@@ -786,53 +783,3 @@ function FormSelect({ label, value, onChange, options }: {
   )
 }
 
-function SaidaModal({ aluno, onConfirm, onClose }: {
-  aluno: Aluno
-  onConfirm: (motivo: string, detalhe: string, data: string) => void
-  onClose: () => void
-}) {
-  const [motivo, setMotivo] = useState('')
-  const [detalhe, setDetalhe] = useState('')
-  const [data, setData] = useState(new Date().toISOString().slice(0, 10))
-
-  function submit() {
-    if (!motivo) { alert('Selecione um motivo de saída.'); return }
-    onConfirm(motivo, detalhe, data)
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-1">Registrar saída do aluno</h2>
-        <p className="text-sm text-gray-600 mb-4">{aluno.nome}</p>
-
-        <div className="mb-3">
-          <label className="text-xs text-gray-500 block mb-1">Motivo da saída <span className="text-red-500">*</span></label>
-          <select className="w-full border rounded-lg px-3 py-2 text-sm" value={motivo} onChange={(e) => setMotivo(e.target.value)}>
-            <option value="">Selecione um motivo...</option>
-            {MOTIVOS_SAIDA.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </select>
-        </div>
-
-        <div className="mb-3">
-          <label className="text-xs text-gray-500 block mb-1">Data de saída</label>
-          <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={data} onChange={(e) => setData(e.target.value)} />
-        </div>
-
-        <div className="mb-4">
-          <label className="text-xs text-gray-500 block mb-1">Detalhes (opcional)</label>
-          <textarea className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} value={detalhe} onChange={(e) => setDetalhe(e.target.value)} placeholder="Contexto adicional..." />
-        </div>
-
-        <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800 mb-4">
-          ⚠️ Mensalidades pendentes futuras serão automaticamente canceladas.
-        </div>
-
-        <div className="flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
-          <button onClick={submit} className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">Confirmar saída</button>
-        </div>
-      </div>
-    </div>
-  )
-}

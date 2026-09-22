@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { registrarLog } from '@/lib/logger'
 import {
   Users, TrendingUp, TrendingDown, UserMinus, UserPlus,
   RefreshCw, Download, Calendar, Search, ChevronDown, X,
@@ -120,12 +121,7 @@ export default function FluxoAlunos() {
   const [grafico, setGrafico] = useState<MesFluxo[]>([])
   const [totalAtivos, setTotalAtivos] = useState(0)
 
-  // modal registrar saída
-  const [modalSaida, setModalSaida] = useState<AlunoFluxo | null>(null)
-  const [formSaida, setFormSaida] = useState({ data_saida: '', motivo_saida: '', motivo_saida_detalhe: '' })
-  const [salvando, setSalvando] = useState(false)
-
-  // modal cancelamento programado
+  // modal cancelamento programado (único fluxo de saída — desligamento simples sem cálculo foi removido)
   const [modalCancelamento, setModalCancelamento] = useState<AlunoFluxo | null>(null)
   const [cancelamentos, setCancelamentos] = useState<any[]>([])
 
@@ -264,49 +260,8 @@ export default function FluxoAlunos() {
       : lista
 
   // ─── ações ────────────────────────────────────────────────────────────
-
-  async function salvarSaida() {
-    if (!modalSaida) return
-    if (!formSaida.data_saida || !formSaida.motivo_saida) return
-    setSalvando(true)
-    await supabase
-      .from('alunos')
-      .update({
-        data_saida: formSaida.data_saida,
-        motivo_saida: formSaida.motivo_saida,
-        motivo_saida_detalhe: formSaida.motivo_saida_detalhe || null,
-        status: 'inativo',
-      })
-      .eq('id', modalSaida.id)
-
-    // Cancela a assinatura recorrente no Asaas junto com a saída — senão o Asaas
-    // continua gerando cobrança mensal pra aluno que já não estuda mais aqui
-    if (modalSaida.asaas_subscription_id) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/asaas-subscriptions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({
-            action: 'cancel',
-            subscription_id: modalSaida.asaas_subscription_id,
-            aluno_id: modalSaida.id,
-          }),
-        })
-      } catch (e) {
-        console.warn('[FluxoAlunos] Erro ao cancelar assinatura Asaas:', e)
-        alert('Saída registrada, mas houve erro ao cancelar a cobrança no Asaas. Cancele manualmente na aba Assinaturas.')
-      }
-    }
-
-    setSalvando(false)
-    setModalSaida(null)
-    setFormSaida({ data_saida: '', motivo_saida: '', motivo_saida_detalhe: '' })
-    carregar()
-  }
+  // Desligamento simples (sem cálculo) foi removido — toda saída passa por
+  // "Programar cancelamento", que já cobre o caso imediato (data efetiva = hoje).
 
   function exportarExcel() {
     const wb = XLSX.utils.book_new()
@@ -503,7 +458,7 @@ export default function FluxoAlunos() {
 
           {/* Aba Entradas */}
           {aba === 'entradas' && (
-            <TabelaEntradas alunos={filtrar(entradas)} onRegistrarSaida={setModalSaida} onProgramarCancelamento={setModalCancelamento} />
+            <TabelaEntradas alunos={filtrar(entradas)} onProgramarCancelamento={setModalCancelamento} />
           )}
 
           {/* Aba Saídas */}
@@ -516,7 +471,11 @@ export default function FluxoAlunos() {
             <TabelaCancelamentos cancelamentos={cancelamentos} onCancelarProgramacao={async (id) => {
               if (!confirm('Cancelar esta programação de cancelamento? O aluno volta ao status ativo normal.')) return
               const { data, error } = await supabase.rpc('cancelar_programacao_cancelamento', { p_cancelamento_id: id })
-              if (error || !data?.ok) { alert(data?.error ?? error?.message ?? 'Erro ao cancelar'); return }
+              if (error || !data?.ok) {
+                await registrarLog({ action: 'cancelar_programacao_cancelamento', entity: 'cancelamento_matricula', entity_id: id, level: 'error', status: 'erro', details: { error: data?.error ?? error?.message } })
+                alert(data?.error ?? error?.message ?? 'Erro ao cancelar'); return
+              }
+              await registrarLog({ action: 'cancelar_programacao_cancelamento', entity: 'cancelamento_matricula', entity_id: id })
               carregarCancelamentos()
             }} />
           )}
@@ -545,69 +504,6 @@ export default function FluxoAlunos() {
           )}
         </div>
       </div>
-
-      {/* Modal Registrar Saída */}
-      {modalSaida && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h2 className="font-semibold text-gray-900">Registrar Saída — {modalSaida.nome}</h2>
-              <button onClick={() => setModalSaida(null)} className="p-1 hover:bg-gray-100 rounded">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-4 space-y-3">
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Data de saída *</label>
-                <input
-                  type="date"
-                  value={formSaida.data_saida}
-                  onChange={e => setFormSaida(f => ({ ...f, data_saida: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Motivo *</label>
-                <select
-                  value={formSaida.motivo_saida}
-                  onChange={e => setFormSaida(f => ({ ...f, motivo_saida: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Selecione...</option>
-                  {MOTIVOS_SAIDA.map(m => (
-                    <option key={m} value={m}>{MOTIVO_LABELS[m] ?? m}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Observação (opcional)</label>
-                <textarea
-                  value={formSaida.motivo_saida_detalhe}
-                  onChange={e => setFormSaida(f => ({ ...f, motivo_saida_detalhe: e.target.value }))}
-                  rows={2}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                  placeholder="Detalhe opcional..."
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 p-4 border-t">
-              <button
-                onClick={() => setModalSaida(null)}
-                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={salvarSaida}
-                disabled={salvando || !formSaida.data_saida || !formSaida.motivo_saida}
-                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-              >
-                {salvando ? 'Salvando...' : 'Registrar Saída'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal Programar Cancelamento de Matrícula */}
       {modalCancelamento && (
@@ -655,11 +551,9 @@ function KPICard({
 
 function TabelaEntradas({
   alunos,
-  onRegistrarSaida,
   onProgramarCancelamento,
 }: {
   alunos: AlunoFluxo[]
-  onRegistrarSaida: (a: AlunoFluxo) => void
   onProgramarCancelamento: (a: AlunoFluxo) => void
 }) {
   if (alunos.length === 0)
@@ -714,20 +608,12 @@ function TabelaEntradas({
                 <td className="py-2.5 text-gray-600">{a.professor_nome ?? '—'}</td>
                 <td className="py-2.5">
                   {!a.data_saida && a.status === 'ativo' && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => onRegistrarSaida(a)}
-                        className="text-xs text-red-500 hover:text-red-700 hover:underline"
-                      >
-                        Registrar saída
-                      </button>
-                      <button
-                        onClick={() => onProgramarCancelamento(a)}
-                        className="text-xs text-orange-500 hover:text-orange-700 hover:underline"
-                      >
-                        Programar cancelamento
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => onProgramarCancelamento(a)}
+                      className="text-xs text-orange-500 hover:text-orange-700 hover:underline"
+                    >
+                      Programar cancelamento
+                    </button>
                   )}
                 </td>
               </tr>

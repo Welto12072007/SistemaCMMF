@@ -103,6 +103,20 @@ def sb_post(path: str, body: dict) -> None:
         log.error(f"POST {path} erro: {e}")
 
 
+def registrar_log(action: str, status: str = "sucesso", level: str = "info", details: dict | None = None) -> None:
+    """Grava no Controle de Logs (system_logs) — visível na tela /logs do CMMF."""
+    sb_post("system_logs", {
+        "user_nome": "GitHub Actions",
+        "action": action,
+        "entity": "automacoes",
+        "details": details,
+        "level": level,
+        "status": status,
+        "origem": "automacoes",
+    })
+
+
+
 # ── tarefas ────────────────────────────────────────────────────────────────────
 
 def lembretes_amanha() -> None:
@@ -667,6 +681,7 @@ def cobrar_inadimplentes_mensalidade() -> None:
 def main() -> None:
     br = now_brt()
     log.info(f'Hora BRT: {br.strftime("%H:%M")} | Dia: {br.day} | DoW: {br.weekday()}')
+    erros: list[str] = []
 
     # Dia 1, 1h BRT — expirar reposições
     if br.day == 1 and br.hour == 1:
@@ -674,6 +689,7 @@ def main() -> None:
             expirar_reposicoes()
         except Exception as e:
             log.error(f"expirar_reposicoes: {e}")
+            erros.append(f"expirar_reposicoes: {e}")
 
     # 1h BRT — efetivar cancelamentos de matrícula programados p/ hoje ou antes
     if br.hour == 1:
@@ -681,12 +697,14 @@ def main() -> None:
             efetivar_cancelamentos_matricula()
         except Exception as e:
             log.error(f"efetivar_cancelamentos_matricula: {e}")
+            erros.append(f"efetivar_cancelamentos_matricula: {e}")
 
     # Sempre — alertas de faltas
     try:
         alertas_faltas()
     except Exception as e:
         log.error(f"alertas_faltas: {e}")
+        erros.append(f"alertas_faltas: {e}")
 
     # 18h — lembretes amanhã
     if br.hour == 18:
@@ -694,6 +712,7 @@ def main() -> None:
             lembretes_amanha()
         except Exception as e:
             log.error(f"lembretes_amanha: {e}")
+            erros.append(f"lembretes_amanha: {e}")
 
     # 5h–18h — confirmação 3h
     if 5 <= br.hour <= 18:
@@ -701,6 +720,7 @@ def main() -> None:
             confirmacao_3h()
         except Exception as e:
             log.error(f"confirmacao_3h: {e}")
+            erros.append(f"confirmacao_3h: {e}")
 
     # 9h — follow-up experimental
     if br.hour == 9:
@@ -708,6 +728,7 @@ def main() -> None:
             followup_experimental()
         except Exception as e:
             log.error(f"followup_experimental: {e}")
+            erros.append(f"followup_experimental: {e}")
 
     # 10h — fechamento
     if br.hour == 10:
@@ -715,6 +736,7 @@ def main() -> None:
             fechamento()
         except Exception as e:
             log.error(f"fechamento: {e}")
+            erros.append(f"fechamento: {e}")
 
     # 8h — marcar mensalidades atrasadas + lembretes vencimento + cobrança inadimplentes
     if br.hour == 8:
@@ -723,24 +745,34 @@ def main() -> None:
             log.info("marcar_mensalidades_atrasadas executado")
         except Exception as e:
             log.error(f"marcar_mensalidades_atrasadas: {e}")
+            erros.append(f"marcar_mensalidades_atrasadas: {e}")
         try:
             reconciliar_assinaturas_asaas()
         except Exception as e:
             log.error(f"reconciliar_assinaturas_asaas: {e}")
+            erros.append(f"reconciliar_assinaturas_asaas: {e}")
         try:
             lembretes_vencimento_mensalidade()
         except Exception as e:
             log.error(f"lembretes_vencimento_mensalidade: {e}")
+            erros.append(f"lembretes_vencimento_mensalidade: {e}")
         try:
             cobrar_inadimplentes_mensalidade()
         except Exception as e:
             log.error(f"cobrar_inadimplentes_mensalidade: {e}")
+            erros.append(f"cobrar_inadimplentes_mensalidade: {e}")
 
     # Sempre — disparos programados
     try:
         processar_disparos_programados(br)
     except Exception as e:
         log.error(f"processar_disparos_programados: {e}")
+        erros.append(f"processar_disparos_programados: {e}")
+
+    if erros:
+        registrar_log("execucao_automacoes", status="erro", level="error", details={"erros": erros})
+    else:
+        registrar_log("execucao_automacoes", status="sucesso", level="info", details={"hora_brt": br.strftime("%H:%M")})
 
     log.info("Automações concluídas")
 

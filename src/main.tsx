@@ -2,8 +2,29 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
+import { registrarLog } from './lib/logger'
 import App from './App'
 import './index.css'
+
+// Captura erros não tratados (JS + promises) pro Controle de Logs, independente de onde aconteçam
+window.addEventListener('error', (e) => {
+  registrarLog({
+    action: 'erro_js',
+    entity: 'frontend',
+    details: { message: e.message, filename: e.filename, lineno: e.lineno, stack: e.error?.stack },
+    level: 'error',
+    status: 'erro',
+  })
+})
+window.addEventListener('unhandledrejection', (e) => {
+  registrarLog({
+    action: 'promise_rejeitada',
+    entity: 'frontend',
+    details: { reason: String(e.reason), stack: e.reason?.stack },
+    level: 'error',
+    status: 'erro',
+  })
+})
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
