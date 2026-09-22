@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import HeroBanner from '@/components/aluno/HeroBanner'
 import {
   Calendar,
   Clock,
@@ -123,6 +125,12 @@ export default function PortalAluno() {
   const [aba, setAba] = useState<'aulas' | 'pagamentos'>('aulas')
   const [mensalidades, setMensalidades] = useState<Mensalidade[]>([])
   const [loadingMensalidades, setLoadingMensalidades] = useState(true)
+  const pendenciasCount = mensalidades.filter((m) => m.status === 'pendente' || m.status === 'atrasado').length
+  const [searchParams] = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'pagamentos') setAba('pagamentos')
+  }, [searchParams])
 
   useEffect(() => {
     loadAulas()
@@ -430,11 +438,11 @@ export default function PortalAluno() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Minhas Aulas</h1>
-        <p className="text-gray-500 mt-1">Veja seus agendamentos, remarque e acompanhe seus pagamentos</p>
-      </div>
+      {/* Hero */}
+      <HeroBanner
+        titulo={`Bem-vindo(a), ${perfil?.nome?.split(' ')[0] ?? 'aluno'}!`}
+        subtitulo="Veja seus agendamentos, remarque e acompanhe seus pagamentos"
+      />
 
       {/* Mensagens */}
       {mensagem && (
@@ -461,23 +469,31 @@ export default function PortalAluno() {
       )}
 
       {/* Abas */}
-      <div className="flex gap-2 border-b border-gray-200">
+      <div className="flex gap-2">
         <button
           onClick={() => setAba('aulas')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            aba === 'aulas' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+            aba === 'aulas' ? 'bg-brand-500 text-white shadow-sm' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
           }`}
         >
+          <Calendar className="w-4 h-4" />
           Minhas Aulas
         </button>
         <button
           onClick={() => setAba('pagamentos')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
-            aba === 'pagamentos' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          className={`relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+            aba === 'pagamentos' ? 'bg-brand-500 text-white shadow-sm' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
           }`}
         >
           <Wallet className="w-4 h-4" />
           Pagamentos
+          {pendenciasCount > 0 && (
+            <span className={`ml-0.5 text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center ${
+              aba === 'pagamentos' ? 'bg-white text-brand-600' : 'bg-red-500 text-white'
+            }`}>
+              {pendenciasCount}
+            </span>
+          )}
         </button>
       </div>
 
