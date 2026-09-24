@@ -1166,7 +1166,14 @@ function AvulsaModal({ onClose }: { onClose: () => void }) {
               </div>
             )}
             {result.payment_url && (
-              <a href={result.payment_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline"><ExternalLink className="w-4 h-4" /> Abrir link de pagamento</a>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Link de pagamento (copie e mande pro cliente)</p>
+                <div className="flex gap-2">
+                  <input readOnly value={result.payment_url} className="flex-1 text-xs border rounded px-2 py-1.5 bg-gray-50 font-mono" />
+                  <button onClick={() => { navigator.clipboard.writeText(result.payment_url!); alert('Copiado!') }} className="px-3 py-1.5 rounded border hover:bg-gray-50" title="Copiar link"><Copy className="w-4 h-4" /></button>
+                  <a href={result.payment_url} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded border hover:bg-gray-50" title="Abrir"><ExternalLink className="w-4 h-4" /></a>
+                </div>
+              </div>
             )}
           </div>
         ) : (
