@@ -424,7 +424,7 @@ export default function FluxoAlunos() {
           {([
             ['entradas', `Entradas (${entradas.length})`],
             ['saidas', `Saídas (${saidas.length})`],
-            ['cancelamentos', `Cancelamentos (${cancelamentos.filter(c => c.status === 'programado').length})`],
+            ['cancelamentos', `Cancelamentos (${cancelamentos.length})`],
             ['professores', 'Por Professor'],
             ['grafico', 'Gráfico'],
           ] as [typeof aba, string][]).map(([key, label]) => (
