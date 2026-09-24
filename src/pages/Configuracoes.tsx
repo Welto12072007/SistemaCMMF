@@ -91,6 +91,8 @@ function AcessosTab() {
   const [criandoBulk, setCriandoBulk] = useState(false)
   const [progressoBulk, setProgressoBulk] = useState('')
   const [buscaBulk, setBuscaBulk] = useState('')
+  const [falhasEnvio, setFalhasEnvio] = useState<{ nome: string; email: string }[]>([])
+  const [reenviandoEmail, setReenviandoEmail] = useState<string | null>(null)
 
   useEffect(() => { load() }, [])
 
@@ -178,6 +180,7 @@ function AcessosTab() {
     setCriandoBulk(true)
     let ok = 0
     const falhas: string[] = []
+    const semEmail: { nome: string; email: string }[] = []
     for (const a of selecionados) {
       setProgressoBulk(`${ok + falhas.length + 1}/${selecionados.length}: ${a.nome}`)
       let created: { user: { id: string } } | null = null
@@ -201,7 +204,11 @@ function AcessosTab() {
       const { error: errEmail } = await supabase.auth.resetPasswordForEmail(a.email, {
         redirectTo: `${window.location.origin}/definir-senha`,
       })
-      if (errEmail) { falhas.push(`${a.nome} (email: ${errEmail.message})`); continue }
+      if (errEmail) {
+        // Acesso foi criado, só o email falhou — não pode "sumir" sem dar chance de reenviar
+        semEmail.push({ nome: a.nome, email: a.email })
+        continue
+      }
       ok++
       // Pequeno intervalo entre envios para não estourar o limite de emails/hora do Supabase
       await new Promise((resolve) => setTimeout(resolve, 1200))
@@ -210,9 +217,25 @@ function AcessosTab() {
     setProgressoBulk('')
     setSelecionadosBulk(new Set())
     setShowBulkAlunos(false)
-    setSuccessMsg(`${ok} acesso(s) criado(s) e email de convite enviado.${falhas.length ? ` Falhas: ${falhas.join(', ')}` : ''}`)
+    if (semEmail.length) setFalhasEnvio((prev) => [...prev, ...semEmail])
+    setSuccessMsg(`${ok} acesso(s) criado(s) e email de convite enviado.${falhas.length ? ` Falhas: ${falhas.join(', ')}` : ''}${semEmail.length ? ` ${semEmail.length} acesso(s) criado(s) mas o email falhou — veja o aviso abaixo pra reenviar.` : ''}`)
     load()
   }
+
+  async function handleReenviarFalha(item: { nome: string; email: string }) {
+    setReenviandoEmail(item.email)
+    const { error } = await supabase.auth.resetPasswordForEmail(item.email, {
+      redirectTo: `${window.location.origin}/definir-senha`,
+    })
+    setReenviandoEmail(null)
+    if (error) {
+      alert(`Falhou de novo pra ${item.nome}: ${error.message}`)
+      return
+    }
+    setFalhasEnvio((prev) => prev.filter((f) => f.email !== item.email))
+    setSuccessMsg(`Email reenviado com sucesso para ${item.nome}.`)
+  }
+
 
   async function handleSave(form: { nome: string; email: string; role: UserRole; professor_id: string; telefone: string }) {
     setErro('')
@@ -372,6 +395,28 @@ function AcessosTab() {
 
       {erro && <div className="mx-5 mt-3 bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg">{erro}</div>}
       {successMsg && <div className="mx-5 mt-3 bg-green-50 text-green-700 text-sm px-4 py-3 rounded-lg">{successMsg}</div>}
+
+      {falhasEnvio.length > 0 && (
+        <div className="mx-5 mt-3 bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <p className="text-sm font-medium text-amber-800 mb-2">
+            {falhasEnvio.length} acesso(s) criado(s), mas o email de convite falhou ao enviar — a pessoa já existe no sistema, só falta o email:
+          </p>
+          <div className="space-y-1.5">
+            {falhasEnvio.map((f) => (
+              <div key={f.email} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-sm">
+                <span>{f.nome} <span className="text-gray-400">({f.email})</span></span>
+                <button
+                  onClick={() => handleReenviarFalha(f)}
+                  disabled={reenviandoEmail === f.email}
+                  className="text-xs font-medium px-3 py-1 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+                >
+                  {reenviandoEmail === f.email ? 'Reenviando...' : 'Reenviar'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {linkConvite && (
         <div className="mx-5 mt-3 bg-blue-50 border border-blue-200 rounded-lg p-4">
