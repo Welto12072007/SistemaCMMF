@@ -683,6 +683,22 @@ def main() -> None:
     log.info(f'Hora BRT: {br.strftime("%H:%M")} | Dia: {br.day} | DoW: {br.weekday()}')
     erros: list[str] = []
 
+    # 2h BRT — gera agendamentos reais (6 semanas) a partir da grade de horarios
+    # + cancela agendamentos futuros orfaos (aluno removido do horario na grade)
+    if br.hour == 2:
+        try:
+            r = rpc("gerar_agendamentos_recorrentes", {"p_dias_futuros": 42})
+            log.info(f"gerar_agendamentos_recorrentes: {r}")
+        except Exception as e:
+            log.error(f"gerar_agendamentos_recorrentes: {e}")
+            erros.append(f"gerar_agendamentos_recorrentes: {e}")
+        try:
+            r = rpc("limpar_agendamentos_orfaos")
+            log.info(f"limpar_agendamentos_orfaos: {r}")
+        except Exception as e:
+            log.error(f"limpar_agendamentos_orfaos: {e}")
+            erros.append(f"limpar_agendamentos_orfaos: {e}")
+
     # Dia 1, 1h BRT — expirar reposições
     if br.day == 1 and br.hour == 1:
         try:
