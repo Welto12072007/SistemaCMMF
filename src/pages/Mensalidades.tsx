@@ -1131,7 +1131,7 @@ function BillingTypeModal({
 }
 
 function AvulsaModal({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState({ nome: '', telefone: '', email: '', valor: '', vencimento: new Date().toISOString().slice(0,10), billing_type: 'PIX' as 'PIX' | 'CREDIT_CARD', descricao: '' })
+  const [form, setForm] = useState({ nome: '', telefone: '', email: '', valor: '', vencimento: new Date().toISOString().slice(0,10), billing_type: 'UNDEFINED' as 'PIX' | 'CREDIT_CARD' | 'UNDEFINED', descricao: '' })
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{payment_url?: string; pix_copy_paste?: string} | null>(null)
 
@@ -1179,7 +1179,8 @@ function AvulsaModal({ onClose }: { onClose: () => void }) {
               <Field label="Vencimento"><input type="date" value={form.vencimento} onChange={e => setForm({...form, vencimento: e.target.value})} className="w-full px-3 py-2 border rounded" /></Field>
             </div>
             <Field label="Tipo">
-              <select value={form.billing_type} onChange={e => setForm({...form, billing_type: e.target.value as 'PIX'|'CREDIT_CARD'})} className="w-full px-3 py-2 border rounded">
+              <select value={form.billing_type} onChange={e => setForm({...form, billing_type: e.target.value as 'PIX'|'CREDIT_CARD'|'UNDEFINED'})} className="w-full px-3 py-2 border rounded">
+                <option value="UNDEFINED">Pergunte ao cliente (PIX + Cartão)</option>
                 <option value="PIX">PIX</option>
                 <option value="CREDIT_CARD">Cartão de crédito</option>
               </select>
