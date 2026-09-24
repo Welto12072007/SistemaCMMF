@@ -90,6 +90,7 @@ function AcessosTab() {
   const [selecionadosBulk, setSelecionadosBulk] = useState<Set<string>>(new Set())
   const [criandoBulk, setCriandoBulk] = useState(false)
   const [progressoBulk, setProgressoBulk] = useState('')
+  const [buscaBulk, setBuscaBulk] = useState('')
 
   useEffect(() => { load() }, [])
 
@@ -172,6 +173,7 @@ function AcessosTab() {
   async function handleCriarAcessosLote() {
     const selecionados = alunosSemAcesso.filter(a => selecionadosBulk.has(a.id))
     if (selecionados.length === 0) { alert('Selecione ao menos um aluno.'); return }
+    if (selecionados.length > 80 && !confirm(`Você selecionou ${selecionados.length} alunos. O envio de emails tem limite de segurança — recomendamos lotes de até 80 por hora. Deseja continuar mesmo assim?`)) return
     if (!confirm(`Criar acesso e enviar email de convite para ${selecionados.length} aluno(s)?`)) return
     setCriandoBulk(true)
     let ok = 0
@@ -196,10 +198,13 @@ function AcessosTab() {
       })
       if (errPerfil) { falhas.push(`${a.nome} (perfil: ${errPerfil.message})`); continue }
 
-      await supabase.auth.resetPasswordForEmail(a.email, {
+      const { error: errEmail } = await supabase.auth.resetPasswordForEmail(a.email, {
         redirectTo: `${window.location.origin}/definir-senha`,
       })
+      if (errEmail) { falhas.push(`${a.nome} (email: ${errEmail.message})`); continue }
       ok++
+      // Pequeno intervalo entre envios para não estourar o limite de emails/hora do Supabase
+      await new Promise((resolve) => setTimeout(resolve, 1200))
     }
     setCriandoBulk(false)
     setProgressoBulk('')
@@ -319,7 +324,7 @@ function AcessosTab() {
         <div className="flex items-center gap-2">
           {alunosSemAcesso.length > 0 && (
             <button
-              onClick={() => { setSelecionadosBulk(new Set(alunosSemAcesso.map(a => a.id))); setShowBulkAlunos(true) }}
+              onClick={() => { setSelecionadosBulk(new Set(alunosSemAcesso.map(a => a.id))); setBuscaBulk(''); setShowBulkAlunos(true) }}
               className="flex items-center gap-2 border border-green-300 bg-green-50 text-green-700 px-3 py-1.5 rounded-lg text-sm hover:bg-green-100"
               title="Alunos ativos que ainda não têm login no sistema"
             >
@@ -445,8 +450,43 @@ function AcessosTab() {
                 {alunosSemEmail} aluno(s) ativo(s) não têm email cadastrado e por isso não aparecem aqui — cadastre o email na ficha do aluno primeiro.
               </p>
             )}
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                type="text"
+                value={buscaBulk}
+                onChange={(e) => setBuscaBulk(e.target.value)}
+                placeholder="Buscar por nome ou email..."
+                className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
+                disabled={criandoBulk}
+              />
+              <button
+                type="button"
+                disabled={criandoBulk}
+                onClick={() => {
+                  const visiveisIds = alunosSemAcesso
+                    .filter((a) => !buscaBulk || a.nome.toLowerCase().includes(buscaBulk.toLowerCase()) || a.email.toLowerCase().includes(buscaBulk.toLowerCase()))
+                    .map((a) => a.id)
+                  const todosVisiveisSelecionados = visiveisIds.every((id) => selecionadosBulk.has(id))
+                  setSelecionadosBulk((prev) => {
+                    const next = new Set(prev)
+                    if (todosVisiveisSelecionados) {
+                      visiveisIds.forEach((id) => next.delete(id))
+                    } else {
+                      visiveisIds.forEach((id) => next.add(id))
+                    }
+                    return next
+                  })
+                }}
+                className="px-3 py-2 text-xs font-medium text-brand-600 border border-brand-200 rounded-lg hover:bg-brand-50 whitespace-nowrap disabled:opacity-50"
+              >
+                Marcar/desmarcar todos
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mb-2">{selecionadosBulk.size} de {alunosSemAcesso.length} selecionado(s)</p>
             <div className="space-y-1 max-h-64 overflow-y-auto border rounded-lg divide-y">
-              {alunosSemAcesso.map((a) => (
+              {alunosSemAcesso
+                .filter((a) => !buscaBulk || a.nome.toLowerCase().includes(buscaBulk.toLowerCase()) || a.email.toLowerCase().includes(buscaBulk.toLowerCase()))
+                .map((a) => (
                 <label key={a.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
                   <input type="checkbox" checked={selecionadosBulk.has(a.id)} onChange={() => toggleSelecionadoBulk(a.id)} className="w-4 h-4" disabled={criandoBulk} />
                   <span className="flex-1">{a.nome}</span>
