@@ -59,6 +59,10 @@ interface AlertaFila {
 
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 
+function normalizarNome(nome: string): string {
+  return nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+}
+
 export default function Presencas({ embedded = false }: { embedded?: boolean } = {}) {
   const { perfil } = useAuth()
   const isProfessor = perfil?.role === 'professor'
@@ -135,6 +139,25 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
       .select('*')
       .eq('data', dataAtual)
 
+    // Buscar data_matricula dos alunos vinculados, pra não exibir aula antes da matrícula
+    const idsReferenciados = Array.from(
+      new Set((horariosOcupados || []).flatMap((h: any) => h.aluno_ids || []))
+    )
+    const matriculaPorId = new Map<string, string | null>()
+    const matriculaPorNome = new Map<string, string | null>()
+    if (idsReferenciados.length > 0) {
+      const { data: alunosRef } = await supabase
+        .from('alunos')
+        .select('id, nome, data_matricula')
+        .in('id', idsReferenciados)
+      for (const a of (alunosRef || [])) {
+        matriculaPorId.set(a.id, a.data_matricula)
+        matriculaPorNome.set(normalizarNome(a.nome), a.data_matricula)
+      }
+    }
+    const antesDaMatricula = (dataMatricula: string | null | undefined) =>
+      !!dataMatricula && dataMatricula > dataAtual
+
     const lista: AlunoPresenca[] = []
     for (const h of (horariosOcupados || [])) {
       if (!h.aluno_nome) continue
@@ -147,6 +170,7 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
       )
       if (isGrupo) {
         for (const nome of splitNomesGrupo(h.aluno_nome)) {
+          if (antesDaMatricula(matriculaPorNome.get(normalizarNome(nome)))) continue
           const presExistente = (presencasExistentes || []).find(
             (p: any) => p.horario_id === h.id && p.aluno_nome === nome
           )
@@ -168,6 +192,11 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
           })
         }
       } else {
+        const alunoId = (h as any).aluno_ids?.[0]
+        const dataMatriculaAluno = alunoId
+          ? matriculaPorId.get(alunoId)
+          : matriculaPorNome.get(normalizarNome(h.aluno_nome))
+        if (antesDaMatricula(dataMatriculaAluno)) continue
         const presExistente = (presencasExistentes || []).find(
           (p: any) => p.horario_id === h.id && p.data === dataAtual
         )
