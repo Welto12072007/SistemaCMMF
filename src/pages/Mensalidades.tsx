@@ -804,7 +804,7 @@ export default function Mensalidades() {
       )}
 
       {avulsaModal && (
-        <AvulsaModal onClose={() => setAvulsaModal(false)} />
+        <AvulsaModal onClose={() => setAvulsaModal(false)} onSaved={loadMensalidades} />
       )}
 
       {paymentModal && (
@@ -1130,13 +1130,13 @@ function BillingTypeModal({
   )
 }
 
-function AvulsaModal({ onClose }: { onClose: () => void }) {
+function AvulsaModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState({ nome: '', telefone: '', email: '', valor: '', vencimento: new Date().toISOString().slice(0,10), billing_type: 'UNDEFINED' as 'PIX' | 'CREDIT_CARD' | 'UNDEFINED', descricao: '' })
   const [alunoId, setAlunoId] = useState<string | null>(null)
   const [sugestoes, setSugestoes] = useState<{ id: string; nome: string; telefone: string | null; email: string | null }[]>([])
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<{payment_url?: string; pix_copy_paste?: string} | null>(null)
+  const [result, setResult] = useState<{payment_url?: string; pix_copy_paste?: string; vinculada?: boolean} | null>(null)
 
   useEffect(() => {
     if (alunoId || form.nome.trim().length < 2) { setSugestoes([]); return }
@@ -1173,7 +1173,8 @@ function AvulsaModal({ onClose }: { onClose: () => void }) {
     })
     setLoading(false)
     if (error || !data?.ok) { alert(`Erro: ${error?.message ?? data?.error}`); return }
-    setResult({ payment_url: data.payment_url, pix_copy_paste: data.pix_copy_paste })
+    setResult({ payment_url: data.payment_url, pix_copy_paste: data.pix_copy_paste, vinculada: !!data.mensalidade_id })
+    if (data.mensalidade_id) onSaved()
   }
 
   return (
@@ -1186,6 +1187,11 @@ function AvulsaModal({ onClose }: { onClose: () => void }) {
         {result ? (
           <div className="p-5 space-y-4">
             <p className="text-green-700 font-medium">Cobrança criada com sucesso!</p>
+            {result.vinculada ? (
+              <p className="text-xs text-gray-500 -mt-2">Salva na lista de Mensalidades do mês — editar ou excluir por lá já reflete no Asaas.</p>
+            ) : (
+              <p className="text-xs text-amber-600 -mt-2">Nome não vinculado a um aluno cadastrado — essa cobrança existe só no Asaas, não aparece na lista do sistema.</p>
+            )}
             {result.pix_copy_paste && (
               <div>
                 <p className="text-xs text-gray-500 mb-1">PIX Copia e Cola</p>

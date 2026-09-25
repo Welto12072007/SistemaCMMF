@@ -140,12 +140,42 @@ Deno.serve(async (req) => {
 
       const pix_copy_paste = isPix ? await fetchPixPayload(chargeData.id) : null
 
+      // Se ligada a um aluno cadastrado, grava como mensalidade (tipo=avulsa) para
+      // aparecer na lista do sistema e poder ser editada/excluída dali (excluir já
+      // cancela a cobrança no Asaas automaticamente).
+      let mensalidade_id: string | undefined
+      if (aluno_id) {
+        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        const refMes = `${vencimento.slice(0, 7)}-01`
+        const { data: novaMensalidade, error: insErr } = await supabase
+          .from('mensalidades')
+          .insert({
+            aluno_id,
+            tipo: 'avulsa',
+            referencia: refMes,
+            valor: Number(valor),
+            data_vencimento: vencimento,
+            status: 'pendente',
+            observacoes: descricao,
+            asaas_charge_id: chargeData.id,
+            asaas_payment_url: chargeData.invoiceUrl,
+            asaas_pix_copy_paste: pix_copy_paste,
+            asaas_billing_type: billing_type,
+            asaas_created_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single()
+        if (insErr) console.error('[avulsa] erro ao gravar mensalidade:', insErr.message)
+        mensalidade_id = novaMensalidade?.id
+      }
+
       return jsonResp({
         ok: true,
         charge_id: chargeData.id,
         payment_url: chargeData.invoiceUrl,
         pix_copy_paste,
         valor: Number(valor),
+        mensalidade_id,
       })
     }
 
