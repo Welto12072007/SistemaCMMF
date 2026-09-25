@@ -64,6 +64,8 @@ const TIPO_ICONS: Record<string, typeof Gift> = {
   avaliacao_google: Star,
   personalizado: MessageSquare,
   cobranca_atraso: AlertTriangle,
+  cobranca_regua: AlertTriangle,
+  jornada_satisfacao: ClipboardList,
   alerta_falta_consecutiva: AlertTriangle,
   alerta_falta_avulsa: AlertTriangle,
   reativacao: RefreshCw,
@@ -81,6 +83,8 @@ const TIPO_COLORS: Record<string, string> = {
   avaliacao_google: 'bg-yellow-100 text-yellow-700',
   personalizado: 'bg-purple-100 text-purple-700',
   cobranca_atraso: 'bg-red-100 text-red-700',
+  cobranca_regua: 'bg-red-100 text-red-700',
+  jornada_satisfacao: 'bg-cyan-100 text-cyan-700',
   alerta_falta_consecutiva: 'bg-rose-100 text-rose-700',
   alerta_falta_avulsa: 'bg-rose-100 text-rose-700',
   reativacao: 'bg-amber-100 text-amber-700',
@@ -98,6 +102,8 @@ const TIPO_LABELS: Record<string, string> = {
   avaliacao_google: 'Avaliação Google',
   personalizado: 'Personalizado',
   cobranca_atraso: 'Cobrança em atraso',
+  cobranca_regua: 'Régua de inadimplência',
+  jornada_satisfacao: 'Jornada de Satisfação (30/90/180d)',
   alerta_falta_consecutiva: 'Alerta de Faltas Consecutivas',
   alerta_falta_avulsa: 'Alerta de Falta Avulsa',
   reativacao: 'Reativação ex-aluno',
@@ -548,7 +554,7 @@ function DisparoForm({
 
   // Boas-vindas e Manual do Aluno são disparos por evento (matrícula), não por lista
   const isMatriculaGatilho = form.tipo === 'boas_vindas' || form.nome.trim().toLowerCase() === 'manual do aluno'
-  const isRegraDiasMensalidade = form.tipo === 'vencimento' || form.tipo === 'cobranca_atraso'
+  const isRegraDiasMensalidade = form.tipo === 'vencimento' || form.tipo === 'cobranca_atraso' || form.tipo === 'cobranca_regua' || form.tipo === 'jornada_satisfacao'
   const isAlertaFalta = form.tipo === 'alerta_falta_consecutiva' || form.tipo === 'alerta_falta_avulsa'
 
   useEffect(() => {
@@ -723,7 +729,13 @@ function DisparoForm({
           {form.recorrencia === 'diario' && isRegraDiasMensalidade && (
             <div>
               <label className="text-xs text-gray-500 block mb-1">
-                {form.tipo === 'vencimento' ? 'Dias de antecedência antes do vencimento' : 'Dias mínimos de atraso para cobrar'}
+                {form.tipo === 'vencimento'
+                  ? 'Dias de antecedência antes do vencimento'
+                  : form.tipo === 'cobranca_regua'
+                    ? 'Dias de atraso deste estágio da régua'
+                    : form.tipo === 'jornada_satisfacao'
+                      ? 'Dias desde a matrícula deste marco (180 = recorrente a cada 180 dias)'
+                      : 'Dias mínimos de atraso para cobrar'}
               </label>
               <input
                 type="number"

@@ -1132,14 +1132,44 @@ function BillingTypeModal({
 
 function AvulsaModal({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState({ nome: '', telefone: '', email: '', valor: '', vencimento: new Date().toISOString().slice(0,10), billing_type: 'UNDEFINED' as 'PIX' | 'CREDIT_CARD' | 'UNDEFINED', descricao: '' })
+  const [alunoId, setAlunoId] = useState<string | null>(null)
+  const [sugestoes, setSugestoes] = useState<{ id: string; nome: string; telefone: string | null; email: string | null }[]>([])
+  const [mostrarSugestoes, setMostrarSugestoes] = useState(false)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{payment_url?: string; pix_copy_paste?: string} | null>(null)
+
+  useEffect(() => {
+    if (alunoId || form.nome.trim().length < 2) { setSugestoes([]); return }
+    const t = setTimeout(async () => {
+      const { data } = await supabase
+        .from('alunos')
+        .select('id, nome, telefone, email')
+        .ilike('nome', `%${form.nome.trim()}%`)
+        .order('nome')
+        .limit(8)
+      setSugestoes(data ?? [])
+    }, 250)
+    return () => clearTimeout(t)
+  }, [form.nome, alunoId])
+
+  function selecionarAluno(a: { id: string; nome: string; telefone: string | null; email: string | null }) {
+    setForm({ ...form, nome: a.nome, telefone: a.telefone ?? '', email: a.email ?? '' })
+    setAlunoId(a.id)
+    setSugestoes([])
+    setMostrarSugestoes(false)
+  }
+
+  function onNomeChange(v: string) {
+    setForm({ ...form, nome: v })
+    if (alunoId) setAlunoId(null) // digitou de novo, desfaz o vínculo até escolher outro
+    setMostrarSugestoes(true)
+  }
 
   async function enviar() {
     if (!form.nome || !form.telefone || !form.valor) { alert('Preencha nome, telefone e valor'); return }
     setLoading(true)
     const { data, error } = await supabase.functions.invoke('asaas-create-charge', {
-      body: { avulsa: true, nome: form.nome, telefone: form.telefone, email: form.email || undefined, valor: parseFloat(form.valor), vencimento: form.vencimento, billing_type: form.billing_type, descricao: form.descricao || undefined },
+      body: { avulsa: true, aluno_id: alunoId ?? undefined, nome: form.nome, telefone: form.telefone, email: form.email || undefined, valor: parseFloat(form.valor), vencimento: form.vencimento, billing_type: form.billing_type, descricao: form.descricao || undefined },
     })
     setLoading(false)
     if (error || !data?.ok) { alert(`Erro: ${error?.message ?? data?.error}`); return }
@@ -1178,7 +1208,39 @@ function AvulsaModal({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <div className="p-5 space-y-3">
-            <Field label="Nome"><input value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full px-3 py-2 border rounded" placeholder="Nome completo" /></Field>
+            <Field label="Nome">
+              <div className="relative">
+                <input
+                  value={form.nome}
+                  onChange={e => onNomeChange(e.target.value)}
+                  onFocus={() => setMostrarSugestoes(true)}
+                  onBlur={() => setTimeout(() => setMostrarSugestoes(false), 150)}
+                  className="w-full px-3 py-2 border rounded"
+                  placeholder="Nome completo"
+                  autoComplete="off"
+                />
+                {alunoId && (
+                  <span className="absolute right-2 top-2.5 text-xs text-green-700 bg-green-50 px-1.5 py-0.5 rounded flex items-center gap-1">
+                    <UserPlus className="w-3 h-3" /> vinculado
+                  </span>
+                )}
+                {mostrarSugestoes && sugestoes.length > 0 && (
+                  <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border rounded shadow-lg max-h-48 overflow-y-auto">
+                    {sugestoes.map(a => (
+                      <button
+                        type="button"
+                        key={a.id}
+                        onMouseDown={() => selecionarAluno(a)}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b last:border-b-0"
+                      >
+                        <div className="font-medium">{a.nome}</div>
+                        {a.telefone && <div className="text-xs text-gray-500">{a.telefone}</div>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Field>
             <Field label="Telefone"><input value={form.telefone} onChange={e => setForm({...form, telefone: e.target.value})} className="w-full px-3 py-2 border rounded" placeholder="51999999999" /></Field>
             <Field label="E-mail (opcional)"><input value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full px-3 py-2 border rounded" placeholder="email@exemplo.com" /></Field>
             <div className="grid grid-cols-2 gap-3">

@@ -97,11 +97,30 @@ Deno.serve(async (req) => {
     // MODO AVULSO — cobrança para pessoa não cadastrada no sistema
     // ══════════════════════════════════════════════════════════════════
     if (body.avulsa) {
-      const { nome, telefone, email = '', valor, vencimento, descricao = 'Cobrança CMMF' } = body
+      const { aluno_id, nome, telefone, email = '', valor, vencimento, descricao = 'Cobrança CMMF' } = body
       if (!nome || !valor || !vencimento) throw new Error('nome, valor e vencimento são obrigatórios')
 
-      const extRef = `avulsa_${telefone.replace(/\D/g, '')}_${Date.now()}`
-      const customerId = await getOrCreateCustomer(nome, telefone ?? '', email, extRef)
+      // Se veio de um aluno selecionado no autocomplete, reutiliza o mesmo customer
+      // Asaas do aluno (externalReference = aluno.id), em vez de criar um customer avulso solto.
+      let customerId: string
+      let extRef: string
+      if (aluno_id) {
+        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        const { data: aluno } = await supabase
+          .from('alunos')
+          .select('id, nome, telefone, email, cpf, asaas_customer_id')
+          .eq('id', aluno_id)
+          .single()
+        extRef = aluno_id
+        customerId = aluno?.asaas_customer_id
+          ?? await getOrCreateCustomer(nome, telefone ?? '', email, extRef, aluno?.cpf ?? undefined)
+        if (aluno && !aluno.asaas_customer_id) {
+          await supabase.from('alunos').update({ asaas_customer_id: customerId }).eq('id', aluno_id)
+        }
+      } else {
+        extRef = `avulsa_${telefone.replace(/\D/g, '')}_${Date.now()}`
+        customerId = await getOrCreateCustomer(nome, telefone ?? '', email, extRef)
+      }
 
       const chargeResp = await fetch(`${ASAAS_BASE}/payments`, {
         method: 'POST',
@@ -112,7 +131,7 @@ Deno.serve(async (req) => {
           value: Number(valor),
           dueDate: vencimento,
           description: descricao,
-          externalReference: extRef,
+          externalReference: aluno_id ?? extRef,
           notifications: [],  // desabilita email/SMS (R$0,99 cada)
         }),
       })
