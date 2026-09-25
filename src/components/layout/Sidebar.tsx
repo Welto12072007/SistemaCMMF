@@ -58,8 +58,6 @@ const sections: NavSection[] = [
       { to: '/portal-professor', label: 'Agenda', icon: CalendarRange, roles: ['professor'], query: '?tab=agenda' },
       { to: '/portal-professor', label: 'Meus Alunos', icon: UsersRound, roles: ['professor'], query: '?tab=alunos' },
       { to: '/portal-professor', label: 'Meu Mês', icon: DollarSign, roles: ['professor'], query: '?tab=mes' },
-      { to: '/contatos', label: 'Contatos', icon: Users, roles: ['admin', 'recepcao'] },
-      { to: '/crm-funil', label: 'CRM — Funil', icon: TrendingUp, roles: ['admin', 'recepcao'] },
       { to: '/aulas-experimentais', label: 'Aulas Experimentais', icon: GraduationCap, roles: ['admin', 'recepcao', 'professor'] },
       { to: '/usuarios', label: 'Usuários', icon: UserCheck, roles: ['admin', 'recepcao'] },
       { to: '/horarios', label: 'Horários', icon: CalendarClock, roles: ['admin', 'recepcao'] },
@@ -67,6 +65,7 @@ const sections: NavSection[] = [
       { to: '/presencas', label: 'Presenças & Faltas', icon: ClipboardCheck, roles: ['admin', 'recepcao'] },
       { to: '/portal-aluno', label: 'Minhas Aulas', icon: Calendar, roles: ['aluno'] },
       { to: '/portal-aluno', label: 'Pagamentos', icon: Wallet, roles: ['aluno'], query: '?tab=pagamentos' },
+      { to: '/agenda', label: 'Agenda', icon: CalendarPlus2, roles: ['admin', 'recepcao', 'professor', 'aluno'] },
     ],
   },
   {
@@ -91,6 +90,8 @@ const sections: NavSection[] = [
     title: 'Comunicação',
     roles: ['admin', 'recepcao'],
     items: [
+      { to: '/contatos', label: 'Contatos', icon: Users, roles: ['admin', 'recepcao'] },
+      { to: '/crm-funil', label: 'CRM — Funil', icon: TrendingUp, roles: ['admin', 'recepcao'] },
       { to: '/disparos', label: 'Disparos', icon: Send, roles: ['admin', 'recepcao'] },
       { to: '/disparos-programados', label: 'Programados', icon: CalendarCheck, roles: ['admin'] },
       { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'recepcao'] },
@@ -104,7 +105,6 @@ const sections: NavSection[] = [
       { to: '/biblioteca', label: 'Biblioteca', icon: Library, roles: ['admin', 'recepcao', 'professor', 'aluno'] },
       { to: '/fingertv', label: 'FingerTV', icon: Tv, roles: ['admin', 'recepcao', 'professor', 'aluno'] },
       { to: '/material-apoio', label: 'Material de Apoio', icon: FileText, roles: ['admin', 'professor', 'aluno'] },
-      { to: '/agenda', label: 'Agenda', icon: CalendarPlus2, roles: ['admin', 'recepcao', 'professor', 'aluno'] },
       { to: '/metronomo', label: 'Metrônomo', icon: Timer, roles: ['admin', 'recepcao', 'professor', 'aluno'] },
     ],
   },
