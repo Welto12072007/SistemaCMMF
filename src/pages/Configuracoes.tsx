@@ -266,8 +266,8 @@ function AcessosTab() {
         continue
       }
       ok++
-      // Pequeno intervalo entre envios para não estourar o limite de emails/hora do Supabase
-      await new Promise((resolve) => setTimeout(resolve, 1200))
+      // Intervalo entre envios respeitando o smtp_max_frequency do Supabase (2s)
+      await new Promise((resolve) => setTimeout(resolve, 2500))
     }
     setCriandoBulk(false)
     setProgressoBulk('')
