@@ -81,6 +81,13 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
   const [histFiltro, setHistFiltro] = useState({ mes: new Date().getMonth() + 1, ano: new Date().getFullYear() })
   const [modalPresenca, setModalPresenca] = useState<{ item: AlunoPresenca; presente: boolean; tipoFalta?: string } | null>(null)
   const [obsTexto, setObsTexto] = useState('')
+  const [modalGrupo, setModalGrupo] = useState<{
+    horarioId: string
+    itens: AlunoPresenca[]
+    presencaPorId: Record<string, boolean | null>
+    tipoFaltaPorId: Record<string, string>
+  } | null>(null)
+  const [obsGrupoTexto, setObsGrupoTexto] = useState('')
   const [feriadoHoje, setFeriadoHoje] = useState<{ titulo: string; tipo: string } | null>(null)
   const [forcarChamada, setForcarChamada] = useState(false)
 
@@ -410,6 +417,71 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
     loadAlertas()
   }
 
+  // Chamada em grupo: presença é individual por aluno, mas a observação
+  // pedagógica é uma só, compartilhada por toda a turma (feedback dos
+  // professores — não faz sentido escrever a mesma observação várias vezes).
+  function abrirChamadaGrupo(itemClicado: AlunoPresenca, presente: boolean, tipoFalta?: string) {
+    const itens = presencas.filter(p => p.horario_id === itemClicado.horario_id)
+    const presencaPorId: Record<string, boolean | null> = {}
+    const tipoFaltaPorId: Record<string, string> = {}
+    for (const it of itens) {
+      presencaPorId[it.id] = it.presente
+      tipoFaltaPorId[it.id] = it.tipo_falta || 'falta_injustificada'
+    }
+    presencaPorId[itemClicado.id] = presente
+    if (!presente) tipoFaltaPorId[itemClicado.id] = tipoFalta || 'falta_injustificada'
+    const obsExistente = itens.find(it => it.observacoes)?.observacoes || ''
+    setObsGrupoTexto(obsExistente)
+    setModalGrupo({ horarioId: itemClicado.horario_id, itens, presencaPorId, tipoFaltaPorId })
+  }
+
+  async function confirmarChamadaGrupo() {
+    if (!modalGrupo) return
+    const obs = obsGrupoTexto.trim()
+    if (!obs) {
+      alert('A observação pedagógica é obrigatória. Descreva o que foi trabalhado, dificuldades ou motivo da aula.')
+      return
+    }
+    const { itens, presencaPorId, tipoFaltaPorId } = modalGrupo
+    const pendente = itens.find(it => presencaPorId[it.id] === null || presencaPorId[it.id] === undefined)
+    if (pendente) {
+      alert(`Marque presença/falta de "${pendente.aluno_nome}" antes de confirmar a chamada do grupo.`)
+      return
+    }
+    for (const item of itens) {
+      const presente = presencaPorId[item.id] as boolean
+      const tipoFalta = tipoFaltaPorId[item.id]
+      const { data: alunoData } = await supabase
+        .from('alunos').select('id').ilike('nome', item.aluno_nome).limit(1).single()
+      const alunoId = alunoData?.id || null
+      if (item.presenca_id) {
+        await supabase.from('presencas').update({
+          presente,
+          tipo_falta: presente ? null : (tipoFalta || 'falta_injustificada'),
+          observacoes: obs,
+        }).eq('id', item.presenca_id)
+      } else {
+        await supabase.from('presencas').insert({
+          aluno_id: alunoId,
+          professor_id: item.professor_id,
+          horario_id: item.horario_id,
+          data: dataAtual,
+          hora_inicio: item.hora_inicio,
+          hora_fim: item.hora_fim,
+          instrumento: item.instrumento,
+          presente,
+          tipo_falta: presente ? null : (tipoFalta || 'falta_injustificada'),
+          aluno_nome: item.aluno_nome,
+          observacoes: obs,
+        })
+      }
+    }
+    setModalGrupo(null)
+    setObsGrupoTexto('')
+    loadPresencasDia()
+    loadAlertas()
+  }
+
   function navegarDia(delta: number) {
     const d = new Date(dataAtual + 'T12:00:00')
     d.setDate(d.getDate() + delta)
@@ -682,7 +754,7 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-2">
                           <button
-                            onClick={() => registrarPresenca(item, true)}
+                            onClick={() => item.tipo_aula === 'grupo' ? abrirChamadaGrupo(item, true) : registrarPresenca(item, true)}
                             className={`p-1.5 rounded-lg transition-colors ${
                               item.presente === true
                                 ? 'bg-green-100 text-green-600 ring-2 ring-green-300'
@@ -693,7 +765,7 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
                             <CheckCircle2 className="w-5 h-5" />
                           </button>
                           <button
-                            onClick={() => registrarPresenca(item, false, 'falta_injustificada')}
+                            onClick={() => item.tipo_aula === 'grupo' ? abrirChamadaGrupo(item, false, 'falta_injustificada') : registrarPresenca(item, false, 'falta_injustificada')}
                             className={`p-1.5 rounded-lg transition-colors ${
                               item.presente === false
                                 ? 'bg-red-100 text-red-600 ring-2 ring-red-300'
@@ -717,7 +789,7 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
                           {item.presente === false && (
                             <select
                               value={item.tipo_falta || 'falta_injustificada'}
-                              onChange={(e) => registrarPresenca(item, false, e.target.value)}
+                              onChange={(e) => item.tipo_aula === 'grupo' ? abrirChamadaGrupo(item, false, e.target.value) : registrarPresenca(item, false, e.target.value)}
                               className="text-xs border rounded px-2 py-1 block"
                             >
                               <option value="falta_injustificada">Injustificada</option>
@@ -737,7 +809,10 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
                         {item.observacoes
                           ? <span title={item.observacoes}>{item.observacoes.length > 60 ? item.observacoes.slice(0, 60) + '…' : item.observacoes}</span>
                           : item.presente !== null
-                            ? <button onClick={() => { setObsTexto(''); setModalPresenca({ item, presente: item.presente!, tipoFalta: item.tipo_falta }) }} className="text-xs text-amber-500 hover:underline">+ obs</button>
+                            ? <button onClick={() => {
+                                if (item.tipo_aula === 'grupo') { abrirChamadaGrupo(item, item.presente!, item.tipo_falta) }
+                                else { setObsTexto(''); setModalPresenca({ item, presente: item.presente!, tipoFalta: item.tipo_falta }) }
+                              }} className="text-xs text-amber-500 hover:underline">+ obs</button>
                             : <span className="text-gray-300">—</span>}
                       </td>
                     </tr>
@@ -878,6 +953,82 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
                 className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
               <button onClick={confirmarPresenca}
                 className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal chamada em grupo — presença individual, observação única compartilhada */}
+      {modalGrupo && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setModalGrupo(null)}>
+          <div className="bg-white rounded-xl max-w-lg w-full p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold mb-1">👥 Chamada do Grupo</h3>
+            <p className="text-xs text-gray-500 mb-4">
+              {modalGrupo.itens[0]?.hora_inicio?.slice(0,5)} • {modalGrupo.itens[0]?.instrumento || '—'} • Prof. {modalGrupo.itens[0]?.professor_nome}
+            </p>
+
+            <label className="block text-sm font-medium text-gray-700 mb-2">Presença de cada aluno</label>
+            <div className="space-y-2 mb-4">
+              {modalGrupo.itens.map(it => {
+                const presente = modalGrupo.presencaPorId[it.id]
+                return (
+                  <div key={it.id} className="flex items-center justify-between gap-2 border rounded-lg px-3 py-2">
+                    <span className="text-sm font-medium text-gray-800">{it.aluno_nome}</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setModalGrupo(g => g && { ...g, presencaPorId: { ...g.presencaPorId, [it.id]: true } })}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          presente === true ? 'bg-green-100 text-green-600 ring-2 ring-green-300' : 'text-gray-300 hover:text-green-500 hover:bg-green-50'
+                        }`}
+                        title="Presente"
+                      >
+                        <CheckCircle2 className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => setModalGrupo(g => g && { ...g, presencaPorId: { ...g.presencaPorId, [it.id]: false } })}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          presente === false ? 'bg-red-100 text-red-600 ring-2 ring-red-300' : 'text-gray-300 hover:text-red-500 hover:bg-red-50'
+                        }`}
+                        title="Faltou"
+                      >
+                        <XCircle className="w-5 h-5" />
+                      </button>
+                      {presente === false && (
+                        <select
+                          value={modalGrupo.tipoFaltaPorId[it.id] || 'falta_injustificada'}
+                          onChange={e => setModalGrupo(g => g && { ...g, tipoFaltaPorId: { ...g.tipoFaltaPorId, [it.id]: e.target.value } })}
+                          className="text-xs border rounded px-1.5 py-1"
+                        >
+                          <option value="falta_injustificada">Injustificada</option>
+                          <option value="falta_justificada">Justificada</option>
+                          <option value="remarcada">Remarcada</option>
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Observação pedagógica da turma <span className="text-red-600">*</span>
+            </label>
+            <p className="text-xs text-gray-500 mb-2">
+              O que foi trabalhado nesta aula? Vale pra todos os alunos do grupo — não precisa repetir aluno por aluno.
+            </p>
+            <textarea
+              value={obsGrupoTexto}
+              onChange={e => setObsGrupoTexto(e.target.value)}
+              rows={4}
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              placeholder="Descreva..."
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => { setModalGrupo(null); setObsGrupoTexto('') }}
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+              <button onClick={confirmarChamadaGrupo}
+                className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">Confirmar chamada do grupo</button>
             </div>
           </div>
         </div>
