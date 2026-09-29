@@ -85,7 +85,10 @@ function AcessosTab() {
   const [showPendentes, setShowPendentes] = useState(false)
   const [selecionadosPendentes, setSelecionadosPendentes] = useState<Set<string>>(new Set())
   const [alunosSemAcesso, setAlunosSemAcesso] = useState<{ id: string; nome: string; email: string; telefone: string | null }[]>([])
-  const [alunosSemEmail, setAlunosSemEmail] = useState(0)
+  const [alunosSemEmailList, setAlunosSemEmailList] = useState<{ id: string; nome: string }[]>([])
+  const [alunoEmailEdit, setAlunoEmailEdit] = useState<Record<string, string>>({})
+  const [salvandoEmailAluno, setSalvandoEmailAluno] = useState<string | null>(null)
+  const [alunosStatusPorEmail, setAlunosStatusPorEmail] = useState<Record<string, string>>({})
   const [showBulkAlunos, setShowBulkAlunos] = useState(false)
   const [selecionadosBulk, setSelecionadosBulk] = useState<Set<string>>(new Set())
   const [criandoBulk, setCriandoBulk] = useState(false)
@@ -94,21 +97,31 @@ function AcessosTab() {
   const [falhasEnvio, setFalhasEnvio] = useState<{ nome: string; email: string }[]>([])
   const [reenviandoEmail, setReenviandoEmail] = useState<string | null>(null)
 
+  const LOTE_MAXIMO = 80
+
   useEffect(() => { load() }, [])
 
   async function load() {
-    const [{ data: p }, { data: profs }, { data: alunosAtivos }] = await Promise.all([
+    const [{ data: p }, { data: profs }, { data: alunosAtivos }, { data: todosAlunos }] = await Promise.all([
       supabase.from('perfis').select('*').order('nome'),
       supabase.from('professores').select('id, nome').eq('ativo', true).order('nome'),
       supabase.from('alunos').select('id, nome, email, telefone').eq('status', 'ativo'),
+      supabase.from('alunos').select('email, status'),
     ])
     if (p) setPerfis(p)
     if (profs) setProfessores(profs)
 
+    // Status real do aluno por email — usado pra tirar quem já saiu (ex: Simeão) das listas de convite/reenvio
+    if (todosAlunos) {
+      const map: Record<string, string> = {}
+      for (const a of todosAlunos) if (a.email) map[a.email.toLowerCase()] = a.status
+      setAlunosStatusPorEmail(map)
+    }
+
     // Alunos ativos que ainda não têm login (base do "criar acessos em lote")
     if (alunosAtivos && p) {
       const emailsComAcesso = new Set(p.map((x) => x.email.toLowerCase()))
-      setAlunosSemEmail(alunosAtivos.filter((a) => !a.email).length)
+      setAlunosSemEmailList(alunosAtivos.filter((a) => !a.email).map((a) => ({ id: a.id, nome: a.nome })))
       setAlunosSemAcesso(
         alunosAtivos.filter((a) => a.email && !emailsComAcesso.has(a.email.toLowerCase())) as any
       )
@@ -125,12 +138,28 @@ function AcessosTab() {
     }
   }
 
+  async function handleSalvarEmailAluno(alunoId: string) {
+    const email = (alunoEmailEdit[alunoId] ?? '').trim()
+    if (!email || !email.includes('@')) { alert('Informe um email válido.'); return }
+    setSalvandoEmailAluno(alunoId)
+    const { error } = await supabase.from('alunos').update({ email }).eq('id', alunoId)
+    setSalvandoEmailAluno(null)
+    if (error) { alert('Erro ao salvar email: ' + error.message); return }
+    setAlunoEmailEdit((prev) => { const next = { ...prev }; delete next[alunoId]; return next })
+    load()
+  }
+
   // Pessoas que nunca acessaram e o cadastro tem 24h+ (inclui alunos agora que o portal foi liberado)
   function pendentesDe24h(): Perfil[] {
     const agora = Date.now()
     return perfis.filter((p) => {
       if (!p.ativo) return false
       if (ultimoAcesso[p.user_id]) return false
+      // Aluno que já saiu da escola (status diferente de 'ativo') não deve receber reenvio de acesso
+      if (p.role === 'aluno') {
+        const statusAluno = alunosStatusPorEmail[p.email.toLowerCase()]
+        if (statusAluno && statusAluno !== 'ativo') return false
+      }
       const criadoEm = new Date(p.created_at as any).getTime()
       return agora - criadoEm >= 24 * 60 * 60 * 1000
     })
@@ -173,10 +202,13 @@ function AcessosTab() {
   }
 
   async function handleCriarAcessosLote() {
-    const selecionados = alunosSemAcesso.filter(a => selecionadosBulk.has(a.id))
-    if (selecionados.length === 0) { alert('Selecione ao menos um aluno.'); return }
-    if (selecionados.length > 80 && !confirm(`Você selecionou ${selecionados.length} alunos. O envio de emails tem limite de segurança — recomendamos lotes de até 80 por hora. Deseja continuar mesmo assim?`)) return
-    if (!confirm(`Criar acesso e enviar email de convite para ${selecionados.length} aluno(s)?`)) return
+    const todosSelecionados = alunosSemAcesso.filter(a => selecionadosBulk.has(a.id))
+    if (todosSelecionados.length === 0) { alert('Selecione ao menos um aluno.'); return }
+    // Limite de segurança pra não estourar o envio de emails: processa no máximo 80 por vez,
+    // o restante fica na lista de "sem acesso" pra rodar de novo depois de 1h
+    const selecionados = todosSelecionados.slice(0, LOTE_MAXIMO)
+    const restantes = todosSelecionados.length - selecionados.length
+    if (!confirm(`Criar acesso e enviar email de convite para ${selecionados.length} aluno(s)?${restantes > 0 ? `\n\n${restantes} aluno(s) selecionado(s) a mais ficarão pendentes — volte aqui em 1 hora para enviar o restante.` : ''}`)) return
     setCriandoBulk(true)
     let ok = 0
     const falhas: string[] = []
@@ -218,7 +250,7 @@ function AcessosTab() {
     setSelecionadosBulk(new Set())
     setShowBulkAlunos(false)
     if (semEmail.length) setFalhasEnvio((prev) => [...prev, ...semEmail])
-    setSuccessMsg(`${ok} acesso(s) criado(s) e email de convite enviado.${falhas.length ? ` Falhas: ${falhas.join(', ')}` : ''}${semEmail.length ? ` ${semEmail.length} acesso(s) criado(s) mas o email falhou — veja o aviso abaixo pra reenviar.` : ''}`)
+    setSuccessMsg(`${ok} acesso(s) criado(s) e email de convite enviado.${falhas.length ? ` Falhas: ${falhas.join(', ')}` : ''}${semEmail.length ? ` ${semEmail.length} acesso(s) criado(s) mas o email falhou — veja o aviso abaixo pra reenviar.` : ''}${restantes > 0 ? ` ${restantes} aluno(s) ficaram pendentes por causa do limite de ${LOTE_MAXIMO}/hora — volte aqui em 1 hora para enviar o restante.` : ''}`)
     load()
   }
 
@@ -489,11 +521,30 @@ function AcessosTab() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => !criandoBulk && setShowBulkAlunos(false)}>
           <div className="bg-white rounded-xl p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-1">Criar acessos de alunos</h2>
-            <p className="text-sm text-gray-500 mb-3">Alunos ativos que ainda não têm login. Desmarque quem não deve receber agora.</p>
-            {alunosSemEmail > 0 && (
-              <p className="text-xs bg-amber-50 text-amber-700 rounded-lg px-3 py-2 mb-3">
-                {alunosSemEmail} aluno(s) ativo(s) não têm email cadastrado e por isso não aparecem aqui — cadastre o email na ficha do aluno primeiro.
-              </p>
+            <p className="text-sm text-gray-500 mb-3">Alunos ativos que ainda não têm login. Desmarque quem não deve receber agora. Por segurança, no máximo {LOTE_MAXIMO} são enviados por vez.</p>
+            {alunosSemEmailList.length > 0 && (
+              <div className="text-xs bg-amber-50 text-amber-800 rounded-lg px-3 py-2 mb-3 space-y-1.5">
+                <p className="font-medium">{alunosSemEmailList.length} aluno(s) ativo(s) sem email cadastrado — não aparecem na lista abaixo:</p>
+                {alunosSemEmailList.map((a) => (
+                  <div key={a.id} className="flex items-center gap-2 bg-white rounded px-2 py-1.5">
+                    <span className="flex-1 text-gray-700">{a.nome}</span>
+                    <input
+                      type="email"
+                      placeholder="email@exemplo.com"
+                      value={alunoEmailEdit[a.id] ?? ''}
+                      onChange={(e) => setAlunoEmailEdit((prev) => ({ ...prev, [a.id]: e.target.value }))}
+                      className="border border-amber-200 rounded px-2 py-1 text-xs w-44"
+                    />
+                    <button
+                      onClick={() => handleSalvarEmailAluno(a.id)}
+                      disabled={salvandoEmailAluno === a.id}
+                      className="px-2 py-1 rounded bg-amber-500 text-white text-xs font-medium hover:bg-amber-600 disabled:opacity-50"
+                    >
+                      {salvandoEmailAluno === a.id ? 'Salvando...' : 'Salvar'}
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
             <div className="flex items-center gap-2 mb-2">
               <input
@@ -549,7 +600,7 @@ function AcessosTab() {
                 disabled={criandoBulk || selecionadosBulk.size === 0}
                 className="px-4 py-2 text-sm text-white rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-50"
               >
-                {criandoBulk ? 'Criando...' : `Criar e enviar (${selecionadosBulk.size})`}
+                {criandoBulk ? 'Criando...' : `Criar e enviar (${Math.min(selecionadosBulk.size, LOTE_MAXIMO)}${selecionadosBulk.size > LOTE_MAXIMO ? ` de ${selecionadosBulk.size}` : ''})`}
               </button>
             </div>
           </div>
