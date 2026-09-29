@@ -96,10 +96,33 @@ function AcessosTab() {
   const [buscaBulk, setBuscaBulk] = useState('')
   const [falhasEnvio, setFalhasEnvio] = useState<{ nome: string; email: string }[]>([])
   const [reenviandoEmail, setReenviandoEmail] = useState<string | null>(null)
+  const [ultimoLoteTs, setUltimoLoteTs] = useState<number | null>(() => {
+    const salvo = localStorage.getItem('cmmf_ultimo_lote_acessos_ts')
+    return salvo ? Number(salvo) : null
+  })
+  const [agora, setAgora] = useState(() => Date.now())
 
   const LOTE_MAXIMO = 80
+  const LOTE_INTERVALO_MS = 60 * 60 * 1000
 
   useEffect(() => { load() }, [])
+
+  // Atualiza a contagem regressiva do lote (badge fora do modal + dentro dele)
+  useEffect(() => {
+    if (!ultimoLoteTs) return
+    const id = setInterval(() => setAgora(Date.now()), 15000)
+    return () => clearInterval(id)
+  }, [ultimoLoteTs])
+
+  const loteLiberadoEm = ultimoLoteTs ? ultimoLoteTs + LOTE_INTERVALO_MS : 0
+  const loteBloqueado = ultimoLoteTs != null && agora < loteLiberadoEm
+  function formatContagem(msRestante: number) {
+    const totalMin = Math.ceil(msRestante / 60000)
+    const h = Math.floor(totalMin / 60)
+    const m = totalMin % 60
+    if (h > 0) return `${h}h${m > 0 ? ` ${m}min` : ''}`
+    return `${m}min`
+  }
 
   async function load() {
     const [{ data: p }, { data: profs }, { data: alunosAtivos }, { data: todosAlunos }] = await Promise.all([
@@ -204,6 +227,7 @@ function AcessosTab() {
   async function handleCriarAcessosLote() {
     const todosSelecionados = alunosSemAcesso.filter(a => selecionadosBulk.has(a.id))
     if (todosSelecionados.length === 0) { alert('Selecione ao menos um aluno.'); return }
+    if (loteBloqueado) { alert(`Aguarde — o próximo lote libera em ${formatContagem(loteLiberadoEm - agora)}.`); return }
     // Limite de segurança pra não estourar o envio de emails: processa no máximo 80 por vez,
     // o restante fica na lista de "sem acesso" pra rodar de novo depois de 1h
     const selecionados = todosSelecionados.slice(0, LOTE_MAXIMO)
@@ -249,8 +273,14 @@ function AcessosTab() {
     setProgressoBulk('')
     setSelecionadosBulk(new Set())
     setShowBulkAlunos(false)
+    const ts = Date.now()
+    if (ok > 0) {
+      localStorage.setItem('cmmf_ultimo_lote_acessos_ts', String(ts))
+      setUltimoLoteTs(ts)
+      setAgora(ts)
+    }
     if (semEmail.length) setFalhasEnvio((prev) => [...prev, ...semEmail])
-    setSuccessMsg(`${ok} acesso(s) criado(s) e email de convite enviado.${falhas.length ? ` Falhas: ${falhas.join(', ')}` : ''}${semEmail.length ? ` ${semEmail.length} acesso(s) criado(s) mas o email falhou — veja o aviso abaixo pra reenviar.` : ''}${restantes > 0 ? ` ${restantes} aluno(s) ficaram pendentes por causa do limite de ${LOTE_MAXIMO}/hora — volte aqui em 1 hora para enviar o restante.` : ''}`)
+    setSuccessMsg(`${ok} acesso(s) criado(s) e email de convite enviado.${falhas.length ? ` Falhas: ${falhas.join(', ')}` : ''}${semEmail.length ? ` ${semEmail.length} acesso(s) criado(s) mas o email falhou — veja o aviso abaixo pra reenviar.` : ''}${restantes > 0 ? ` ${restantes} aluno(s) ficaram pendentes — próximo lote libera às ${new Date(ts + LOTE_INTERVALO_MS).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.` : ''}`)
     load()
   }
 
@@ -384,6 +414,11 @@ function AcessosTab() {
               title="Alunos ativos que ainda não têm login no sistema"
             >
               <Users className="w-4 h-4" /> {`${alunosSemAcesso.length} aluno(s) sem acesso`}
+              {loteBloqueado && (
+                <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">
+                  🔒 libera {new Date(loteLiberadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
             </button>
           )}
           {pendentesDe24h().length > 0 && (
@@ -522,6 +557,11 @@ function AcessosTab() {
           <div className="bg-white rounded-xl p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-1">Criar acessos de alunos</h2>
             <p className="text-sm text-gray-500 mb-3">Alunos ativos que ainda não têm login. Desmarque quem não deve receber agora. Por segurança, no máximo {LOTE_MAXIMO} são enviados por vez.</p>
+            {loteBloqueado && (
+              <p className="text-xs bg-red-50 text-red-700 rounded-lg px-3 py-2 mb-3 font-medium">
+                🔒 Lote enviado recentemente — próximo envio libera às {new Date(loteLiberadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} (faltam {formatContagem(loteLiberadoEm - agora)}).
+              </p>
+            )}
             {alunosSemEmailList.length > 0 && (
               <div className="text-xs bg-amber-50 text-amber-800 rounded-lg px-3 py-2 mb-3 space-y-1.5">
                 <p className="font-medium">{alunosSemEmailList.length} aluno(s) ativo(s) sem email cadastrado — não aparecem na lista abaixo:</p>
@@ -597,10 +637,10 @@ function AcessosTab() {
               </button>
               <button
                 onClick={handleCriarAcessosLote}
-                disabled={criandoBulk || selecionadosBulk.size === 0}
+                disabled={criandoBulk || selecionadosBulk.size === 0 || loteBloqueado}
                 className="px-4 py-2 text-sm text-white rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-50"
               >
-                {criandoBulk ? 'Criando...' : `Criar e enviar (${Math.min(selecionadosBulk.size, LOTE_MAXIMO)}${selecionadosBulk.size > LOTE_MAXIMO ? ` de ${selecionadosBulk.size}` : ''})`}
+                {criandoBulk ? 'Criando...' : loteBloqueado ? `Libera às ${new Date(loteLiberadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : `Criar e enviar (${Math.min(selecionadosBulk.size, LOTE_MAXIMO)}${selecionadosBulk.size > LOTE_MAXIMO ? ` de ${selecionadosBulk.size}` : ''})`}
               </button>
             </div>
           </div>
