@@ -267,9 +267,15 @@ def processar_disparos_programados(br: dt.datetime) -> None:
     # (alertas_faltas_fila) e enviados só pela função alertas_faltas() —
     # nunca pelo motor genérico, que não respeita aprovação e mandaria pra
     # todo mundo do grupo_alvo de uma vez.
+    # jornada_satisfacao (V85): tem RPC dedicada (buscar_alunos_para_pesquisa_satisfacao)
+    # com controle de marco (30/90/180 dias) em pesquisas_satisfacao_marcos — o motor
+    # genérico só sabe deduplicar "já mandou hoje", então mandaria pra TODOS os alunos
+    # ativos TODO dia pra sempre se não fosse excluído aqui. Ainda não tem função Python
+    # que processe esse tipo (pendente), então por enquanto fica só bloqueado.
     TIPOS_GERENCIADOS_SEPARADAMENTE = {
         "vencimento", "cobranca_atraso", "cobranca_regua",
         "alerta_falta_consecutiva", "alerta_falta_avulsa",
+        "jornada_satisfacao",
     }
 
     for d in disparos:
