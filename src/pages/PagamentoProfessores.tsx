@@ -148,7 +148,6 @@ export default function PagamentoProfessores() {
       supabase
         .from('presencas')
         .select('professor_id,data,horario_id,hora_inicio,presente')
-        .eq('presente', true)
         .gte('data', `${ano}-${String(mes).padStart(2, '0')}-01`)
         .lte('data', `${ano}-${String(mes).padStart(2, '0')}-${new Date(ano, mes, 0).getDate()}`),
 
@@ -177,37 +176,45 @@ export default function PagamentoProfessores() {
 
   const linhas = useMemo(() => {
     return professores.map(p => {
-      // Agrupar presenças deste professor por slot (data+horario_id ou data+hora_inicio)
+      // Agrupar presenças deste professor por slot (data+horario_id ou data+hora_inicio).
+      // Conta o TAMANHO REAL da turma naquele dia (todos os alunos com chamada feita,
+      // presentes ou faltantes) — uma falta não pode rebaixar o valor do grupo (ex.:
+      // turma de 3 onde 1 faltou continua sendo uma aula de grupo de 3, não de 2).
+      // Só entra no pagamento se pelo menos 1 aluno compareceu (aula realmente aconteceu).
       const presProf = presencasRaw.filter(x => x.professor_id === p.id)
-      const slots = new Map<string, number>() // key → contagem de alunos
+      const slots = new Map<string, { totalAlunos: number; algumPresente: boolean }>()
       presProf.forEach(pr => {
         const key = pr.horario_id
           ? `${pr.data}_${pr.horario_id}`
           : `${pr.data}_${pr.hora_inicio ?? 'x'}`
-        slots.set(key, (slots.get(key) ?? 0) + 1)
+        const atual = slots.get(key) ?? { totalAlunos: 0, algumPresente: false }
+        atual.totalAlunos += 1
+        if (pr.presente) atual.algumPresente = true
+        slots.set(key, atual)
       })
 
-      // Calcular valor por slot baseado no número de alunos
+      // Calcular valor por slot baseado no número de alunos da turma
       const bonif = p.bonificacao_grupo ?? { '2': 20, '3': 25, '4': 30 }
       let valorAulas = 0
       let qtdAulasIndividual = 0
       let qtdAulasGrupo = 0
 
-      slots.forEach((qtdAlunos) => {
-        if (qtdAlunos <= 1) {
+      slots.forEach(({ totalAlunos, algumPresente }) => {
+        if (!algumPresente) return // ninguém compareceu nesse slot, não paga
+        if (totalAlunos <= 1) {
           // Individual: usa valor_hora_aula
           valorAulas += p.valor_hora_aula
           qtdAulasIndividual++
         } else {
           // Grupo: busca valor na bonificação, ou usa o maior definido
-          const key = String(qtdAlunos)
+          const key = String(totalAlunos)
           let valorSlot: number
           if (bonif[key] != null) {
             valorSlot = bonif[key] as number
           } else {
             // Se não há valor exato para esse tamanho, usa o maior definido
             const chaves = Object.keys(bonif).map(Number).filter(n => !isNaN(n)).sort((a, b) => b - a)
-            const maiorKey = chaves.find(k => k <= qtdAlunos) ?? chaves[0]
+            const maiorKey = chaves.find(k => k <= totalAlunos) ?? chaves[0]
             valorSlot = maiorKey != null ? (bonif[String(maiorKey)] as number) : p.valor_hora_aula
           }
           valorAulas += valorSlot
@@ -215,7 +222,7 @@ export default function PagamentoProfessores() {
         }
       })
 
-      const qtdAulas = slots.size
+      const qtdAulas = qtdAulasIndividual + qtdAulasGrupo
       const extrasProf = extras.filter(e => e.professor_id === p.id && e.aprovado)
       const valorExtras = extrasProf.reduce((s, e) => s + e.valor, 0)
       const total = valorAulas + valorExtras
