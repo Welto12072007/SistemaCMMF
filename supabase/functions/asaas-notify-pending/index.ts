@@ -7,7 +7,7 @@ const ASAAS_BASE = Deno.env.get('ASAAS_SANDBOX') === 'true'
   : 'https://api.asaas.com/v3'
 const ASAAS_KEY = Deno.env.get('ASAAS_API_KEY') ?? ''
 const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL') ?? 'https://api.centrodemusicamurilofinger.com'
-const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY') ?? 'CentroMusica2026ApiKey'
+const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY') ?? ''
 const EVOLUTION_INSTANCE = Deno.env.get('EVOLUTION_INSTANCE') ?? 'CentroMusica'
 
 function saudacao(): string {

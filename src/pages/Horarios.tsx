@@ -489,17 +489,18 @@ export default function Horarios() {
     setDisparoSending(true)
     let enviados = 0
     let erros = 0
+    const { data: { session } } = await supabase.auth.getSession()
     for (const r of recipients) {
       try {
         const texto = interpolateDisparo(disparoMensagem, r.nome, r.instrumento ?? '')
-        const resp = await fetch(
-          'https://api.centrodemusicamurilofinger.com/message/sendText/CentroMusica',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': 'CentroMusica2026ApiKey' },
-            body: JSON.stringify({ number: r.telefone, text: texto })
-          }
-        )
+        const resp = await fetch('/api/whatsapp-send', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token ?? ''}`,
+          },
+          body: JSON.stringify({ action: 'sendText', payload: { number: r.telefone, text: texto } })
+        })
         if (resp.ok) enviados++
         else erros++
       } catch { erros++ }

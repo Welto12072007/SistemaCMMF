@@ -340,78 +340,60 @@ export default function Disparos() {
           continue
         }
 
-        const baseUrl = import.meta.env.VITE_EVOLUTION_URL || 'https://api.centrodemusicamurilofinger.com'
-        const apiKey = import.meta.env.VITE_EVOLUTION_KEY || ''
+        const { data: { session } } = await supabase.auth.getSession()
+        const authHeaders = {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token ?? ''}`,
+        }
 
         let res: Response
         if (mediaType === 'audio' && mediaUrl.trim()) {
           // Áudio precisa do endpoint dedicado: converte pra ogg/opus (ptt) e toca no WhatsApp.
           // sendMedia com mediatype=audio manda o arquivo cru (webm) e a mensagem chega muda.
-          res = await fetch(
-            `${baseUrl}/message/sendWhatsAppAudio/CentroMusica`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                apikey: apiKey,
-              },
-              body: JSON.stringify({
-                number: tel,
-                audio: mediaUrl.trim(),
-              }),
-            }
-          )
+          res = await fetch('/api/whatsapp-send', {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({
+              action: 'sendWhatsAppAudio',
+              payload: { number: tel, audio: mediaUrl.trim() },
+            }),
+          })
           // Áudio (ptt) não aceita legenda no WhatsApp — manda o texto como mensagem separada
           if (res.ok && mensagem.trim()) {
-            await fetch(
-              `${baseUrl}/message/sendText/CentroMusica`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  apikey: apiKey,
-                },
-                body: JSON.stringify({
-                  number: tel,
-                  text: interpolate(mensagem, dest),
-                }),
-              }
-            )
+            await fetch('/api/whatsapp-send', {
+              method: 'POST',
+              headers: authHeaders,
+              body: JSON.stringify({
+                action: 'sendText',
+                payload: { number: tel, text: interpolate(mensagem, dest) },
+              }),
+            })
           }
         } else if (mediaType !== 'text' && mediaUrl.trim()) {
           // Send media message
-          res = await fetch(
-            `${baseUrl}/message/sendMedia/CentroMusica`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                apikey: apiKey,
-              },
-              body: JSON.stringify({
+          res = await fetch('/api/whatsapp-send', {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({
+              action: 'sendMedia',
+              payload: {
                 number: tel,
                 mediatype: mediaType,
                 media: mediaUrl.trim(),
                 caption: interpolate(mensagem, dest) || undefined,
-              }),
-            }
-          )
+              },
+            }),
+          })
         } else {
           // Send text message
-          res = await fetch(
-            `${baseUrl}/message/sendText/CentroMusica`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                apikey: apiKey,
-              },
-              body: JSON.stringify({
-                number: tel,
-                text: interpolate(mensagem, dest),
-              }),
-            }
-          )
+          res = await fetch('/api/whatsapp-send', {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({
+              action: 'sendText',
+              payload: { number: tel, text: interpolate(mensagem, dest) },
+            }),
+          })
         }
         if (res.ok) {
           sucesso++

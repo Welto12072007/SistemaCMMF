@@ -7,7 +7,7 @@ import requests
 log = logging.getLogger(__name__)
 
 EVO_URL = os.environ.get("EVOLUTION_API_URL", "https://api.centrodemusicamurilofinger.com")
-EVO_KEY = os.environ.get("EVOLUTION_API_KEY", "CentroMusica2026ApiKey")
+EVO_KEY = os.environ.get("EVOLUTION_API_KEY", "")
 EVO_INSTANCE = os.environ.get("EVOLUTION_INSTANCE", "CentroMusica")
 
 
