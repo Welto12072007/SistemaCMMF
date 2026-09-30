@@ -55,7 +55,7 @@ const sections: NavSection[] = [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'recepcao'] },
       { to: '/portal-professor', label: 'Meu Portal', icon: Home, roles: ['professor'] },
       { to: '/portal-professor', label: 'Chamada', icon: ClipboardCheck, roles: ['professor'], query: '?tab=chamada' },
-      { to: '/portal-professor', label: 'Agenda', icon: CalendarRange, roles: ['professor'], query: '?tab=agenda' },
+      { to: '/portal-professor', label: 'Minha Semana', icon: CalendarRange, roles: ['professor'], query: '?tab=agenda' },
       { to: '/portal-professor', label: 'Meus Alunos', icon: UsersRound, roles: ['professor'], query: '?tab=alunos' },
       { to: '/portal-professor', label: 'Meu Mês', icon: DollarSign, roles: ['professor'], query: '?tab=mes' },
       { to: '/aulas-experimentais', label: 'Aulas Experimentais', icon: GraduationCap, roles: ['admin', 'recepcao', 'professor'] },

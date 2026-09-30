@@ -491,7 +491,7 @@ export default function PortalProfessor() {
 
   const TABS=[
     {key:'chamada' as TabKey, label:'Chamada', icon:<ClipboardCheck className="w-4 h-4"/>},
-    {key:'agenda'  as TabKey, label:'Agenda', icon:<CalendarRange className="w-4 h-4"/>},
+    {key:'agenda'  as TabKey, label:'Minha Semana', icon:<CalendarRange className="w-4 h-4"/>},
     {key:'alunos'  as TabKey, label:'Meus Alunos', icon:<Users className="w-4 h-4"/>, badge: alunosNovos.size},
     {key:'mes'     as TabKey, label:'Meu Mês', icon:<DollarSign className="w-4 h-4"/>},
   ]
@@ -1079,6 +1079,11 @@ export default function PortalProfessor() {
               </div>
             </div>
             <div className="p-5 space-y-4">
+              <button
+                onClick={() => setModalGrupo(g => g && { ...g, presencaPorId: Object.fromEntries(g.itens.map(it => [it.id, true])) })}
+                className="text-xs font-medium text-brand-600 hover:underline">
+                Marcar todos presentes
+              </button>
               <div className="space-y-2">
                 {modalGrupo.itens.map(it => {
                   const presente = modalGrupo.presencaPorId[it.id]

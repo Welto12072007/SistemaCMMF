@@ -968,6 +968,11 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
             </p>
 
             <label className="block text-sm font-medium text-gray-700 mb-2">Presença de cada aluno</label>
+            <button
+              onClick={() => setModalGrupo(g => g && { ...g, presencaPorId: Object.fromEntries(g.itens.map(it => [it.id, true])) })}
+              className="text-xs font-medium text-brand-600 hover:underline mb-2">
+              Marcar todos presentes
+            </button>
             <div className="space-y-2 mb-4">
               {modalGrupo.itens.map(it => {
                 const presente = modalGrupo.presencaPorId[it.id]
