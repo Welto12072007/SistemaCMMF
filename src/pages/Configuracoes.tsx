@@ -194,17 +194,29 @@ function AcessosTab() {
     if (pendentes.length === 0) { alert('Selecione ao menos uma pessoa.'); return }
     if (!confirm(`Reenviar email de acesso para ${pendentes.length} pessoa(s)?\n\n${pendentes.map(p => p.nome).join(', ')}`)) return
     setReenviandoLote(true)
-    let ok = 0
+    const sucesso: Perfil[] = []
+    const falha: Perfil[] = []
     for (const p of pendentes) {
       const { error } = await supabase.auth.resetPasswordForEmail(p.email, {
         redirectTo: `${window.location.origin}/definir-senha`,
       })
-      if (!error) ok++
+      if (!error) sucesso.push(p)
+      else falha.push(p)
+      // pequeno intervalo entre envios pra não estourar o rate limit do SMTP (causa de falhas silenciosas em lote)
+      await new Promise((r) => setTimeout(r, 400))
     }
     setReenviandoLote(false)
-    setSelecionadosPendentes(new Set())
-    setShowPendentes(false)
-    setSuccessMsg(`Reenviado para ${ok} de ${pendentes.length} pessoa(s).`)
+    if (falha.length > 0) {
+      // mantém selecionados só quem falhou, pra poder tentar de novo sem reenviar pra quem já recebeu
+      setSelecionadosPendentes(new Set(falha.map((p) => p.id)))
+    } else {
+      setSelecionadosPendentes(new Set())
+      setShowPendentes(false)
+    }
+    setSuccessMsg(
+      `Enviado com sucesso para ${sucesso.length} de ${pendentes.length}: ${sucesso.map(p => p.nome).join(', ') || '—'}.` +
+      (falha.length > 0 ? ` Falhou para ${falha.length}: ${falha.map(p => p.nome).join(', ')} (continuam marcados pra tentar de novo — é seguro reenviar, não duplica nada).` : '')
+    )
   }
 
   function toggleSelecionado(id: string) {
