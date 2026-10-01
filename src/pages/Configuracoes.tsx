@@ -84,6 +84,7 @@ function AcessosTab() {
   const [reenviandoLote, setReenviandoLote] = useState(false)
   const [showPendentes, setShowPendentes] = useState(false)
   const [selecionadosPendentes, setSelecionadosPendentes] = useState<Set<string>>(new Set())
+  const [buscaPendentes, setBuscaPendentes] = useState('')
   const [alunosSemAcesso, setAlunosSemAcesso] = useState<{ id: string; nome: string; email: string; telefone: string | null }[]>([])
   const [alunosSemEmailList, setAlunosSemEmailList] = useState<{ id: string; nome: string }[]>([])
   const [alunoEmailEdit, setAlunoEmailEdit] = useState<Record<string, string>>({})
@@ -189,7 +190,7 @@ function AcessosTab() {
   }
 
   async function handleReenviarLote() {
-    const pendentes = perfis.filter(p => selecionadosPendentes.has(p.id))
+    const pendentes = perfis.filter(p => selecionadosPendentes.has(p.id)).slice(0, LOTE_MAXIMO)
     if (pendentes.length === 0) { alert('Selecione ao menos uma pessoa.'); return }
     if (!confirm(`Reenviar email de acesso para ${pendentes.length} pessoa(s)?\n\n${pendentes.map(p => p.nome).join(', ')}`)) return
     setReenviandoLote(true)
@@ -651,9 +652,42 @@ function AcessosTab() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowPendentes(false)}>
           <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-1">Reenviar acesso</h2>
-            <p className="text-sm text-gray-500 mb-4">Marque quem deve receber o email de novo — não precisa ser todo mundo.</p>
+            <p className="text-sm text-gray-500 mb-3">Marque quem deve receber o email de novo — não precisa ser todo mundo. Por segurança, no máximo {LOTE_MAXIMO} são enviados por vez.</p>
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                type="text"
+                value={buscaPendentes}
+                onChange={(e) => setBuscaPendentes(e.target.value)}
+                placeholder="Buscar por nome ou email..."
+                className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const visiveisIds = pendentesDe24h()
+                    .filter((p) => !buscaPendentes || p.nome.toLowerCase().includes(buscaPendentes.toLowerCase()) || p.email.toLowerCase().includes(buscaPendentes.toLowerCase()))
+                    .map((p) => p.id)
+                  const todosVisiveisSelecionados = visiveisIds.every((id) => selecionadosPendentes.has(id))
+                  setSelecionadosPendentes((prev) => {
+                    const next = new Set(prev)
+                    if (todosVisiveisSelecionados) {
+                      visiveisIds.forEach((id) => next.delete(id))
+                    } else {
+                      visiveisIds.forEach((id) => next.add(id))
+                    }
+                    return next
+                  })
+                }}
+                className="px-3 py-2 text-xs font-medium text-brand-600 border border-brand-200 rounded-lg hover:bg-brand-50 whitespace-nowrap"
+              >
+                Marcar/desmarcar todos
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mb-2">{selecionadosPendentes.size} de {pendentesDe24h().length} selecionado(s)</p>
             <div className="space-y-1 max-h-64 overflow-y-auto border rounded-lg divide-y">
-              {pendentesDe24h().map((p) => (
+              {pendentesDe24h()
+                .filter((p) => !buscaPendentes || p.nome.toLowerCase().includes(buscaPendentes.toLowerCase()) || p.email.toLowerCase().includes(buscaPendentes.toLowerCase()))
+                .map((p) => (
                 <label key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
                   <input type="checkbox" checked={selecionadosPendentes.has(p.id)} onChange={() => toggleSelecionado(p.id)} className="w-4 h-4" />
                   <span className="flex-1">{p.nome}</span>
@@ -662,7 +696,7 @@ function AcessosTab() {
               ))}
             </div>
             <div className="flex justify-end gap-3 mt-4">
-              <button onClick={() => { setShowPendentes(false); setSelecionadosPendentes(new Set()) }} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
+              <button onClick={() => { setShowPendentes(false); setSelecionadosPendentes(new Set()); setBuscaPendentes('') }} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
                 Cancelar
               </button>
               <button
@@ -670,7 +704,7 @@ function AcessosTab() {
                 disabled={reenviandoLote || selecionadosPendentes.size === 0}
                 className="px-4 py-2 text-sm text-white rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-50"
               >
-                {reenviandoLote ? 'Enviando...' : `Reenviar (${selecionadosPendentes.size})`}
+                {reenviandoLote ? 'Enviando...' : `Reenviar (${Math.min(selecionadosPendentes.size, LOTE_MAXIMO)}${selecionadosPendentes.size > LOTE_MAXIMO ? ` de ${selecionadosPendentes.size}` : ''})`}
               </button>
             </div>
           </div>
