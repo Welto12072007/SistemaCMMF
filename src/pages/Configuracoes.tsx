@@ -368,7 +368,7 @@ function AcessosTab() {
       }
       setSuccessMsg(errReset
         ? `Acesso criado! O email não pôde ser enviado — use o link abaixo.`
-        : `Acesso criado! Email enviado para ${form.email} com link para definir senha.`
+        : `Acesso criado! Email enviado para ${form.email} com link para definir senha. Dica: se a pessoa disser que o link "caiu direto no login", é porque o antivírus/scanner do email dela consumiu o link sozinho antes — mande também o link abaixo por WhatsApp, que não tem esse problema.`
       )
       return
     }

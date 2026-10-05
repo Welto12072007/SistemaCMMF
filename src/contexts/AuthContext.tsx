@@ -24,11 +24,13 @@ interface AuthContextType {
   perfil: Perfil | null
   loading: boolean
   passwordRecovery: boolean
+  linkError: string | null
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
   hasRole: (...roles: UserRole[]) => boolean
   hasAcesso: (modulo: string) => boolean
   clearPasswordRecovery: () => void
+  clearLinkError: () => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -38,11 +40,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [perfil, setPerfil] = useState<Perfil | null>(null)
   const [loading, setLoading] = useState(true)
   const [passwordRecovery, setPasswordRecovery] = useState(false)
+  const [linkError, setLinkError] = useState<string | null>(null)
 
   useEffect(() => {
     // Detectar se a URL tem hash de recovery — se sim, não liberar loading até onAuthStateChange processar
     const hashParams = new URLSearchParams(window.location.hash.substring(1))
-    const isRecoveryUrl = hashParams.get('type') === 'recovery'
+    const errorCode = hashParams.get('error_code') || hashParams.get('error')
+    const isRecoveryUrl = hashParams.get('type') === 'recovery' && !errorCode
+
+    // Link de convite/recuperação inválido ou expirado (comum quando o antivírus/scanner de email do
+    // destinatário "clica" no link antes da pessoa, consumindo o token de uso único) — Supabase volta
+    // com esses parâmetros no hash em vez de criar sessão
+    if (errorCode) {
+      setLinkError(hashParams.get('error_description') || 'Link inválido ou expirado.')
+      window.history.replaceState(null, '', window.location.pathname)
+    }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
@@ -115,8 +127,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setPasswordRecovery(false)
   }
 
+  function clearLinkError() {
+    setLinkError(null)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, perfil, loading, passwordRecovery, signIn, signOut, hasRole, hasAcesso, clearPasswordRecovery }}>
+    <AuthContext.Provider value={{ user, perfil, loading, passwordRecovery, linkError, signIn, signOut, hasRole, hasAcesso, clearPasswordRecovery, clearLinkError }}>
       {children}
     </AuthContext.Provider>
   )

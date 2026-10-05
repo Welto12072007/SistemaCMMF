@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { Link } from 'react-router-dom'
 import logoHorizontal from '@/assets/logos/cmmf-logo-horizontal-branco.png'
 
 export default function Login() {
-  const { signIn } = useAuth()
+  const { signIn, linkError, clearLinkError } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -15,6 +15,12 @@ export default function Login() {
   const [resetEmail, setResetEmail] = useState('')
   const [resetSent, setResetSent] = useState(false)
   const [resetLoading, setResetLoading] = useState(false)
+
+  // Link de convite/recuperação expirado ou já usado (comum com scanner de segurança de email corporativo
+  // "clicando" no link antes da pessoa) — já abre direto o jeito de resolver, sem a pessoa precisar adivinhar
+  useEffect(() => {
+    if (linkError) setShowReset(true)
+  }, [linkError])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -61,6 +67,12 @@ export default function Login() {
             <h1 className="text-xl font-bold text-gray-900">Entrar no Sistema</h1>
             <p className="text-sm text-gray-500 mt-1">Acesse sua conta CMMF</p>
           </div>
+
+          {linkError && !showReset && (
+            <div className="bg-amber-50 text-amber-800 text-sm px-4 py-3 rounded-lg mb-4">
+              Esse link de acesso já expirou ou já foi utilizado. Clique em "Esqueci minha senha" abaixo usando o mesmo email pra receber um novo.
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -139,7 +151,7 @@ export default function Login() {
 
         {/* Modal Esqueci minha senha */}
         {showReset && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowReset(false)}>
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setShowReset(false); clearLinkError() }}>
             <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
               {resetSent ? (
                 <div className="text-center">
@@ -150,14 +162,18 @@ export default function Login() {
                   </div>
                   <h2 className="text-lg font-bold text-gray-900 mb-2">Email enviado!</h2>
                   <p className="text-sm text-gray-500 mb-4">Verifique sua caixa de entrada para redefinir a senha.</p>
-                  <button onClick={() => setShowReset(false)} className="px-4 py-2 bg-brand-500 text-white rounded-lg text-sm hover:bg-brand-600">
+                  <button onClick={() => { setShowReset(false); clearLinkError() }} className="px-4 py-2 bg-brand-500 text-white rounded-lg text-sm hover:bg-brand-600">
                     Fechar
                   </button>
                 </div>
               ) : (
                 <>
                   <h2 className="text-lg font-bold text-gray-900 mb-1">Recuperar senha</h2>
-                  <p className="text-sm text-gray-500 mb-4">Informe seu email para receber o link de recuperação.</p>
+                  <p className="text-sm text-gray-500 mb-4">
+                    {linkError
+                      ? 'Seu link anterior expirou ou já foi usado. Informe seu email pra receber um novo.'
+                      : 'Informe seu email para receber o link de recuperação.'}
+                  </p>
                   <form onSubmit={handleResetPassword} className="space-y-4">
                     <input
                       type="email"
@@ -168,7 +184,7 @@ export default function Login() {
                       required
                     />
                     <div className="flex gap-3">
-                      <button type="button" onClick={() => setShowReset(false)} className="flex-1 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg border">
+                      <button type="button" onClick={() => { setShowReset(false); clearLinkError() }} className="flex-1 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg border">
                         Cancelar
                       </button>
                       <button type="submit" disabled={resetLoading} className="flex-1 px-4 py-2.5 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50">
