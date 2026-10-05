@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { confirmarConviteSenha } from '@/lib/adminApi'
 import { useAuth } from '@/contexts/AuthContext'
 import logoHorizontal from '@/assets/logos/cmmf-logo-horizontal-branco.png'
 import { CheckCircle, Lock, Eye, EyeOff } from 'lucide-react'
 
 export default function DefinirSenha() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const token = searchParams.get('token')
   const { clearPasswordRecovery } = useAuth()
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -30,6 +33,22 @@ export default function DefinirSenha() {
     }
 
     setLoading(true)
+
+    // Token próprio (V87): só é consumido agora, no submit — abrir o link antes não gasta nada.
+    if (token) {
+      try {
+        await confirmarConviteSenha(token, password)
+      } catch (err: any) {
+        setError(err.message || 'Erro ao definir senha')
+        setLoading(false)
+        return
+      }
+      setSuccess(true)
+      setTimeout(() => navigate('/'), 2000)
+      return
+    }
+
+    // Fluxo legado (links antigos já enviados antes da V87, via sessão de recovery do Supabase)
     const { error } = await supabase.auth.updateUser({ password })
 
     if (error) {
@@ -42,6 +61,7 @@ export default function DefinirSenha() {
     clearPasswordRecovery()
     setTimeout(() => navigate('/'), 2000)
   }
+
 
   if (success) {
     return (

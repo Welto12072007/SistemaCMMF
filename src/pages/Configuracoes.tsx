@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { adminListUsers, adminCreateUser, adminDeleteUser, adminGenerateLink } from '@/lib/adminApi'
+import { adminListUsers, adminCreateUser, adminDeleteUser, criarConviteSenha } from '@/lib/adminApi'
 import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard, Shield, Mail, Target, Copy, CheckCircle2, Link } from 'lucide-react'
 import { maskPhone, normalizePhone, formatPhoneDisplay, maskPixKey, normalizePixKey } from '@/lib/utils'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
@@ -198,12 +198,13 @@ function AcessosTab() {
     const sucesso: Perfil[] = []
     const falha: Perfil[] = []
     for (const p of pendentes) {
-      const { error } = await supabase.auth.resetPasswordForEmail(p.email, {
-        redirectTo: `${window.location.origin}/definir-senha`,
-      })
-      if (!error) sucesso.push(p)
-      else falha.push(p)
-      // pequeno intervalo entre envios pra não estourar o rate limit do SMTP (causa de falhas silenciosas em lote)
+      try {
+        await criarConviteSenha(p.email, p.nome)
+        sucesso.push(p)
+      } catch {
+        falha.push(p)
+      }
+      // pequeno intervalo entre envios pra não estourar o rate limit do Resend
       await new Promise((r) => setTimeout(r, 400))
     }
     setReenviandoLote(false)
@@ -271,17 +272,16 @@ function AcessosTab() {
       })
       if (errPerfil) { falhas.push(`${a.nome} (perfil: ${errPerfil.message})`); continue }
 
-      const { error: errEmail } = await supabase.auth.resetPasswordForEmail(a.email, {
-        redirectTo: `${window.location.origin}/definir-senha`,
-      })
-      if (errEmail) {
+      try {
+        await criarConviteSenha(a.email, a.nome)
+      } catch {
         // Acesso foi criado, só o email falhou — não pode "sumir" sem dar chance de reenviar
         semEmail.push({ nome: a.nome, email: a.email })
         continue
       }
       ok++
-      // Intervalo entre envios respeitando o smtp_max_frequency do Supabase (2s)
-      await new Promise((resolve) => setTimeout(resolve, 2500))
+      // Pequeno intervalo entre envios pra não estourar o rate limit do Resend
+      await new Promise((resolve) => setTimeout(resolve, 600))
     }
     setCriandoBulk(false)
     setProgressoBulk('')
@@ -300,14 +300,14 @@ function AcessosTab() {
 
   async function handleReenviarFalha(item: { nome: string; email: string }) {
     setReenviandoEmail(item.email)
-    const { error } = await supabase.auth.resetPasswordForEmail(item.email, {
-      redirectTo: `${window.location.origin}/definir-senha`,
-    })
-    setReenviandoEmail(null)
-    if (error) {
-      alert(`Falhou de novo pra ${item.nome}: ${error.message}`)
+    try {
+      await criarConviteSenha(item.email, item.nome)
+    } catch (err: any) {
+      setReenviandoEmail(null)
+      alert(`Falhou de novo pra ${item.nome}: ${err.message}`)
       return
     }
+    setReenviandoEmail(null)
     setFalhasEnvio((prev) => prev.filter((f) => f.email !== item.email))
     setSuccessMsg(`Email reenviado com sucesso para ${item.nome}.`)
   }
@@ -350,25 +350,25 @@ function AcessosTab() {
         permissoes: ROLES_CUSTOMIZAVEIS.includes(form.role) ? form.permissoes : null,
       })
 
-      // 3. Envia email com link para definir senha
-      const { error: errReset } = await supabase.auth.resetPasswordForEmail(form.email, {
-        redirectTo: `${window.location.origin}/definir-senha`,
-      })
-
-      // 4. Gera link manual como backup (caso email não chegue)
-      const linkData = await adminGenerateLink(form.email, `${window.location.origin}/definir-senha`).catch(() => null)
+      // 3. Gera o convite de senha com token próprio (V87) — só é consumido no submit da pessoa,
+      // não ao abrir o link, então scanner de email não quebra mais o fluxo
+      let conviteOk = true
+      try {
+        const convite = await criarConviteSenha(form.email, form.nome)
+        setLinkConvite(convite.link)
+        conviteOk = convite.email_enviado
+      } catch {
+        conviteOk = false
+      }
 
       setShowForm(false)
       setEditando(null)
       setLoading(false)
       load()
 
-      if (linkData?.action_link) {
-        setLinkConvite(linkData.action_link)
-      }
-      setSuccessMsg(errReset
-        ? `Acesso criado! O email não pôde ser enviado — use o link abaixo.`
-        : `Acesso criado! Email enviado para ${form.email} com link para definir senha. Dica: se a pessoa disser que o link "caiu direto no login", é porque o antivírus/scanner do email dela consumiu o link sozinho antes — mande também o link abaixo por WhatsApp, que não tem esse problema.`
+      setSuccessMsg(conviteOk
+        ? `Acesso criado! Email enviado para ${form.email} com link para definir senha. Dica: abrir o link não gasta nada — só é consumido quando a pessoa realmente define a senha, então pode mandar também por WhatsApp sem medo de duplicar ou quebrar.`
+        : `Acesso criado! O email não pôde ser enviado — copie o link abaixo e mande por WhatsApp.`
       )
       return
     }
@@ -394,19 +394,14 @@ function AcessosTab() {
   async function handleResendInvite(perfil: Perfil) {
     setErro('')
     setSuccessMsg('')
-    // Envia email de redefinição de senha
-    const { error } = await supabase.auth.resetPasswordForEmail(perfil.email, {
-      redirectTo: `${window.location.origin}/definir-senha`,
-    })
-    // Gera link manual também (caso queira mandar por WhatsApp em vez de email)
-    const linkData = await adminGenerateLink(perfil.email, `${window.location.origin}/definir-senha`).catch(() => null)
-    if (linkData?.action_link) {
-      setLinkConvite(linkData.action_link)
-    }
-    if (error) {
-      setErro('Erro ao enviar email: ' + error.message)
-    } else {
-      setSuccessMsg(`Email enviado para ${perfil.email} com link para definir/redefinir senha. Você também pode copiar o link abaixo e mandar direto por WhatsApp.`)
+    try {
+      const convite = await criarConviteSenha(perfil.email, perfil.nome)
+      setLinkConvite(convite.link)
+      setSuccessMsg(convite.email_enviado
+        ? `Email enviado para ${perfil.email} com link para definir/redefinir senha. Você também pode copiar o link abaixo e mandar direto por WhatsApp — abrir o link não gasta nada, só define a senha mesmo quando a pessoa confirma.`
+        : `O email não pôde ser enviado — copie o link abaixo e mande por WhatsApp.`)
+    } catch (err: any) {
+      setErro('Erro ao gerar convite: ' + err.message)
     }
   }
 
