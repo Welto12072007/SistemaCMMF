@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { registrarLog, resetLogUserCache } from '@/lib/logger'
+import { PERMISSOES_PADRAO_POR_ROLE, ROLES_CUSTOMIZAVEIS } from '@/lib/permissoes'
 import type { User } from '@supabase/supabase-js'
 
 export type UserRole = 'admin' | 'recepcao' | 'professor' | 'aluno'
@@ -15,6 +16,7 @@ export interface Perfil {
   telefone?: string
   avatar_url?: string
   ativo: boolean
+  permissoes?: string[] | null
 }
 
 interface AuthContextType {
@@ -25,6 +27,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
   hasRole: (...roles: UserRole[]) => boolean
+  hasAcesso: (modulo: string) => boolean
   clearPasswordRecovery: () => void
 }
 
@@ -98,12 +101,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return perfil ? roles.includes(perfil.role) : false
   }
 
+  // Admin sempre tem acesso total; só papéis customizáveis (ver ROLES_CUSTOMIZAVEIS) são restringíveis por módulo —
+  // professor/aluno mantêm o acesso fixo de sempre, controlado só pelo Guard de role
+  function hasAcesso(modulo: string) {
+    if (!perfil) return false
+    if (perfil.role === 'admin') return true
+    if (!ROLES_CUSTOMIZAVEIS.includes(perfil.role)) return true
+    if (Array.isArray(perfil.permissoes)) return perfil.permissoes.includes(modulo)
+    return PERMISSOES_PADRAO_POR_ROLE[perfil.role]?.includes(modulo) ?? false
+  }
+
   function clearPasswordRecovery() {
     setPasswordRecovery(false)
   }
 
   return (
-    <AuthContext.Provider value={{ user, perfil, loading, passwordRecovery, signIn, signOut, hasRole, clearPasswordRecovery }}>
+    <AuthContext.Provider value={{ user, perfil, loading, passwordRecovery, signIn, signOut, hasRole, hasAcesso, clearPasswordRecovery }}>
       {children}
     </AuthContext.Provider>
   )

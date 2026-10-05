@@ -12,6 +12,7 @@ export interface Perfil {
   avatar_url?: string
   ativo: boolean
   created_at?: string
+  permissoes?: string[] | null
 }
 
 // === Fluxo de Alunos ===

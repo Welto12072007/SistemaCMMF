@@ -4,6 +4,7 @@ import { adminListUsers, adminCreateUser, adminDeleteUser, adminGenerateLink } f
 import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard, Shield, Mail, Target, Copy, CheckCircle2, Link } from 'lucide-react'
 import { maskPhone, normalizePhone, formatPhoneDisplay, maskPixKey, normalizePixKey } from '@/lib/utils'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
+import { MODULOS, ROLES_CUSTOMIZAVEIS, PERMISSOES_PADRAO_POR_ROLE } from '@/lib/permissoes'
 import type { Professor, Curso, Sala, Plano, Perfil, UserRole } from '@/types'
 import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
 
@@ -312,7 +313,7 @@ function AcessosTab() {
   }
 
 
-  async function handleSave(form: { nome: string; email: string; role: UserRole; professor_id: string; telefone: string }) {
+  async function handleSave(form: { nome: string; email: string; role: UserRole; professor_id: string; telefone: string; permissoes: string[] | null }) {
     setErro('')
     setLoading(true)
     const telNorm = form.telefone ? normalizePhone(form.telefone) : null
@@ -324,6 +325,7 @@ function AcessosTab() {
         role: form.role,
         professor_id: form.role === 'professor' ? form.professor_id || null : null,
         telefone: telNorm,
+        permissoes: ROLES_CUSTOMIZAVEIS.includes(form.role) ? form.permissoes : null,
       }).eq('id', editando.id)
     } else {
       // 1. Cria o usuário via API de administração (service role fica no servidor)
@@ -345,6 +347,7 @@ function AcessosTab() {
         professor_id: form.role === 'professor' ? form.professor_id || null : null,
         telefone: telNorm,
         ativo: true,
+        permissoes: ROLES_CUSTOMIZAVEIS.includes(form.role) ? form.permissoes : null,
       })
 
       // 3. Envia email com link para definir senha
@@ -740,7 +743,7 @@ function AcessoForm({ perfil, professores, loading, onSave, onClose }: {
   perfil: Perfil | null
   professores: Professor[]
   loading: boolean
-  onSave: (data: { nome: string; email: string; role: UserRole; professor_id: string; telefone: string }) => void
+  onSave: (data: { nome: string; email: string; role: UserRole; professor_id: string; telefone: string; permissoes: string[] | null }) => void
   onClose: () => void
 }) {
   const [form, setForm] = useState({
@@ -750,10 +753,26 @@ function AcessoForm({ perfil, professores, loading, onSave, onClose }: {
     professor_id: perfil?.professor_id ?? '',
     telefone: perfil?.telefone ? formatPhoneDisplay(perfil.telefone) : '',
   })
+  // null = usa o padrão do papel (todos os módulos liberados pra recepção, por exemplo)
+  const [personalizarAcessos, setPersonalizarAcessos] = useState(Array.isArray(perfil?.permissoes))
+  const [permissoesSelecionadas, setPermissoesSelecionadas] = useState<Set<string>>(
+    new Set(perfil?.permissoes ?? PERMISSOES_PADRAO_POR_ROLE[perfil?.role ?? 'recepcao'])
+  )
+
+  function toggleModulo(key: string) {
+    setPermissoesSelecionadas((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const gruposModulos = Array.from(new Set(MODULOS.map((m) => m.grupo)))
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto py-8" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-md my-auto" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold mb-4">{perfil ? 'Editar Acesso' : 'Novo Acesso'}</h2>
         <div className="space-y-3">
           <div>
@@ -774,7 +793,15 @@ function AcessoForm({ perfil, professores, loading, onSave, onClose }: {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Perfil de acesso</label>
-            <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}>
+            <select
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              value={form.role}
+              onChange={(e) => {
+                const role = e.target.value as UserRole
+                setForm({ ...form, role })
+                if (!personalizarAcessos) setPermissoesSelecionadas(new Set(PERMISSOES_PADRAO_POR_ROLE[role] ?? []))
+              }}
+            >
               <option value="admin">Administrador</option>
               <option value="recepcao">Recepção</option>
               <option value="professor">Professor</option>
@@ -802,11 +829,59 @@ function AcessoForm({ perfil, professores, loading, onSave, onClose }: {
             />
             <p className="text-xs text-gray-400 mt-1">Usado pela Antonia para enviar mensagens</p>
           </div>
+
+          {ROLES_CUSTOMIZAVEIS.includes(form.role) && (
+            <div className="border-t pt-3">
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4"
+                  checked={personalizarAcessos}
+                  onChange={(e) => {
+                    const checked = e.target.checked
+                    setPersonalizarAcessos(checked)
+                    if (!checked) setPermissoesSelecionadas(new Set(PERMISSOES_PADRAO_POR_ROLE[form.role] ?? []))
+                  }}
+                />
+                Personalizar quais telas essa pessoa pode ver
+              </label>
+              <p className="text-xs text-gray-400 mt-1 mb-2">
+                {personalizarAcessos
+                  ? 'Desmarque as telas que essa pessoa NÃO deve acessar (ex: estagiária sem acesso a financeiro/jurídico).'
+                  : `Por padrão, "${ROLE_LABELS[form.role]}" vê todas as telas abaixo. Marque a caixa acima pra restringir.`}
+              </p>
+              {personalizarAcessos && (
+                <div className="space-y-3 max-h-56 overflow-y-auto border rounded-lg p-3 bg-gray-50">
+                  {gruposModulos.map((grupo) => (
+                    <div key={grupo}>
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{grupo}</p>
+                      <div className="space-y-1">
+                        {MODULOS.filter((m) => m.grupo === grupo).map((m) => (
+                          <label key={m.key} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4"
+                              checked={permissoesSelecionadas.has(m.key)}
+                              onChange={() => toggleModulo(m.key)}
+                            />
+                            {m.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-3 mt-5">
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
           <button
-            onClick={() => onSave(form)}
+            onClick={() => onSave({
+              ...form,
+              permissoes: ROLES_CUSTOMIZAVEIS.includes(form.role) && personalizarAcessos ? Array.from(permissoesSelecionadas) : null,
+            })}
             disabled={loading || !form.nome || !form.email || form.telefone.replace(/\D/g, '').length < 11}
             className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50"
           >

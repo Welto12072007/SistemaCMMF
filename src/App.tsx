@@ -53,9 +53,10 @@ function PageLoader() {
   )
 }
 
-function Guard({ roles, children }: { roles: UserRole[]; children: React.ReactNode }) {
-  const { hasRole } = useAuth()
+function Guard({ roles, modulo, children }: { roles: UserRole[]; modulo?: string; children: React.ReactNode }) {
+  const { hasRole, hasAcesso } = useAuth()
   if (!hasRole(...roles)) return <Navigate to="/" replace />
+  if (modulo && !hasAcesso(modulo)) return <Navigate to="/" replace />
   return <>{children}</>
 }
 
@@ -97,42 +98,42 @@ export default function App() {
       <Route path="/definir-senha" element={<DefinirSenha />} />
       <Route element={<Layout />}>
         <Route path="/" element={defaultPage} />
-        <Route path="/contatos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><ContatosHub /></Suspense></Guard>} />
-        <Route path="/contatos-lista" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Contatos /></Suspense></Guard>} />
-        <Route path="/aulas-experimentais" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><AulasExperimentais /></Suspense></Guard>} />
+        <Route path="/contatos" element={<Guard roles={['admin', 'recepcao']} modulo="contatos"><Suspense fallback={<PageLoader />}><ContatosHub /></Suspense></Guard>} />
+        <Route path="/contatos-lista" element={<Guard roles={['admin', 'recepcao']} modulo="contatos"><Suspense fallback={<PageLoader />}><Contatos /></Suspense></Guard>} />
+        <Route path="/aulas-experimentais" element={<Guard roles={['admin', 'recepcao', 'professor']} modulo="aulas-experimentais"><Suspense fallback={<PageLoader />}><AulasExperimentais /></Suspense></Guard>} />
         <Route path="/horarios-extras" element={<Navigate to="/financeiro" replace />} />
-        <Route path="/usuarios" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Usuarios /></Suspense></Guard>} />
+        <Route path="/usuarios" element={<Guard roles={['admin', 'recepcao']} modulo="usuarios"><Suspense fallback={<PageLoader />}><Usuarios /></Suspense></Guard>} />
         <Route path="/followup" element={<Navigate to="/crm-funil" replace />} />
-        <Route path="/disparos" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Disparos /></Suspense></Guard>} />
+        <Route path="/disparos" element={<Guard roles={['admin', 'recepcao']} modulo="disparos"><Suspense fallback={<PageLoader />}><Disparos /></Suspense></Guard>} />
         <Route path="/disparos-programados" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><DisparosProgramados /></Suspense></Guard>} />
-        <Route path="/horarios" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><Horarios /></Suspense></Guard>} />
+        <Route path="/horarios" element={<Guard roles={['admin', 'recepcao', 'professor']} modulo="horarios"><Suspense fallback={<PageLoader />}><Horarios /></Suspense></Guard>} />
         <Route path="/financeiro" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><FinanceiroHub /></Suspense></Guard>} />
         <Route path="/dashboard-financeiro" element={<Navigate to="/financeiro" replace />} />
         <Route path="/fluxo-caixa" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><FluxoCaixa /></Suspense></Guard>} />
         <Route path="/fluxo-alunos" element={<Navigate to="/financeiro" replace />} />
         <Route path="/pagamento-professores" element={<Navigate to="/financeiro" replace />} />
-        <Route path="/mensalidades" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Mensalidades /></Suspense></Guard>} />
+        <Route path="/mensalidades" element={<Guard roles={['admin', 'recepcao']} modulo="mensalidades"><Suspense fallback={<PageLoader />}><Mensalidades /></Suspense></Guard>} />
         <Route path="/assinaturas" element={<Navigate to="/mensalidades" replace />} />
-        <Route path="/cobranca" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><Cobranca /></Suspense></Guard>} />
-        <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><PresencasFaltasHub /></Suspense></Guard>} />
-        <Route path="/faltas" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><PresencasFaltasHub /></Suspense></Guard>} />
+        <Route path="/cobranca" element={<Guard roles={['admin', 'recepcao']} modulo="cobranca"><Suspense fallback={<PageLoader />}><Cobranca /></Suspense></Guard>} />
+        <Route path="/presencas" element={<Guard roles={['admin', 'recepcao', 'professor']} modulo="presencas"><Suspense fallback={<PageLoader />}><PresencasFaltasHub /></Suspense></Guard>} />
+        <Route path="/faltas" element={<Guard roles={['admin', 'recepcao', 'professor']} modulo="presencas"><Suspense fallback={<PageLoader />}><PresencasFaltasHub /></Suspense></Guard>} />
         <Route path="/faltas-professor" element={<Navigate to="/presencas" replace />} />
         <Route path="/contatos-labels" element={<Navigate to="/contatos" replace />} />
-        <Route path="/crm-funil" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><CRMFunil /></Suspense></Guard>} />
+        <Route path="/crm-funil" element={<Guard roles={['admin', 'recepcao']} modulo="crm-funil"><Suspense fallback={<PageLoader />}><CRMFunil /></Suspense></Guard>} />
         <Route path="/portal-aluno" element={<Guard roles={['aluno']}><Suspense fallback={<PageLoader />}><PortalAluno /></Suspense></Guard>} />
         <Route path="/portal-professor" element={<Guard roles={['professor', 'admin']}><Suspense fallback={<PageLoader />}><PortalProfessor /></Suspense></Guard>} />
         <Route path="/minha-grade" element={<Guard roles={['professor', 'admin']}><Suspense fallback={<PageLoader />}><MinhaGrade /></Suspense></Guard>} />
         <Route path="/biblioteca" element={<Suspense fallback={<PageLoader />}><Biblioteca /></Suspense>} />
         <Route path="/fingertv" element={<Suspense fallback={<PageLoader />}><FingerTV /></Suspense>} />
         <Route path="/material-apoio" element={<Suspense fallback={<PageLoader />}><MaterialApoio /></Suspense>} />
-        <Route path="/avaliacoes" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><AvaliacoesSatisfacao /></Suspense></Guard>} />
+        <Route path="/avaliacoes" element={<Guard roles={['admin', 'recepcao']} modulo="avaliacoes"><Suspense fallback={<PageLoader />}><AvaliacoesSatisfacao /></Suspense></Guard>} />
         <Route path="/logs" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><Logs /></Suspense></Guard>} />
         <Route path="/relatorios" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><Relatorios /></Suspense></Guard>} />
         <Route path="/configuracoes" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><Configuracoes /></Suspense></Guard>} />
-        <Route path="/pos-venda" element={<Guard roles={['admin', 'recepcao']}><Suspense fallback={<PageLoader />}><PosVenda /></Suspense></Guard>} />
+        <Route path="/pos-venda" element={<Guard roles={['admin', 'recepcao']} modulo="pos-venda"><Suspense fallback={<PageLoader />}><PosVenda /></Suspense></Guard>} />
         <Route path="/agenda" element={<Suspense fallback={<PageLoader />}><Agenda /></Suspense>} />
         <Route path="/metronomo" element={<Suspense fallback={<PageLoader />}><Metronomo /></Suspense>} />
-        <Route path="/gestao/acoes" element={<Guard roles={['admin', 'recepcao', 'professor']}><Suspense fallback={<PageLoader />}><GestaoAcoes /></Suspense></Guard>} />
+        <Route path="/gestao/acoes" element={<Guard roles={['admin', 'recepcao', 'professor']} modulo="gestao-acoes"><Suspense fallback={<PageLoader />}><GestaoAcoes /></Suspense></Guard>} />
         <Route path="/gestao/configuracoes" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><GestaoConfiguracoes /></Suspense></Guard>} />
       </Route>
     </Routes>

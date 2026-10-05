@@ -44,7 +44,7 @@ import logoHorizontal from '../../assets/logos/cmmf-logo-horizontal-branco.png'
 interface NavSection {
   title: string
   roles: UserRole[]
-  items: { to: string; label: string; icon: typeof LayoutDashboard; roles: UserRole[]; query?: string }[]
+  items: { to: string; label: string; icon: typeof LayoutDashboard; roles: UserRole[]; query?: string; modulo?: string }[]
 }
 
 const sections: NavSection[] = [
@@ -58,11 +58,11 @@ const sections: NavSection[] = [
       { to: '/portal-professor', label: 'Minha Semana', icon: CalendarRange, roles: ['professor'], query: '?tab=agenda' },
       { to: '/portal-professor', label: 'Meus Alunos', icon: UsersRound, roles: ['professor'], query: '?tab=alunos' },
       { to: '/portal-professor', label: 'Meu Mês', icon: DollarSign, roles: ['professor'], query: '?tab=mes' },
-      { to: '/aulas-experimentais', label: 'Aulas Experimentais', icon: GraduationCap, roles: ['admin', 'recepcao', 'professor'] },
-      { to: '/usuarios', label: 'Usuários', icon: UserCheck, roles: ['admin', 'recepcao'] },
-      { to: '/horarios', label: 'Horários', icon: CalendarClock, roles: ['admin', 'recepcao'] },
+      { to: '/aulas-experimentais', label: 'Aulas Experimentais', icon: GraduationCap, roles: ['admin', 'recepcao', 'professor'], modulo: 'aulas-experimentais' },
+      { to: '/usuarios', label: 'Usuários', icon: UserCheck, roles: ['admin', 'recepcao'], modulo: 'usuarios' },
+      { to: '/horarios', label: 'Horários', icon: CalendarClock, roles: ['admin', 'recepcao'], modulo: 'horarios' },
       { to: '/minha-grade', label: 'Minha Grade', icon: CalendarClock, roles: ['professor'] },
-      { to: '/presencas', label: 'Presenças & Faltas', icon: ClipboardCheck, roles: ['admin', 'recepcao'] },
+      { to: '/presencas', label: 'Presenças & Faltas', icon: ClipboardCheck, roles: ['admin', 'recepcao'], modulo: 'presencas' },
       { to: '/portal-aluno', label: 'Minhas Aulas', icon: Calendar, roles: ['aluno'] },
       { to: '/portal-aluno', label: 'Pagamentos', icon: Wallet, roles: ['aluno'], query: '?tab=pagamentos' },
       { to: '/agenda', label: 'Agenda', icon: CalendarPlus2, roles: ['admin', 'recepcao', 'professor', 'aluno'] },
@@ -72,7 +72,7 @@ const sections: NavSection[] = [
     title: 'Gestão',
     roles: ['admin', 'recepcao', 'professor'],
     items: [
-      { to: '/gestao/acoes', label: 'Ações', icon: ListChecks, roles: ['admin', 'recepcao', 'professor'] },
+      { to: '/gestao/acoes', label: 'Ações', icon: ListChecks, roles: ['admin', 'recepcao', 'professor'], modulo: 'gestao-acoes' },
       { to: '/gestao/configuracoes', label: 'Configurações', icon: SlidersHorizontal, roles: ['admin'] },
     ],
   },
@@ -82,20 +82,20 @@ const sections: NavSection[] = [
     items: [
       { to: '/financeiro', label: 'Financeiro', icon: DollarSign, roles: ['admin'] },
       { to: '/fluxo-caixa', label: 'Fluxo de Caixa', icon: Wallet, roles: ['admin'] },
-      { to: '/mensalidades', label: 'Mensalidades', icon: DollarSign, roles: ['admin', 'recepcao'] },
-      { to: '/cobranca', label: 'Cobrança & Jurídico', icon: AlertTriangle, roles: ['admin', 'recepcao'] },
+      { to: '/mensalidades', label: 'Mensalidades', icon: DollarSign, roles: ['admin', 'recepcao'], modulo: 'mensalidades' },
+      { to: '/cobranca', label: 'Cobrança & Jurídico', icon: AlertTriangle, roles: ['admin', 'recepcao'], modulo: 'cobranca' },
     ],
   },
   {
     title: 'Comunicação',
     roles: ['admin', 'recepcao'],
     items: [
-      { to: '/contatos', label: 'Contatos', icon: Users, roles: ['admin', 'recepcao'] },
-      { to: '/crm-funil', label: 'CRM — Funil', icon: TrendingUp, roles: ['admin', 'recepcao'] },
-      { to: '/disparos', label: 'Disparos', icon: Send, roles: ['admin', 'recepcao'] },
+      { to: '/contatos', label: 'Contatos', icon: Users, roles: ['admin', 'recepcao'], modulo: 'contatos' },
+      { to: '/crm-funil', label: 'CRM — Funil', icon: TrendingUp, roles: ['admin', 'recepcao'], modulo: 'crm-funil' },
+      { to: '/disparos', label: 'Disparos', icon: Send, roles: ['admin', 'recepcao'], modulo: 'disparos' },
       { to: '/disparos-programados', label: 'Programados', icon: CalendarCheck, roles: ['admin'] },
-      { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'recepcao'] },
-      { to: '/avaliacoes', label: 'Avaliações', icon: Star, roles: ['admin', 'recepcao'] },
+      { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin'] },
+      { to: '/avaliacoes', label: 'Avaliações', icon: Star, roles: ['admin', 'recepcao'], modulo: 'avaliacoes' },
     ],
   },
   {
@@ -119,7 +119,7 @@ const sections: NavSection[] = [
     title: 'Pós-Venda',
     roles: ['admin', 'recepcao'],
     items: [
-      { to: '/pos-venda', label: 'Brindes & Marcos', icon: Gift, roles: ['admin', 'recepcao'] },
+      { to: '/pos-venda', label: 'Brindes & Marcos', icon: Gift, roles: ['admin', 'recepcao'], modulo: 'pos-venda' },
     ],
   },
 ]
@@ -130,7 +130,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
-  const { perfil, signOut, hasRole } = useAuth()
+  const { perfil, signOut, hasRole, hasAcesso } = useAuth()
   const userRole = perfil?.role ?? 'aluno'
   const location = useLocation()
 
@@ -162,7 +162,7 @@ export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
         {sections.map((section) => {
           // Only show sections relevant to user's role
           if (!section.roles.includes(userRole)) return null
-          const visibleItems = section.items.filter(item => item.roles.includes(userRole))
+          const visibleItems = section.items.filter(item => item.roles.includes(userRole) && (!item.modulo || hasAcesso(item.modulo)))
           if (visibleItems.length === 0) return null
 
           return (
