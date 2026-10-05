@@ -12,7 +12,7 @@ const admin = SERVICE_KEY
   ? createClient(SUPABASE_URL, SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } })
   : null
 
-const TOKEN_TTL_HORAS = 48
+const TOKEN_TTL_HORAS = 24 * 7
 
 async function requireAdmin(req) {
   const authHeader = req.headers.authorization || ''
@@ -47,7 +47,7 @@ async function enviarEmailConvite(email, nome, link) {
           <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
             <h2 style="color:#0C3549;">Olá${nome ? `, ${nome}` : ''}!</h2>
             <p>Você recebeu acesso ao sistema do Centro de Música Murilo Finger.</p>
-            <p>Clique no botão abaixo para definir sua senha. Esse link é pessoal e expira em ${TOKEN_TTL_HORAS}h.</p>
+            <p>Clique no botão abaixo para definir sua senha. Esse link é pessoal e expira em ${Math.round(TOKEN_TTL_HORAS / 24)} dias.</p>
             <p style="text-align:center; margin: 32px 0;">
               <a href="${link}" style="background:#FF7A00; color:#fff; padding:12px 24px; border-radius:8px; text-decoration:none; font-weight:bold;">Definir minha senha</a>
             </p>
