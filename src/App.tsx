@@ -82,6 +82,7 @@ export default function App() {
     return (
       <Routes>
         <Route path="/solicitar-acesso" element={<SolicitarAcesso />} />
+        <Route path="/definir-senha" element={<DefinirSenha />} />
         <Route path="*" element={<Login />} />
       </Routes>
     )
