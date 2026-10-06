@@ -165,6 +165,8 @@ export interface GestaoParticipante {
   extra_professor_id: string | null
 }
 
+export type TipoNotificacao = GestaoNotificacao['tipo']
+
 export interface GestaoPauta {
   id: string
   reuniao_id: string
