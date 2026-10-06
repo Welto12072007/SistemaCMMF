@@ -17,6 +17,7 @@ interface Comunicado {
   criado_em: string
   anexo_url: string | null
   anexo_tipo: string | null
+  instrumentos: string[] | null
 }
 
 const PUBLICO_LABEL: Record<string, string> = { alunos: 'Alunos', professores: 'Professores' }
@@ -35,6 +36,8 @@ export default function Comunicados() {
   const [alvoAlunos, setAlvoAlunos] = useState(true)
   const [alvoProfessores, setAlvoProfessores] = useState(false)
   const [enviarWhatsapp, setEnviarWhatsapp] = useState(true)
+  const [instrumentosDisponiveis, setInstrumentosDisponiveis] = useState<string[]>([])
+  const [instrumentosFiltro, setInstrumentosFiltro] = useState<string[]>([])
   const [mediaType, setMediaType] = useState<MediaType | null>(null)
   const [mediaUrl, setMediaUrl] = useState('')
   const [uploadingMedia, setUploadingMedia] = useState(false)
@@ -59,6 +62,24 @@ export default function Comunicados() {
   }, [])
 
   useEffect(() => { void carregar() }, [carregar])
+
+  useEffect(() => {
+    void (async () => {
+      const [{ data: al }, { data: pr }] = await Promise.all([
+        supabase.from('alunos').select('instrumentos').eq('status', 'ativo'),
+        supabase.from('professores').select('instrumentos').eq('ativo', true),
+      ])
+      const set = new Set<string>()
+      for (const row of [...(al ?? []), ...(pr ?? [])]) {
+        for (const i of (row as { instrumentos: string[] | null }).instrumentos ?? []) set.add(i)
+      }
+      setInstrumentosDisponiveis(Array.from(set).sort())
+    })()
+  }, [])
+
+  function toggleInstrumento(i: string) {
+    setInstrumentosFiltro((cur) => (cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i]))
+  }
 
   async function handleUploadMedia(file: File | null) {
     if (!file || !mediaType) return
@@ -189,11 +210,15 @@ export default function Comunicados() {
         const destinatarios: { telefone: string }[] = []
 
         if (alvoAlunos) {
-          const { data: alunos } = await supabase.from('alunos').select('telefone').eq('status', 'ativo')
+          let q = supabase.from('alunos').select('telefone').eq('status', 'ativo')
+          if (instrumentosFiltro.length > 0) q = q.overlaps('instrumentos', instrumentosFiltro)
+          const { data: alunos } = await q
           for (const a of alunos ?? []) if (a.telefone) destinatarios.push({ telefone: a.telefone })
         }
         if (alvoProfessores) {
-          const { data: profs } = await supabase.from('professores').select('telefone').eq('ativo', true)
+          let q = supabase.from('professores').select('telefone').eq('ativo', true)
+          if (instrumentosFiltro.length > 0) q = q.overlaps('instrumentos', instrumentosFiltro)
+          const { data: profs } = await q
           for (const p of profs ?? []) if (p.telefone) destinatarios.push({ telefone: p.telefone })
         }
 
@@ -232,6 +257,7 @@ export default function Comunicados() {
         criado_por_nome: perfil?.nome ?? null,
         anexo_url: temMidia ? mediaUrl.trim() : null,
         anexo_tipo: temMidia ? mediaType : null,
+        instrumentos: instrumentosFiltro.length > 0 ? instrumentosFiltro : null,
       })
       if (errHist) throw new Error(errHist.message)
 
@@ -239,6 +265,7 @@ export default function Comunicados() {
       setMensagem('')
       setMediaType(null)
       setMediaUrl('')
+      setInstrumentosFiltro([])
       setToast(enviarWhatsapp ? `Comunicado enviado para ${total} destinatário(s).` : 'Comunicado registrado no histórico.')
       void carregar()
     } catch (e) {
@@ -287,6 +314,31 @@ export default function Comunicados() {
               Enviar também por WhatsApp
             </label>
           </div>
+
+          {instrumentosDisponiveis.length > 0 && (
+            <div className="space-y-1.5">
+              <span className="text-xs text-gray-500">
+                Restringir por instrumento (opcional — vazio = todos do público escolhido):
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {instrumentosDisponiveis.map((i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => toggleInstrumento(i)}
+                    className={`px-2.5 py-1 rounded-full border text-xs ${instrumentosFiltro.includes(i) ? 'bg-brand-500 text-white border-brand-500' : 'border-gray-300 text-gray-600'}`}
+                  >
+                    {i}
+                  </button>
+                ))}
+                {instrumentosFiltro.length > 0 && (
+                  <button type="button" onClick={() => setInstrumentosFiltro([])} className="flex items-center gap-1 text-gray-400 hover:text-gray-600 text-xs">
+                    <X className="w-3.5 h-3.5" /> limpar
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-xs">
@@ -415,9 +467,12 @@ export default function Comunicados() {
                 {c.anexo_url && c.anexo_tipo === 'audio' && (
                   <audio src={c.anexo_url} controls className="mt-2 w-full max-w-xs" />
                 )}
-                <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
+                <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-gray-500">
                   {c.publico.map((p) => (
                     <span key={p} className="px-2 py-0.5 bg-gray-100 rounded-full">{PUBLICO_LABEL[p] ?? p}</span>
+                  ))}
+                  {(c.instrumentos ?? []).map((i) => (
+                    <span key={i} className="px-2 py-0.5 bg-brand-50 text-brand-700 rounded-full">{i}</span>
                   ))}
                   {c.enviar_whatsapp && <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full">WhatsApp · {c.total_destinatarios}</span>}
                   {c.criado_por_nome && <span>por {c.criado_por_nome}</span>}
