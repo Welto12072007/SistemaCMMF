@@ -34,6 +34,7 @@ TIPOS_PERMITIDOS = [
     "avaliacao_google",
     "lembrete_mensalidade",
     "cobranca_atraso",
+    "comunicado_interno",
 ]
 
 SB_HEADERS = {

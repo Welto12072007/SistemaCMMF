@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Megaphone, Send, Users, GraduationCap, RefreshCw } from 'lucide-react'
+import { Loader2, Megaphone, Send, Users, GraduationCap, RefreshCw, Paperclip, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Toast } from '@/components/gestao/ui'
+import { MEDIA_ACCEPT, uploadDisparoMedia } from '@/lib/disparosMedia'
+import type { MediaType } from '@/lib/disparosMedia'
 
 interface Comunicado {
   id: string
@@ -13,6 +15,8 @@ interface Comunicado {
   total_destinatarios: number
   criado_por_nome: string | null
   criado_em: string
+  anexo_url: string | null
+  anexo_tipo: string | null
 }
 
 const PUBLICO_LABEL: Record<string, string> = { alunos: 'Alunos', professores: 'Professores' }
@@ -31,6 +35,9 @@ export default function Comunicados() {
   const [alvoAlunos, setAlvoAlunos] = useState(true)
   const [alvoProfessores, setAlvoProfessores] = useState(false)
   const [enviarWhatsapp, setEnviarWhatsapp] = useState(true)
+  const [mediaType, setMediaType] = useState<MediaType | null>(null)
+  const [mediaUrl, setMediaUrl] = useState('')
+  const [uploadingMedia, setUploadingMedia] = useState(false)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -45,6 +52,55 @@ export default function Comunicados() {
 
   useEffect(() => { void carregar() }, [carregar])
 
+  async function handleUploadMedia(file: File | null) {
+    if (!file || !mediaType) return
+    setUploadingMedia(true)
+    try {
+      const result = await uploadDisparoMedia(supabase, mediaType, file)
+      setMediaUrl(result.url)
+    } catch (e) {
+      alert('Erro ao enviar arquivo:\n' + (e as Error).message)
+    } finally {
+      setUploadingMedia(false)
+    }
+  }
+
+  async function enviarWhatsappMedia(telefone: string) {
+    let tel = telefone.replace(/\D/g, '')
+    if (tel.length === 11) tel = `55${tel}`
+    if (tel.length === 12) tel = tel.slice(0, 4) + '9' + tel.slice(4)
+    if (tel.length !== 13) return false
+
+    const { data: { session } } = await supabase.auth.getSession()
+    const authHeaders = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session?.access_token ?? ''}`,
+    }
+    const legenda = `📢 *${titulo}*\n\n${mensagem}`
+
+    if (mediaType === 'audio' && mediaUrl.trim()) {
+      const r = await fetch('/api/whatsapp-send', {
+        method: 'POST', headers: authHeaders,
+        body: JSON.stringify({ action: 'sendWhatsAppAudio', payload: { number: tel, audio: mediaUrl.trim() } }),
+      })
+      if (r.ok && (titulo.trim() || mensagem.trim())) {
+        await fetch('/api/whatsapp-send', {
+          method: 'POST', headers: authHeaders,
+          body: JSON.stringify({ action: 'sendText', payload: { number: tel, text: legenda } }),
+        })
+      }
+      return r.ok
+    }
+    if (mediaType && mediaUrl.trim()) {
+      const r = await fetch('/api/whatsapp-send', {
+        method: 'POST', headers: authHeaders,
+        body: JSON.stringify({ action: 'sendMedia', payload: { number: tel, mediatype: mediaType, media: mediaUrl.trim(), caption: legenda } }),
+      })
+      return r.ok
+    }
+    return false
+  }
+
   async function enviar() {
     if (!titulo.trim() || !mensagem.trim()) { alert('Preencha título e mensagem.'); return }
     if (!alvoAlunos && !alvoProfessores) { alert('Escolha pelo menos um público.'); return }
@@ -56,45 +112,44 @@ export default function Comunicados() {
       if (alvoProfessores) publico.push('professores')
 
       let total = 0
+      const temMidia = Boolean(mediaType && mediaUrl.trim())
 
       if (enviarWhatsapp) {
-        const inserts: Record<string, unknown>[] = []
+        const destinatarios: { telefone: string }[] = []
 
         if (alvoAlunos) {
-          const { data: alunos } = await supabase.from('alunos').select('id, telefone').eq('status', 'ativo')
-          for (const a of alunos ?? []) {
-            if (!a.telefone) continue
-            inserts.push({
-              aluno_id: a.id,
-              tipo: 'comunicado_interno',
-              canal: 'whatsapp',
-              mensagem: `📢 *${titulo}*\n\n${mensagem}`,
-              telefone_destinatario: a.telefone,
-              status: 'pendente',
-            })
-          }
+          const { data: alunos } = await supabase.from('alunos').select('telefone').eq('status', 'ativo')
+          for (const a of alunos ?? []) if (a.telefone) destinatarios.push({ telefone: a.telefone })
         }
-
         if (alvoProfessores) {
-          const { data: profs } = await supabase.from('professores').select('id, telefone').eq('ativo', true)
-          for (const p of profs ?? []) {
-            if (!p.telefone) continue
-            inserts.push({
-              tipo: 'comunicado_interno',
-              canal: 'whatsapp',
-              mensagem: `📢 *${titulo}*\n\n${mensagem}`,
-              telefone_destinatario: p.telefone,
-              status: 'pendente',
-            })
-          }
+          const { data: profs } = await supabase.from('professores').select('telefone').eq('ativo', true)
+          for (const p of profs ?? []) if (p.telefone) destinatarios.push({ telefone: p.telefone })
         }
 
-        total = inserts.length
+        total = destinatarios.length
         if (total === 0) { alert('Nenhum destinatário com telefone cadastrado para o público escolhido.'); setEnviando(false); return }
         if (!confirm(`Enviar este comunicado por WhatsApp para ${total} destinatário(s)?`)) { setEnviando(false); return }
 
-        const { error } = await supabase.from('disparos_pendentes').insert(inserts)
-        if (error) throw new Error(error.message)
+        if (temMidia) {
+          // Mídia (imagem/vídeo/áudio) precisa de envio direto via Evolution API — a fila
+          // disparos_pendentes (processada pelo GitHub Actions) só manda texto.
+          let falhas = 0
+          for (const d of destinatarios) {
+            const ok = await enviarWhatsappMedia(d.telefone)
+            if (!ok) falhas++
+          }
+          if (falhas > 0) alert(`${falhas} de ${total} envio(s) falharam.`)
+        } else {
+          const inserts = destinatarios.map((d) => ({
+            tipo: 'comunicado_interno',
+            canal: 'whatsapp',
+            mensagem: `📢 *${titulo}*\n\n${mensagem}`,
+            telefone_destinatario: d.telefone,
+            status: 'pendente',
+          }))
+          const { error } = await supabase.from('disparos_pendentes').insert(inserts)
+          if (error) throw new Error(error.message)
+        }
       }
 
       const { error: errHist } = await supabase.from('gestao_comunicados').insert({
@@ -104,11 +159,15 @@ export default function Comunicados() {
         enviar_whatsapp: enviarWhatsapp,
         total_destinatarios: total,
         criado_por_nome: perfil?.nome ?? null,
+        anexo_url: temMidia ? mediaUrl.trim() : null,
+        anexo_tipo: temMidia ? mediaType : null,
       })
       if (errHist) throw new Error(errHist.message)
 
       setTitulo('')
       setMensagem('')
+      setMediaType(null)
+      setMediaUrl('')
       setToast(enviarWhatsapp ? `Comunicado enviado para ${total} destinatário(s).` : 'Comunicado registrado no histórico.')
       void carregar()
     } catch (e) {
@@ -158,6 +217,38 @@ export default function Comunicados() {
             </label>
           </div>
 
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-gray-500">Anexo:</span>
+              {(['image', 'video', 'audio'] as MediaType[]).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => { setMediaType(mediaType === t ? null : t); setMediaUrl('') }}
+                  className={`px-2.5 py-1 rounded-full border ${mediaType === t ? 'bg-brand-500 text-white border-brand-500' : 'border-gray-300 text-gray-600'}`}
+                >
+                  {t === 'image' ? 'Imagem' : t === 'video' ? 'Vídeo' : 'Áudio'}
+                </button>
+              ))}
+              {mediaType && (
+                <button type="button" onClick={() => { setMediaType(null); setMediaUrl('') }} className="flex items-center gap-1 text-gray-400 hover:text-gray-600">
+                  <X className="w-3.5 h-3.5" /> remover
+                </button>
+              )}
+            </div>
+            {mediaType && (
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 px-3 py-1.5 border rounded-lg text-xs cursor-pointer text-gray-600 hover:bg-gray-50">
+                  <Paperclip className="w-3.5 h-3.5" />
+                  {mediaUrl ? 'Trocar arquivo' : 'Escolher arquivo'}
+                  <input type="file" accept={MEDIA_ACCEPT[mediaType]} className="hidden" onChange={(e) => handleUploadMedia(e.target.files?.[0] || null)} />
+                </label>
+                {uploadingMedia && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
+                {mediaUrl && !uploadingMedia && <span className="text-xs text-green-600">Arquivo pronto ✓</span>}
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-end">
             <button
               onClick={enviar}
@@ -195,6 +286,15 @@ export default function Comunicados() {
                   </span>
                 </div>
                 <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{c.mensagem}</p>
+                {c.anexo_url && c.anexo_tipo === 'image' && (
+                  <img src={c.anexo_url} alt="" className="mt-2 max-h-40 rounded-lg border" />
+                )}
+                {c.anexo_url && c.anexo_tipo === 'video' && (
+                  <video src={c.anexo_url} controls className="mt-2 max-h-40 rounded-lg border" />
+                )}
+                {c.anexo_url && c.anexo_tipo === 'audio' && (
+                  <audio src={c.anexo_url} controls className="mt-2 w-full max-w-xs" />
+                )}
                 <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
                   {c.publico.map((p) => (
                     <span key={p} className="px-2 py-0.5 bg-gray-100 rounded-full">{PUBLICO_LABEL[p] ?? p}</span>
