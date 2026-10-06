@@ -35,6 +35,13 @@ export default function NovaReuniaoModal({ ctx, tipos, projetos, onClose, onCria
   const [salvando, setSalvando] = useState(false)
 
   const membrosAtivos = useMemo(() => ctx.membros.filter((m) => m.ativo), [ctx.membros])
+  // Nomes duplicados (ex: Murilo tem cadastro de Professor e de Administração) precisam do cargo
+  // visível, senão não dá pra saber qual dos dois vai gerar honorário automático na reunião.
+  const nomesDuplicados = useMemo(() => {
+    const contagem = new Map<string, number>()
+    membrosAtivos.forEach((m) => contagem.set(m.nome, (contagem.get(m.nome) ?? 0) + 1))
+    return new Set([...contagem.entries()].filter(([, n]) => n > 1).map(([nome]) => nome))
+  }, [membrosAtivos])
 
   function escolherTipo(id: string) {
     setTipoId(id)
@@ -184,7 +191,7 @@ export default function NovaReuniaoModal({ ctx, tipos, projetos, onClose, onCria
                     participantes.includes(m.id) ? `border-transparent ${COR_CHIP.blue}` : 'border-gray-300 text-gray-500'
                   }`}
                 >
-                  {m.nome}
+                  {m.nome}{nomesDuplicados.has(m.nome) && m.cargo ? ` (${m.cargo})` : ''}
                 </button>
               ))}
             </div>

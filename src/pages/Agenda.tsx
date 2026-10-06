@@ -51,6 +51,8 @@ function fmtHora(h: string | null) {
 export default function Agenda() {
   const { hasRole } = useAuth()
   const isAdmin = hasRole('admin', 'recepcao')
+  // Professor tambem e equipe: precisa ver eventos internos (reunioes etc) com visivel_aluno=false
+  const podeVerTudo = hasRole('admin', 'recepcao', 'professor')
 
   const [eventos, setEventos] = useState<Evento[]>([])
   const [loading, setLoading] = useState(true)
@@ -96,7 +98,7 @@ export default function Agenda() {
       .order('data_inicio')
 
     // Aluno só vê eventos marcados como visíveis
-    if (!isAdmin) {
+    if (!podeVerTudo) {
       query = query.eq('visivel_aluno', true)
     }
 
@@ -104,7 +106,7 @@ export default function Agenda() {
 
     setEventos(data || [])
     setLoading(false)
-  }, [ano, mes, isAdmin])
+  }, [ano, mes, podeVerTudo])
 
   useEffect(() => {
     void loadEventos()
