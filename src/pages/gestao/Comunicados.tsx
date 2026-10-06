@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Megaphone, Send, Users, GraduationCap, RefreshCw, Paperclip, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Loader2, Megaphone, Send, Users, GraduationCap, RefreshCw, Paperclip, X, Camera, Circle, Square } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Toast } from '@/components/gestao/ui'
@@ -39,6 +39,14 @@ export default function Comunicados() {
   const [mediaUrl, setMediaUrl] = useState('')
   const [uploadingMedia, setUploadingMedia] = useState(false)
 
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+  const [cameraOn, setCameraOn] = useState(false)
+  const [recording, setRecording] = useState(false)
+
   const carregar = useCallback(async () => {
     setLoading(true)
     const { data } = await supabase
@@ -63,6 +71,69 @@ export default function Comunicados() {
     } finally {
       setUploadingMedia(false)
     }
+  }
+
+  function desligarCamera() {
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    recorderRef.current = null
+    setCameraOn(false)
+    setRecording(false)
+  }
+
+  useEffect(() => () => desligarCamera(), [])
+
+  async function ligarCamera() {
+    try {
+      const constraints: MediaStreamConstraints =
+        mediaType === 'audio' ? { audio: true } : { video: true, audio: mediaType === 'video' }
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      streamRef.current = stream
+      if (videoRef.current && mediaType !== 'audio') {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
+      }
+      setCameraOn(true)
+    } catch (e) {
+      alert('Não foi possível acessar câmera/microfone:\n' + (e as Error).message)
+    }
+  }
+
+  async function tirarFoto() {
+    if (!videoRef.current || !canvasRef.current) return
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height)
+    canvas.toBlob(async (blob) => {
+      if (!blob) return
+      const file = new File([blob], `foto-${Date.now()}.jpg`, { type: 'image/jpeg' })
+      await handleUploadMedia(file)
+      desligarCamera()
+    }, 'image/jpeg', 0.9)
+  }
+
+  function iniciarGravacao() {
+    if (!streamRef.current || !mediaType) return
+    chunksRef.current = []
+    const mime = mediaType === 'audio' ? 'audio/webm' : 'video/webm'
+    const recorder = new MediaRecorder(streamRef.current, { mimeType: mime })
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+    recorder.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: mime })
+      const file = new File([blob], `${mediaType}-${Date.now()}.webm`, { type: mime })
+      await handleUploadMedia(file)
+      desligarCamera()
+    }
+    recorder.start()
+    recorderRef.current = recorder
+    setRecording(true)
+  }
+
+  function pararGravacao() {
+    recorderRef.current?.stop()
+    setRecording(false)
   }
 
   async function enviarWhatsappMedia(telefone: string) {
@@ -183,7 +254,7 @@ export default function Comunicados() {
         <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
           <Megaphone className="w-6 h-6 text-brand-500" /> Comunicados
         </h1>
-        <p className="text-sm text-gray-500">Avisos para alunos e professores, com envio opcional por WhatsApp.</p>
+        <p className="text-sm text-gray-500">Mural de avisos que alunos e professores conferem dentro do sistema, com envio opcional também por WhatsApp para garantir que todos vejam.</p>
       </div>
 
       {podeEnviar && (
@@ -224,27 +295,76 @@ export default function Comunicados() {
                 <button
                   key={t}
                   type="button"
-                  onClick={() => { setMediaType(mediaType === t ? null : t); setMediaUrl('') }}
+                  onClick={() => { desligarCamera(); setMediaType(mediaType === t ? null : t); setMediaUrl('') }}
                   className={`px-2.5 py-1 rounded-full border ${mediaType === t ? 'bg-brand-500 text-white border-brand-500' : 'border-gray-300 text-gray-600'}`}
                 >
-                  {t === 'image' ? 'Imagem' : t === 'video' ? 'Vídeo' : 'Áudio'}
+                  {t === 'image' ? 'Foto' : t === 'video' ? 'Vídeo' : 'Áudio'}
                 </button>
               ))}
               {mediaType && (
-                <button type="button" onClick={() => { setMediaType(null); setMediaUrl('') }} className="flex items-center gap-1 text-gray-400 hover:text-gray-600">
+                <button type="button" onClick={() => { desligarCamera(); setMediaType(null); setMediaUrl('') }} className="flex items-center gap-1 text-gray-400 hover:text-gray-600">
                   <X className="w-3.5 h-3.5" /> remover
                 </button>
               )}
             </div>
-            {mediaType && (
-              <div className="flex items-center gap-2">
-                <label className="flex items-center gap-2 px-3 py-1.5 border rounded-lg text-xs cursor-pointer text-gray-600 hover:bg-gray-50">
-                  <Paperclip className="w-3.5 h-3.5" />
-                  {mediaUrl ? 'Trocar arquivo' : 'Escolher arquivo'}
-                  <input type="file" accept={MEDIA_ACCEPT[mediaType]} className="hidden" onChange={(e) => handleUploadMedia(e.target.files?.[0] || null)} />
-                </label>
-                {uploadingMedia && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
-                {mediaUrl && !uploadingMedia && <span className="text-xs text-green-600">Arquivo pronto ✓</span>}
+
+            {mediaType && !mediaUrl && (
+              <div className="border rounded-lg p-3 bg-gray-50 space-y-2">
+                {!cameraOn ? (
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={ligarCamera}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-brand-500 text-white rounded-lg text-xs hover:bg-brand-600"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      {mediaType === 'audio' ? 'Ligar microfone' : 'Ligar câmera'}
+                    </button>
+                    <span className="text-xs text-gray-400">ou</span>
+                    <label className="flex items-center gap-2 px-3 py-1.5 border rounded-lg text-xs cursor-pointer text-gray-600 hover:bg-white">
+                      <Paperclip className="w-3.5 h-3.5" />
+                      Enviar arquivo pronto
+                      <input type="file" accept={MEDIA_ACCEPT[mediaType]} className="hidden" onChange={(e) => handleUploadMedia(e.target.files?.[0] || null)} />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {mediaType !== 'audio' && (
+                      <video ref={videoRef} muted playsInline className="w-full max-w-sm rounded-lg bg-black" />
+                    )}
+                    <canvas ref={canvasRef} className="hidden" />
+                    <div className="flex items-center gap-2">
+                      {mediaType === 'image' ? (
+                        <button type="button" onClick={tirarFoto} className="flex items-center gap-2 px-3 py-1.5 bg-brand-500 text-white rounded-lg text-xs hover:bg-brand-600">
+                          <Camera className="w-3.5 h-3.5" /> Tirar foto
+                        </button>
+                      ) : !recording ? (
+                        <button type="button" onClick={iniciarGravacao} className="flex items-center gap-2 px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs hover:bg-red-600">
+                          <Circle className="w-3.5 h-3.5 fill-current" /> {mediaType === 'audio' ? 'Gravar áudio' : 'Gravar vídeo'}
+                        </button>
+                      ) : (
+                        <button type="button" onClick={pararGravacao} className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 text-white rounded-lg text-xs hover:bg-gray-900">
+                          <Square className="w-3.5 h-3.5 fill-current" /> Parar gravação
+                        </button>
+                      )}
+                      <button type="button" onClick={desligarCamera} className="px-3 py-1.5 border rounded-lg text-xs text-gray-600 hover:bg-white">
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {uploadingMedia && (
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <Loader2 className="w-4 h-4 animate-spin" /> Enviando...
+              </div>
+            )}
+            {mediaUrl && !uploadingMedia && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-green-600">Pronto ✓</span>
+                <button type="button" onClick={() => setMediaUrl('')} className="text-gray-400 hover:text-gray-600 underline">refazer</button>
               </div>
             )}
           </div>
