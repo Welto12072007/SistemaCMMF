@@ -90,6 +90,142 @@ export interface GestaoTipoReuniao {
   cor: string | null
   posicao: number
   arquivado_em: string | null
+  area_id: string | null
+  duracao_padrao_min: number
+  pauta_padrao: string[]
+  participantes_padrao: string[]
+}
+
+// ── Reuniões ─────────────────────────────────────────────────────────────
+
+export type StatusReuniao = 'agendada' | 'confirmada' | 'em_andamento' | 'realizada' | 'cancelada'
+
+export interface GestaoReuniao {
+  id: string
+  titulo: string
+  data: string
+  hora_inicio: string
+  duracao_prevista_min: number
+  duracao_real_min: number | null
+  status: StatusReuniao
+  local: string | null
+  link: string | null
+  serie_id: string | null
+  remarcada_de: string | null
+  encerrada_em: string | null
+  tipo_id: string
+  tipo_nome: string
+  tipo_cor: string | null
+  projeto_id: string | null
+  projeto_nome: string | null
+  area_id: string | null
+  area_nome: string | null
+  organizador_id: string
+  organizador_nome: string
+  participantes: number
+  presentes: number
+  pautas: number
+  pautas_pendentes: number
+  acoes_geradas: number
+  acoes_para_revisar: number
+  mes: string
+}
+
+export interface GestaoReuniaoCompleta {
+  id: string
+  titulo: string
+  tipo_id: string
+  projeto_id: string | null
+  area_id: string | null
+  serie_id: string | null
+  organizador_id: string
+  data: string
+  hora_inicio: string
+  duracao_prevista_min: number
+  duracao_real_min: number | null
+  local: string | null
+  link: string | null
+  status: StatusReuniao
+  confirmada_em: string | null
+  cancelada_em: string | null
+  motivo_cancelamento: string | null
+  remarcada_de: string | null
+  iniciada_em: string | null
+  encerrada_em: string | null
+  ata: string | null
+  observacoes: string | null
+  criado_por: string | null
+}
+
+export interface GestaoParticipante {
+  reuniao_id: string
+  membro_id: string
+  presente: boolean | null
+  presenca_marcada_em: string | null
+  extra_professor_id: string | null
+}
+
+export interface GestaoPauta {
+  id: string
+  reuniao_id: string
+  titulo: string
+  descricao: string | null
+  anotacoes: string | null
+  decisoes: string | null
+  posicao: number
+  status: 'aberta' | 'encerrada' | 'levar' | 'transferida'
+  verificar_na_proxima: string | null
+  pauta_anterior_id: string | null
+  fio_id: string | null
+}
+
+export interface GestaoReuniaoSerie {
+  id: string
+  titulo: string
+  tipo_id: string
+  projeto_id: string | null
+  area_id: string | null
+  organizador_id: string
+  frequencia: 'semanal' | 'quinzenal' | 'mensal'
+  data_inicio: string
+  data_fim: string | null
+  hora_inicio: string
+  duracao_min: number
+  local: string | null
+  link: string | null
+  participantes: string[]
+  ativa: boolean
+}
+
+export interface GestaoNotificacao {
+  id: string
+  membro_id: string
+  reuniao_id: string | null
+  tipo: 'confirmar' | 'nao_confirmada' | 'aviso' | 'remarcada' | 'cancelada' | 'ata'
+  titulo: string
+  mensagem: string
+  lida_em: string | null
+  created_at: string
+}
+
+export const STATUS_REUNIAO: Record<StatusReuniao, { label: string; classe: string }> = {
+  agendada:     { label: 'Agendada',      classe: 'bg-gray-100 text-gray-600' },
+  confirmada:   { label: 'Confirmada',    classe: 'bg-brand-50 text-brand-700' },
+  em_andamento: { label: 'Em andamento',  classe: 'bg-amber-100 text-amber-800' },
+  realizada:    { label: 'Realizada',     classe: 'bg-emerald-100 text-emerald-700' },
+  cancelada:    { label: 'Cancelada',     classe: 'bg-red-100 text-red-700' },
+}
+
+export async function carregarProjetosETipos(): Promise<{ projetos: GestaoProjeto[]; tipos: GestaoTipoReuniao[] }> {
+  const [proj, tip] = await Promise.all([
+    supabase.from('gestao_projetos').select('id, nome, descricao, area_id, ativo, arquivado_em').is('arquivado_em', null).order('nome'),
+    supabase.from('gestao_tipos_reuniao')
+      .select('id, nome, cor, posicao, arquivado_em, area_id, duracao_padrao_min, pauta_padrao, participantes_padrao')
+      .is('arquivado_em', null).order('posicao'),
+  ])
+  if (proj.error) throw new Error(proj.error.message)
+  if (tip.error) throw new Error(tip.error.message)
+  return { projetos: (proj.data ?? []) as GestaoProjeto[], tipos: (tip.data ?? []) as GestaoTipoReuniao[] }
 }
 
 export interface GestaoHistorico {

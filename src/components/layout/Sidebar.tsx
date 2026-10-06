@@ -36,6 +36,7 @@ import {
   ListChecks,
   SlidersHorizontal,
   Timer,
+  Megaphone,
 } from 'lucide-react'
 import { useAuth, type UserRole } from '@/contexts/AuthContext'
 import logoIcon from '../../assets/icons/4.png.png'
@@ -70,9 +71,11 @@ const sections: NavSection[] = [
   },
   {
     title: 'Gestão',
-    roles: ['admin', 'recepcao', 'professor'],
+    roles: ['admin', 'recepcao', 'professor', 'aluno'],
     items: [
       { to: '/gestao/acoes', label: 'Ações', icon: ListChecks, roles: ['admin', 'recepcao', 'professor'], modulo: 'gestao-acoes' },
+      { to: '/gestao/reunioes', label: 'Reuniões', icon: CalendarClock, roles: ['admin', 'recepcao', 'professor'], modulo: 'gestao-acoes' },
+      { to: '/gestao/comunicados', label: 'Comunicados', icon: Megaphone, roles: ['admin', 'recepcao', 'professor', 'aluno'] },
       { to: '/gestao/configuracoes', label: 'Configurações', icon: SlidersHorizontal, roles: ['admin'] },
     ],
   },
