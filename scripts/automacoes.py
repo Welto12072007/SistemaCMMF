@@ -718,13 +718,12 @@ def main() -> None:
             log.error(f"expirar_reposicoes: {e}")
             erros.append(f"expirar_reposicoes: {e}")
 
-    # 1h BRT — efetivar cancelamentos de matrícula programados p/ hoje ou antes
-    if br.hour == 1:
-        try:
-            efetivar_cancelamentos_matricula()
-        except Exception as e:
-            log.error(f"efetivar_cancelamentos_matricula: {e}")
-            erros.append(f"efetivar_cancelamentos_matricula: {e}")
+    # Toda execução — a RPC só pega cancelamentos pendentes, então é idempotente
+    try:
+        efetivar_cancelamentos_matricula()
+    except Exception as e:
+        log.error(f"efetivar_cancelamentos_matricula: {e}")
+        erros.append(f"efetivar_cancelamentos_matricula: {e}")
 
     # Sempre — alertas de faltas
     try:
