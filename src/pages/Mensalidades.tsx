@@ -258,6 +258,32 @@ export default function Mensalidades() {
 
   async function salvarEdicao(form: Partial<Mensalidade>) {
     if (!editando) return
+
+    const virouIsenta = form.status === 'isento' && editando.status !== 'isento'
+    if (virouIsenta && editando.status !== 'pago') {
+      let erroAsaas: string | null = null
+      try {
+        let body: Record<string, string> | null = null
+        if (editando.asaas_charge_id?.startsWith('pay_')) {
+          body = { chargeId: editando.asaas_charge_id }
+        } else {
+          const { data: al } = await supabase.from('alunos').select('asaas_subscription_id').eq('id', editando.aluno_id).maybeSingle()
+          if (al?.asaas_subscription_id) body = { subscriptionId: al.asaas_subscription_id, referencia: editando.referencia }
+        }
+        if (body) {
+          const resp = await fetch('/api/asaas-cancelar-cobranca', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          })
+          if (!resp.ok) erroAsaas = (await resp.json()).error ?? 'erro desconhecido'
+        }
+      } catch (err: any) {
+        erroAsaas = err.message
+      }
+      if (erroAsaas && !confirm(`Não foi possível cancelar a cobrança no Asaas:\n${erroAsaas}\n\nIsentar mesmo assim só no sistema?`)) return
+    }
+
     const { error } = await supabase
       .from('mensalidades')
       .update({
