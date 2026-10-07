@@ -49,7 +49,7 @@ function fmtHora(h: string | null) {
 }
 
 export default function Agenda() {
-  const { hasRole } = useAuth()
+  const { hasRole, perfil } = useAuth()
   const isAdmin = hasRole('admin', 'recepcao')
   // Professor tambem e equipe: precisa ver eventos internos (reunioes etc) com visivel_aluno=false
   const podeVerTudo = hasRole('admin', 'recepcao', 'professor')
@@ -66,11 +66,31 @@ export default function Agenda() {
   const [modoSelecao, setModoSelecao] = useState(false)
   const [diasSelecionados, setDiasSelecionados] = useState<Set<string>>(new Set())
   const [showBulkModal, setShowBulkModal] = useState(false)
-  const [bulkTipo, setBulkTipo] = useState<'feriado' | 'recesso'>('feriado')
+  const [bulkTipo, setBulkTipo] = useState<Evento['tipo']>('feriado')
+  const [bulkHoraInicio, setBulkHoraInicio] = useState('')
+  const [bulkHoraFim, setBulkHoraFim] = useState('')
+  const [bulkCor, setBulkCor] = useState('#ef4444')
   const [bulkTitulo, setBulkTitulo] = useState('')
   const [bulkDescricao, setBulkDescricao] = useState('')
   const [bulkVisivelAluno, setBulkVisivelAluno] = useState(true)
   const [bulkSaving, setBulkSaving] = useState(false)
+  const [avisarComunicado, setAvisarComunicado] = useState(true)
+
+  // Publica no mural de comunicados (aparece no sino de alunos e professores)
+  async function publicarComunicado(titulo: string, descricao: string, datas: string[], hora: string | null) {
+    const fmt = (d: string) => d.split('-').reverse().slice(0, 2).join('/')
+    const quando = Array.from(new Set(datas)).sort().map(fmt).join(', ')
+    const partes = [`Data(s): ${quando}${hora ? ` às ${hora.slice(0, 5)}` : ''}`]
+    if (descricao.trim()) partes.push(descricao.trim())
+    await supabase.from('gestao_comunicados').insert({
+      titulo: `Agenda: ${titulo}`,
+      mensagem: partes.join('\n'),
+      publico: ['alunos', 'professores'],
+      enviar_whatsapp: false,
+      total_destinatarios: 0,
+      criado_por_nome: perfil?.nome ?? null,
+    })
+  }
 
   // Form state
   const [form, setForm] = useState({
@@ -196,6 +216,9 @@ export default function Agenda() {
     } else {
       const { error } = await supabase.from('eventos_agenda').insert(payload)
       if (error) { alert('Erro:\n' + error.message); setSaving(false); return }
+      if (avisarComunicado && form.visivel_aluno) {
+        await publicarComunicado(payload.titulo, form.descricao, [form.data_inicio, form.data_fim || form.data_inicio], payload.hora_inicio)
+      }
     }
 
     // Feriado/recesso cancela na hora as aulas que caem na data, sem esperar o cron
@@ -228,9 +251,12 @@ export default function Agenda() {
     setDiasSelecionados(new Set())
   }
 
-  function openBulkModal(tipo: 'feriado' | 'recesso') {
+  function openBulkModal(tipo: Evento['tipo']) {
     setBulkTipo(tipo)
-    setBulkTitulo(tipo === 'feriado' ? 'Feriado' : 'Recesso / Férias')
+    setBulkTitulo(tipo === 'feriado' ? 'Feriado' : tipo === 'recesso' ? 'Recesso / Férias' : '')
+    setBulkCor(TIPO_CONFIG[tipo]!.defaultCor)
+    setBulkHoraInicio('')
+    setBulkHoraFim('')
     setBulkDescricao('')
     setBulkVisivelAluno(true)
     setShowBulkModal(true)
@@ -239,20 +265,26 @@ export default function Agenda() {
   async function handleBulkSave() {
     if (!bulkTitulo.trim() || diasSelecionados.size === 0) return
     setBulkSaving(true)
-    const cor = TIPO_CONFIG[bulkTipo]!.defaultCor
     const payload = Array.from(diasSelecionados).map((dateStr) => ({
       titulo: bulkTitulo.trim(),
       descricao: bulkDescricao.trim() || null,
       data_inicio: dateStr,
+      hora_inicio: bulkHoraInicio || null,
+      hora_fim: bulkHoraFim || null,
       tipo: bulkTipo,
-      cor,
+      cor: bulkCor,
       visivel_aluno: bulkVisivelAluno,
     }))
     const { error } = await supabase.from('eventos_agenda').insert(payload)
     if (error) { alert('Erro:\n' + error.message); setBulkSaving(false); return }
 
+    if (avisarComunicado && bulkVisivelAluno) {
+      await publicarComunicado(bulkTitulo.trim(), bulkDescricao, Array.from(diasSelecionados), bulkHoraInicio || null)
+    }
     // Cancela na hora as aulas que caem nos dias marcados, sem esperar o cron
-    await supabase.rpc('cancelar_agendamentos_feriado')
+    if (bulkTipo === 'feriado' || bulkTipo === 'recesso') {
+      await supabase.rpc('cancelar_agendamentos_feriado')
+    }
 
     setBulkSaving(false)
     setShowBulkModal(false)
@@ -339,6 +371,18 @@ export default function Agenda() {
                 className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600"
               >
                 Marcar como Recesso/Férias
+              </button>
+              <button
+                onClick={() => openBulkModal('evento')}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-500 text-white hover:bg-indigo-600"
+              >
+                Criar Evento
+              </button>
+              <button
+                onClick={() => openBulkModal('aviso')}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-500 text-white hover:bg-blue-600"
+              >
+                Criar Aviso
               </button>
               <button
                 onClick={() => setDiasSelecionados(new Set())}
@@ -606,6 +650,18 @@ export default function Agenda() {
                 />
                 Visível para alunos
               </label>
+
+              {!editEvento && (
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={avisarComunicado}
+                    onChange={(e) => setAvisarComunicado(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  Avisar alunos e professores nos comunicados / sino
+                </label>
+              )}
             </div>
 
             <div className="flex justify-between mt-6">
@@ -667,15 +723,48 @@ export default function Agenda() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
                 <select
                   value={bulkTipo}
-                  onChange={(e) => setBulkTipo(e.target.value as 'feriado' | 'recesso')}
+                  onChange={(e) => {
+                    const t = e.target.value as Evento['tipo']
+                    setBulkTipo(t)
+                    setBulkCor(TIPO_CONFIG[t]!.defaultCor)
+                  }}
                   className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                 >
-                  <option value="feriado">Feriado</option>
-                  <option value="recesso">Recesso / Férias</option>
+                  <option value="feriado">Feriado (sem aula)</option>
+                  <option value="recesso">Recesso / Férias (sem aula)</option>
+                  <option value="evento">Evento</option>
+                  <option value="aviso">Aviso</option>
                 </select>
-                <p className="text-xs text-gray-400 mt-1">
-                  Seleção em lote só permite esses 2 tipos (datas sem aula). Pra outros tipos de evento, use "Novo evento" dia a dia.
-                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Início</label>
+                  <input
+                    type="time"
+                    value={bulkHoraInicio}
+                    onChange={(e) => setBulkHoraInicio(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fim</label>
+                  <input
+                    type="time"
+                    value={bulkHoraFim}
+                    onChange={(e) => setBulkHoraFim(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cor</label>
+                  <input
+                    type="color"
+                    value={bulkCor}
+                    onChange={(e) => setBulkCor(e.target.value)}
+                    className="w-full h-[38px] border rounded-lg"
+                  />
+                </div>
               </div>
 
               <div>
@@ -697,6 +786,16 @@ export default function Agenda() {
                   className="rounded border-gray-300"
                 />
                 Visível para alunos
+              </label>
+
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={avisarComunicado}
+                  onChange={(e) => setAvisarComunicado(e.target.checked)}
+                  className="rounded border-gray-300"
+                />
+                Avisar alunos e professores nos comunicados / sino (1 comunicado com todas as datas)
               </label>
 
               <p className="text-xs text-gray-400">
