@@ -68,6 +68,7 @@ export default function Agenda() {
   const [showBulkModal, setShowBulkModal] = useState(false)
   const [bulkTipo, setBulkTipo] = useState<'feriado' | 'recesso'>('feriado')
   const [bulkTitulo, setBulkTitulo] = useState('')
+  const [bulkDescricao, setBulkDescricao] = useState('')
   const [bulkVisivelAluno, setBulkVisivelAluno] = useState(true)
   const [bulkSaving, setBulkSaving] = useState(false)
 
@@ -197,6 +198,11 @@ export default function Agenda() {
       if (error) { alert('Erro:\n' + error.message); setSaving(false); return }
     }
 
+    // Feriado/recesso cancela na hora as aulas que caem na data, sem esperar o cron
+    if (form.tipo === 'feriado' || form.tipo === 'recesso') {
+      await supabase.rpc('cancelar_agendamentos_feriado')
+    }
+
     setSaving(false)
     setShowModal(false)
     void loadEventos()
@@ -225,6 +231,7 @@ export default function Agenda() {
   function openBulkModal(tipo: 'feriado' | 'recesso') {
     setBulkTipo(tipo)
     setBulkTitulo(tipo === 'feriado' ? 'Feriado' : 'Recesso / Férias')
+    setBulkDescricao('')
     setBulkVisivelAluno(true)
     setShowBulkModal(true)
   }
@@ -235,14 +242,19 @@ export default function Agenda() {
     const cor = TIPO_CONFIG[bulkTipo]!.defaultCor
     const payload = Array.from(diasSelecionados).map((dateStr) => ({
       titulo: bulkTitulo.trim(),
+      descricao: bulkDescricao.trim() || null,
       data_inicio: dateStr,
       tipo: bulkTipo,
       cor,
       visivel_aluno: bulkVisivelAluno,
     }))
     const { error } = await supabase.from('eventos_agenda').insert(payload)
+    if (error) { alert('Erro:\n' + error.message); setBulkSaving(false); return }
+
+    // Cancela na hora as aulas que caem nos dias marcados, sem esperar o cron
+    await supabase.rpc('cancelar_agendamentos_feriado')
+
     setBulkSaving(false)
-    if (error) { alert('Erro:\n' + error.message); return }
     setShowBulkModal(false)
     setDiasSelecionados(new Set())
     setModoSelecao(false)
@@ -661,6 +673,20 @@ export default function Agenda() {
                   <option value="feriado">Feriado</option>
                   <option value="recesso">Recesso / Férias</option>
                 </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  Seleção em lote só permite esses 2 tipos (datas sem aula). Pra outros tipos de evento, use "Novo evento" dia a dia.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descrição (opcional)</label>
+                <textarea
+                  value={bulkDescricao}
+                  onChange={(e) => setBulkDescricao(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+                  placeholder="Mesma descrição será aplicada a todos os dias selecionados"
+                />
               </div>
 
               <label className="flex items-center gap-2 text-sm text-gray-700">

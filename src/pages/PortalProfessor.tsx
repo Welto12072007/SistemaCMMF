@@ -116,6 +116,11 @@ export default function PortalProfessor() {
   // agenda
   const [semanaOffset, setSemanaOffset] = useState(0)
   const [experimentaisAgenda, setExperimentaisAgenda] = useState<{id:string;nome:string;instrumento:string;hora_inicio:string;hora_fim:string;data_aula:string;status:string}[]>([])
+  const [feriadosSemana, setFeriadosSemana] = useState<Record<string,{titulo:string;tipo:string}>>({})
+
+  // feriado/recesso no dia da chamada (explica por que não tem aula, em vez de sumir)
+  const [feriadoChamada, setFeriadoChamada] = useState<{titulo:string;tipo:string}|null>(null)
+  const [forcarChamada, setForcarChamada] = useState(false)
 
   // propostas de horário extra
   const [propostas, setPropostas] = useState<PropostaExtra[]>([])
@@ -185,8 +190,20 @@ export default function PortalProfessor() {
       })
   }, [professor_id])
 
-  useEffect(() => { if (tab==='chamada'&&professor_id) loadChamada() }, [dataAtual,tab,professor_id])
+  useEffect(() => { if (tab==='chamada'&&professor_id) { loadChamada(); loadFeriadoChamada() } }, [dataAtual,tab,professor_id])
   useEffect(() => { if (tab==='agenda'&&professor_id) { loadExperimentaisAgenda() } }, [tab,professor_id,semanaOffset])
+
+  async function loadFeriadoChamada() {
+    setForcarChamada(false)
+    const { data } = await supabase
+      .from('eventos_agenda')
+      .select('titulo, tipo, data_inicio, data_fim')
+      .in('tipo', ['feriado', 'recesso'])
+      .lte('data_inicio', dataAtual)
+      .or(`data_fim.gte.${dataAtual},data_fim.is.null`)
+    const encontrado = (data || []).find((e:any) => (e.data_fim || e.data_inicio) >= dataAtual)
+    setFeriadoChamada(encontrado ? { titulo: encontrado.titulo, tipo: encontrado.tipo } : null)
+  }
 
   async function loadChamada() {
     if (!professor_id) return
@@ -394,6 +411,22 @@ export default function PortalProfessor() {
       .eq('professor_id',professor_id).gte('data_aula',from).lte('data_aula',to)
       .not('status','in','(cancelada,remarcada)').order('hora_inicio')
     setExperimentaisAgenda((data||[]) as any)
+
+    const {data:eventos} = await supabase
+      .from('eventos_agenda')
+      .select('titulo,tipo,data_inicio,data_fim')
+      .in('tipo',['feriado','recesso'])
+      .lte('data_inicio',to)
+      .or(`data_fim.gte.${from},data_fim.is.null`)
+    const mapa: Record<string,{titulo:string;tipo:string}> = {}
+    for (const ev of (eventos||[]) as any[]) {
+      const ini = ev.data_inicio > from ? ev.data_inicio : from
+      const fim = (ev.data_fim || ev.data_inicio) < to ? (ev.data_fim || ev.data_inicio) : to
+      for (let d = new Date(ini+'T12:00:00'); d.toISOString().slice(0,10) <= fim; d.setDate(d.getDate()+1)) {
+        mapa[d.toISOString().slice(0,10)] = { titulo: ev.titulo, tipo: ev.tipo }
+      }
+    }
+    setFeriadosSemana(mapa)
   }
 
   async function confirmarExperimental(expId: string, realizada: boolean) {
@@ -619,7 +652,21 @@ export default function PortalProfessor() {
             </button>
           </div>
 
-          {aulas.length>0 && (
+          {feriadoChamada && (
+            <div className="flex flex-wrap items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+              <span className="text-sm text-red-700 font-medium">
+                {feriadoChamada.tipo==='feriado'?'Feriado':'Recesso/Férias'}: {feriadoChamada.titulo} — não há aula neste dia, as aulas desta data foram canceladas automaticamente.
+              </span>
+              {!forcarChamada && (
+                <button onClick={()=>setForcarChamada(true)} className="ml-auto text-xs font-medium text-red-600 hover:underline shrink-0">
+                  Fazer chamada mesmo assim
+                </button>
+              )}
+            </div>
+          )}
+
+          {(!feriadoChamada || forcarChamada) && aulas.length>0 && (
             <div className="grid grid-cols-3 gap-3">
               {[{v:statsChamada.presentes,l:'Presentes',c:'text-green-600'},{v:statsChamada.ausentes,l:'Faltaram',c:'text-red-500'},{v:statsChamada.pendentes,l:'Pendentes',c:'text-amber-500'}].map(s=>(
                 <div key={s.l} className="bg-white rounded-xl border border-gray-200 p-3 text-center">
@@ -630,7 +677,8 @@ export default function PortalProfessor() {
             </div>
           )}
 
-          {loadingChamada ? (
+          {(!feriadoChamada || forcarChamada) && (
+          loadingChamada ? (
             <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-brand-500"/></div>
           ) : aulas.length===0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
@@ -768,6 +816,7 @@ export default function PortalProfessor() {
                 )
               })())}
             </div>
+          )
           )}
         </div>
       )}
@@ -800,20 +849,27 @@ export default function PortalProfessor() {
                 const total = auls.length + exps.length
                 const isHoje = date===hojeStr
                 const isPast = date<hojeStr
+                const feriado = feriadosSemana[date]
                 return (
-                  <div key={dia} className={`bg-white rounded-xl border-2 overflow-hidden ${isHoje?'border-brand-300':isPast?'border-gray-100':'border-gray-200'}`}>
-                    <div className={`px-4 py-2.5 flex items-center justify-between ${isHoje?'bg-brand-50':isPast?'bg-gray-50/50':'bg-gray-50'}`}>
+                  <div key={dia} className={`bg-white rounded-xl border-2 overflow-hidden ${feriado?'border-red-200':isHoje?'border-brand-300':isPast?'border-gray-100':'border-gray-200'}`}>
+                    <div className={`px-4 py-2.5 flex items-center justify-between ${feriado?'bg-red-50':isHoje?'bg-brand-50':isPast?'bg-gray-50/50':'bg-gray-50'}`}>
                       <div className="flex items-center gap-2">
-                        <span className={`font-semibold text-sm ${isHoje?'text-brand-700':isPast?'text-gray-400':'text-gray-700'}`}>{dia}</span>
-                        <span className={`text-xs ${isHoje?'text-brand-500':isPast?'text-gray-400':'text-gray-500'}`}>{label}</span>
+                        <span className={`font-semibold text-sm ${feriado?'text-red-700':isHoje?'text-brand-700':isPast?'text-gray-400':'text-gray-700'}`}>{dia}</span>
+                        <span className={`text-xs ${feriado?'text-red-500':isHoje?'text-brand-500':isPast?'text-gray-400':'text-gray-500'}`}>{label}</span>
                         {isHoje && <span className="text-xs bg-brand-500 text-white px-1.5 py-0.5 rounded-full font-medium">Hoje</span>}
                         {exps.length>0 && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full font-medium">{exps.length} exp.</span>}
                       </div>
-                      {total>0
+                      {feriado
+                        ? <span className="text-xs text-red-500 font-medium">{feriado.tipo==='feriado'?'Feriado':'Recesso/Férias'}</span>
+                        : total>0
                         ? <span className="text-xs text-gray-400">{total} aula{total!==1?'s':''}</span>
                         : <span className="text-xs text-gray-300">Sem aulas</span>}
                     </div>
-                    {(auls.length>0||exps.length>0) && (
+                    {feriado ? (
+                      <div className="px-4 py-3 text-sm text-red-600 bg-red-50/60">
+                        {feriado.titulo} — não há aula neste dia{auls.length>0?` (${auls.length} aula${auls.length!==1?'s':''} da grade cancelada${auls.length!==1?'s':''})`:''}.
+                      </div>
+                    ) : (auls.length>0||exps.length>0) && (
                       <div className="divide-y divide-gray-100">
                         {auls.map(h=>{
                           const isNovo = alunosNovos.has(h.aluno_nome)

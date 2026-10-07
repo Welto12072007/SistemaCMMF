@@ -703,6 +703,11 @@ def main() -> None:
             log.info(f"limpar_agendamentos_orfaos: {r}")
         except Exception as e:
             log.error(f"limpar_agendamentos_orfaos: {e}")
+        try:
+            r = rpc("cancelar_agendamentos_feriado")
+            log.info(f"cancelar_agendamentos_feriado: {r}")
+        except Exception as e:
+            log.error(f"cancelar_agendamentos_feriado: {e}")
             erros.append(f"limpar_agendamentos_orfaos: {e}")
 
     # Dia 1, 1h BRT — expirar reposições

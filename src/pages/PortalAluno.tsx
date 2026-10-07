@@ -198,7 +198,7 @@ export default function PortalAluno() {
       .select('*, professor:professores(nome)')
       .eq('aluno_id', alunoRes.id)
       .gte('data_aula', new Date().toISOString().slice(0, 10))
-      .neq('status', 'cancelado')
+      .or('status.neq.cancelado,observacoes.ilike.%feriado/recesso%')
       .order('data_aula', { ascending: true })
 
     if (data) {
@@ -669,11 +669,12 @@ export default function PortalAluno() {
             const agora = new Date()
             const podRemarcar = podeRemarcar && dataAula.getTime() - agora.getTime() > 24 * 60 * 60 * 1000
             const diasAte = Math.ceil((dataAula.getTime() - agora.getTime()) / (1000 * 60 * 60 * 24))
+            const canceladaFeriado = aula.status === 'cancelado'
 
             return (
               <div
                 key={aula.id}
-                className="bg-white rounded-xl shadow-sm border p-5 hover:shadow-md transition-shadow"
+                className={`bg-white rounded-xl shadow-sm border p-5 transition-shadow ${canceladaFeriado ? 'opacity-70 border-red-200' : 'hover:shadow-md'}`}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
@@ -695,9 +696,15 @@ export default function PortalAluno() {
                       </p>
                     </div>
                   </div>
-                  <span className="text-xs font-medium text-green-700 bg-green-50 px-2.5 py-1 rounded-full">
-                    {diasAte} dias
-                  </span>
+                  {canceladaFeriado ? (
+                    <span className="text-xs font-medium text-red-700 bg-red-50 px-2.5 py-1 rounded-full">
+                      Sem aula
+                    </span>
+                  ) : (
+                    <span className="text-xs font-medium text-green-700 bg-green-50 px-2.5 py-1 rounded-full">
+                      {diasAte} dias
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
@@ -711,11 +718,13 @@ export default function PortalAluno() {
                 </div>
 
                 {aula.observacoes && (
-                  <p className="text-xs text-gray-500 mb-3 italic">{aula.observacoes}</p>
+                  <p className={`text-xs mb-3 italic ${canceladaFeriado ? 'text-red-500' : 'text-gray-500'}`}>
+                    {canceladaFeriado ? 'Feriado/Recesso — não há aula nesta data.' : aula.observacoes}
+                  </p>
                 )}
 
                 {/* Remarcar */}
-                {remarcandoId === aula.id ? (
+                {canceladaFeriado ? null : remarcandoId === aula.id ? (
                   <RescheduleModal
                     aula={aula}
                     horariosDisponiveis={horariosDisponiveis}
