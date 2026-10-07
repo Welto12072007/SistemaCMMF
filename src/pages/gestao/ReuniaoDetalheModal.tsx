@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarClock, Check, Loader2, Play, Plus, Square, X, XCircle } from 'lucide-react'
+import { CalendarClock, Check, Loader2, Play, Plus, Square, Trash2, X, XCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -87,6 +87,17 @@ export default function ReuniaoDetalheModal({ reuniaoId, ctx, onClose, onMudou }
     await chamarRpc('gestao_cancelar_reuniao', { p_reuniao_id: reuniaoId, p_motivo: motivo }, 'Reunião cancelada.')
   }
 
+  async function excluir() {
+    if (!confirm('Excluir esta reunião definitivamente? Pautas, presenças e o honorário gerado (se ainda não pago) serão apagados.')) return
+    setProcessando(true)
+    const { data, error } = await supabase.from('gestao_reunioes').delete().eq('id', reuniaoId).select('id')
+    setProcessando(false)
+    if (error) { alert('Erro:\n' + error.message); return }
+    if (!data?.length) { alert('Não foi possível excluir a reunião.'); return }
+    onMudou('Reunião excluída.')
+    onClose()
+  }
+
   async function iniciar() {
     await chamarRpc('gestao_iniciar_reuniao', { p_reuniao_id: reuniaoId }, 'Reunião iniciada — condução liberada.')
   }
@@ -132,7 +143,12 @@ export default function ReuniaoDetalheModal({ reuniaoId, ctx, onClose, onMudou }
               {organizador && <> · organiza {organizador.nome}</>}
             </p>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg" aria-label="Fechar"><X className="w-5 h-5" /></button>
+          <div className="flex items-center gap-1">
+            {ehAdmin && (
+              <button disabled={processando} onClick={excluir} className="p-1 hover:bg-red-50 text-red-600 rounded-lg disabled:opacity-50" aria-label="Excluir reunião" title="Excluir reunião"><Trash2 className="w-5 h-5" /></button>
+            )}
+            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg" aria-label="Fechar"><X className="w-5 h-5" /></button>
+          </div>
         </div>
 
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-2 ${statusCfg.classe}`}>{statusCfg.label}</span>
