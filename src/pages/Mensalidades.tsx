@@ -88,26 +88,6 @@ function motivoSemCobranca(r: SemCobrancaRow): { texto: string; bloqueia: boolea
   return { texto: 'Assinatura sem cobrança deste mês (inativa ou não gerada) — verificar no Asaas ou gerar cobrança aqui.', bloqueia: false }
 }
 
-function perguntarClienteUrl(r: SemCobrancaRow): string {
-  const a = r.alunos
-  const respFin = a.responsavel_financeiro === 'pai_mae'
-  const cpf = String((respFin ? a.cpf_responsavel || a.cpf : a.cpf) ?? '').replace(/\D/g, '')
-  const primeiro = (respFin && a.nome_responsavel ? a.nome_responsavel : a.nome).split(' ')[0]
-  const mes = r.referencia.substring(0, 7).split('-').reverse().join('/')
-  const abertura = `Olá, ${primeiro}! Aqui é do Centro de Música Murilo Finger. 😊\n\nPara liberar o link de pagamento da mensalidade de ${mes}${respFin ? ` de ${a.nome.split(' ')[0]}` : ''}, `
-  let pedido: string
-  if (cpf.length !== 11) {
-    pedido = `precisamos do CPF ${respFin ? 'do responsável financeiro' : 'do aluno'}. Pode nos enviar, por favor?`
-  } else if (a.data_nascimento && a.data_nascimento > new Date().toISOString().slice(0, 10)) {
-    pedido = 'pode confirmar a data de nascimento do aluno? Nosso cadastro está com um valor incorreto.'
-  } else {
-    pedido = 'pode confirmar seu CPF e e-mail, e se prefere pagar por PIX ou cartão de crédito?'
-  }
-  const fone = (a.telefone ?? '').replace(/\D/g, '')
-  const numero = fone.startsWith('55') ? fone : `55${fone}`
-  return `https://wa.me/${numero}?text=${encodeURIComponent(abertura + pedido)}`
-}
-
 function mesAtualISO() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -722,19 +702,11 @@ export default function Mensalidades() {
                       <td className="px-4 py-3 font-medium">{brl(r.valor - (r.desconto || 0))}</td>
                       <td className={`px-4 py-3 text-xs ${motivo.bloqueia ? 'text-red-700' : 'text-gray-600'}`}>{motivo.texto}</td>
                       <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          {r.alunos.telefone && r.alunos.status !== 'inativo' && (
-                            <button
-                              onClick={() => window.open(perguntarClienteUrl(r), '_blank', 'noopener')}
-                              className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200"
-                            ><MessageSquare className="w-3 h-3" /> Perguntar ao cliente</button>
-                          )}
-                          <button
-                            onClick={() => setBillingModal({ ...r, aluno_nome: r.alunos.nome } as unknown as Mensalidade)}
-                            disabled={motivo.bloqueia || paymentLoading === r.id}
-                            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200 disabled:opacity-40"
-                          ><Zap className="w-3 h-3" /> Gerar cobrança</button>
-                        </div>
+                        <button
+                          onClick={() => setBillingModal({ ...r, aluno_nome: r.alunos.nome } as unknown as Mensalidade)}
+                          disabled={motivo.bloqueia || paymentLoading === r.id}
+                          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200 disabled:opacity-40 ml-auto"
+                        ><Zap className="w-3 h-3" /> Gerar cobrança</button>
                       </td>
                     </tr>
                   )
