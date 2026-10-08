@@ -411,47 +411,49 @@ MESES_PT_LONGO = [
 
 
 def reconciliar_assinaturas_asaas() -> None:
-    """Liga a cobrança que o Asaas já gerou sozinho (assinatura recorrente) à
-    mensalidade do mês, sem depender só do webhook (que pode chegar antes da
-    mensalidade existir e nunca mais ser reprocessado). Roda todo dia — não
-    cria cobrança nenhuma, só liga o que já existe no Asaas à linha certa."""
+    """Liga a cobrança que o Asaas já gerou (assinatura recorrente) a toda
+    mensalidade pendente/atrasada sem link, de qualquer mês. Não cria cobrança,
+    só liga o que já existe — cobre webhook perdido ou mensalidade criada depois."""
     if not ASAAS_KEY:
         log.info("Reconciliação assinaturas: ASAAS_API_KEY não configurada, pulando")
         return
-    hoje = now_brt()
-    referencia = hoje.strftime("%Y-%m-01")
-    mes_prefixo = hoje.strftime("%Y-%m")
 
     sem_charge = sb_get("mensalidades", {
-        "referencia": f"eq.{referencia}",
         "status": "in.(pendente,atrasado)",
         "asaas_charge_id": "is.null",
-        "select": "id,aluno_id",
+        "select": "id,aluno_id,referencia,data_vencimento",
+        "limit": "1000",
     })
-    if not sem_charge:
-        return
     aluno_ids = list({m["aluno_id"] for m in sem_charge if m.get("aluno_id")})
     if not aluno_ids:
         return
     alunos = sb_get("alunos", {
         "id": f"in.({','.join(aluno_ids)})",
-        "asaas_subscription_id": "not.is.null",
-        "select": "id,asaas_subscription_id",
+        "select": "id,asaas_subscription_id,asaas_customer_id",
+        "limit": "1000",
     })
-    sub_por_aluno = {a["id"]: a["asaas_subscription_id"] for a in alunos}
+    por_aluno = {a["id"]: a for a in alunos}
+    cache: dict[str, list] = {}
     linkados = 0
     for m in sem_charge:
-        sub_id = sub_por_aluno.get(m["aluno_id"])
-        if not sub_id:
+        a = por_aluno.get(m["aluno_id"]) or {}
+        if a.get("asaas_subscription_id"):
+            chave, params = f"s:{a['asaas_subscription_id']}", {"subscription": a["asaas_subscription_id"], "limit": 50}
+        elif a.get("asaas_customer_id"):
+            chave, params = f"c:{a['asaas_customer_id']}", {"customer": a["asaas_customer_id"], "limit": 50}
+        else:
             continue
-        try:
-            r = requests.get(f"{ASAAS_BASE}/payments", params={"subscription": sub_id, "limit": 10},
-                              headers={"access_token": ASAAS_KEY}, timeout=15)
-            pays = r.json().get("data", [])
-        except Exception as e:
-            log.error(f"Reconciliação assinatura {sub_id}: {e}")
-            continue
-        pay = next((p for p in pays if p.get("dueDate", "").startswith(mes_prefixo)), None)
+        if chave not in cache:
+            try:
+                r = requests.get(f"{ASAAS_BASE}/payments", params=params,
+                                  headers={"access_token": ASAAS_KEY}, timeout=15)
+                cache[chave] = r.json().get("data", [])
+            except Exception as e:
+                log.error(f"Reconciliação {chave}: {e}")
+                cache[chave] = []
+        mes = (m.get("data_vencimento") or m["referencia"])[:7]
+        pay = next((p for p in cache[chave]
+                    if p.get("dueDate", "").startswith(mes) and p.get("status") in ("PENDING", "OVERDUE")), None)
         if not pay:
             continue
         sb_patch("mensalidades", {"id": f"eq.{m['id']}"}, {
@@ -461,7 +463,7 @@ def reconciliar_assinaturas_asaas() -> None:
         })
         linkados += 1
     if linkados:
-        log.info(f"Reconciliação assinaturas: {linkados} mensalidade(s) ligada(s) à cobrança da assinatura")
+        log.info(f"Reconciliação assinaturas: {linkados} mensalidade(s) ligada(s) à cobrança do Asaas")
 
 
 def efetivar_cancelamentos_matricula() -> None:
