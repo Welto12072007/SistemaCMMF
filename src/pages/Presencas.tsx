@@ -152,14 +152,16 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
     )
     const matriculaPorId = new Map<string, string | null>()
     const matriculaPorNome = new Map<string, string | null>()
+    const alunoPorId = new Map<string, { nome: string; status: string | null }>()
     if (idsReferenciados.length > 0) {
       const { data: alunosRef } = await supabase
         .from('alunos')
-        .select('id, nome, data_matricula')
+        .select('id, nome, status, data_matricula')
         .in('id', idsReferenciados)
       for (const a of (alunosRef || [])) {
         matriculaPorId.set(a.id, a.data_matricula)
         matriculaPorNome.set(normalizarNome(a.nome), a.data_matricula)
+        alunoPorId.set(a.id, { nome: a.nome, status: a.status })
       }
     }
     const antesDaMatricula = (dataMatricula: string | null | undefined) =>
@@ -176,11 +178,19 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
         )
       )
       if (isGrupo) {
-        for (const nome of splitNomesGrupo(h.aluno_nome)) {
-          if (antesDaMatricula(matriculaPorNome.get(normalizarNome(nome)))) continue
+        const idsHorario: string[] = (h as any).aluno_ids || []
+        const vinculados = idsHorario.filter((id) => alunoPorId.has(id))
+        // Grupo com vínculo (aluno_ids): lista vem dos alunos vinculados, não do texto do nome
+        const pares: { nome: string; alunoId?: string }[] = vinculados.length > 0
+          ? vinculados.map((id) => ({ nome: alunoPorId.get(id)!.nome, alunoId: id }))
+          : splitNomesGrupo(h.aluno_nome).map((nome) => ({ nome }))
+        for (const { nome, alunoId } of pares) {
+          if (antesDaMatricula(alunoId ? matriculaPorId.get(alunoId) : matriculaPorNome.get(normalizarNome(nome)))) continue
           const presExistente = (presencasExistentes || []).find(
-            (p: any) => p.horario_id === h.id && p.aluno_nome === nome
+            (p: any) => p.horario_id === h.id && ((alunoId && p.aluno_id === alunoId) || p.aluno_nome === nome)
           )
+          const statusAluno = alunoId ? alunoPorId.get(alunoId)?.status : null
+          if (alunoId && !presExistente && statusAluno && statusAluno !== 'ativo') continue
           lista.push({
             id: h.id + '_' + nome,
             horario_id: h.id,

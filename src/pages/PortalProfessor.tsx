@@ -256,22 +256,27 @@ export default function PortalProfessor() {
     ])
     const idsReferenciados = Array.from(new Set((horarios||[]).flatMap((h:any)=>h.aluno_ids||[])))
     const matriculaPorId = new Map<string,string|null>()
+    const alunoPorId = new Map<string,{nome:string;status:string|null}>()
     if (idsReferenciados.length>0) {
-      const {data:alunosRef} = await supabase.from('alunos').select('id,data_matricula').in('id',idsReferenciados)
-      for (const a of (alunosRef||[])) matriculaPorId.set(a.id,a.data_matricula)
+      const {data:alunosRef} = await supabase.from('alunos').select('id,nome,status,data_matricula').in('id',idsReferenciados)
+      for (const a of (alunosRef||[])) { matriculaPorId.set(a.id,a.data_matricula); alunoPorId.set(a.id,{nome:a.nome,status:a.status}) }
     }
     const lista: AulaItem[] = []
     for (const h of (horarios||[])) {
       if (!h.aluno_nome) continue
       const isGrupo = h.tipo==='grupo'||(!h.tipo&&(h.aluno_nome.includes(',')||h.aluno_nome.includes('\n')||/\w{2,}\s+e\s+\w{2,}/.test(h.aluno_nome)))
-      const nomes = isGrupo ? splitNomesGrupo(h.aluno_nome) : [h.aluno_nome]
-      const idsHorario = (h as any).aluno_ids || []
-      for (let i=0;i<nomes.length;i++) {
-        const nome = nomes[i]
-        const alunoId = isGrupo ? idsHorario[i] : idsHorario[0]
+      const idsHorario: string[] = (h as any).aluno_ids || []
+      // Grupo com vínculo (aluno_ids): a lista vem dos alunos vinculados, não do texto do nome
+      const vinculados = isGrupo ? idsHorario.filter(id=>alunoPorId.has(id)) : []
+      const pares: {nome:string;alunoId?:string}[] = vinculados.length>0
+        ? vinculados.map(id=>({nome:alunoPorId.get(id)!.nome, alunoId:id}))
+        : (isGrupo ? splitNomesGrupo(h.aluno_nome) : [h.aluno_nome]).map((nome,i)=>({nome, alunoId:isGrupo?idsHorario[i]:idsHorario[0]}))
+      for (const {nome,alunoId} of pares) {
         const dataMatricula = alunoId ? matriculaPorId.get(alunoId) : undefined
         if (dataMatricula && dataMatricula > dataAtual) continue
-        const px = (presencasExistentes||[]).find((p:any)=>p.horario_id===h.id&&(isGrupo?p.aluno_nome===nome:true))
+        const px = (presencasExistentes||[]).find((p:any)=>p.horario_id===h.id&&(isGrupo?((alunoId&&p.aluno_id===alunoId)||p.aluno_nome===nome):true))
+        const statusAluno = alunoId ? alunoPorId.get(alunoId)?.status : null
+        if (vinculados.length>0 && !px && statusAluno && statusAluno!=='ativo') continue
         lista.push({ id:isGrupo?h.id+'_'+nome:h.id, horario_id:h.id, aluno_nome:nome, instrumento:h.instrumento||'', hora_inicio:h.hora_inicio||'', hora_fim:h.hora_fim||'', presente:px?px.presente:null, tipo_falta:px?.tipo_falta||'', observacoes:px?.observacoes||'', presenca_id:px?.id, tipo_aula:isGrupo?'grupo':'individual' })
       }
     }

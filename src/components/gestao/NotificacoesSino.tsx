@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Bell, BellRing, Check, CheckCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -9,7 +10,8 @@ const CHAVE_LIDOS = 'sino_itens_lidos'
 
 interface EventoSino { id: string; titulo: string; data_inicio: string; hora_inicio: string | null; tipo: string }
 interface ComunicadoSino { id: string; titulo: string; mensagem: string; criado_em: string }
-interface PagamentoSino { id: string; chave: string; titulo: string; texto: string; atrasado: boolean }
+interface PagamentoSino { id: string; chave: string; titulo: string; texto: string; atrasado: boolean; link: string }
+interface PessoalSino { id: string; titulo: string; mensagem: string | null; link: string | null; lida_em: string | null; created_at: string }
 
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -30,6 +32,8 @@ const ICONE_TIPO: Record<GestaoNotificacao['tipo'], string> = {
 /** Sino: avisos da Gestão (se for membro), próximos eventos da agenda e comunicados recentes. */
 export default function NotificacoesSino() {
   const { perfil, hasRole } = useAuth()
+  const navigate = useNavigate()
+  const [pessoais, setPessoais] = useState<PessoalSino[]>([])
   const [pagamentos, setPagamentos] = useState<PagamentoSino[]>([])
   const [membroId, setMembroId] = useState<string | null>(null)
   const [notificacoes, setNotificacoes] = useState<GestaoNotificacao[]>([])
@@ -86,6 +90,7 @@ export default function NotificacoesSino() {
             titulo: atrasado ? `Mensalidade em atraso (${m.referencia})` : `Mensalidade pendente (${m.referencia})`,
             texto: `${atrasado ? 'Venceu em' : 'Vence em'} ${fmtDia(m.data_vencimento)} · ${valor}`,
             atrasado,
+            link: '/portal-aluno?tab=pagamentos',
           }
         }))
       } else if (hasRole('admin', 'recepcao')) {
@@ -97,12 +102,34 @@ export default function NotificacoesSino() {
             titulo: `${count} mensalidade(s) em atraso`,
             texto: 'Veja em Mensalidades / Cobrança.',
             atrasado: true,
+            link: '/mensalidades',
           }])
         }
       }
     })()
     // hasRole muda a cada render, por isso fica fora das deps
   }, [perfil?.email, perfil?.role])
+
+  // Notificações pessoais (ex.: reposição agendada) — RLS limita ao e-mail do usuário
+  useEffect(() => {
+    if (!perfil?.email) return
+    const email = perfil.email.toLowerCase()
+    void supabase
+      .from('notificacoes_usuario')
+      .select('id, titulo, mensagem, link, lida_em, created_at')
+      .order('created_at', { ascending: false })
+      .limit(20)
+      .then(({ data }) => setPessoais((data ?? []) as PessoalSino[]))
+    const canal = supabase
+      .channel(`notificacoes_usuario_${email}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notificacoes_usuario', filter: `email=eq.${email}` },
+        (payload) => setPessoais((atual) => [payload.new as PessoalSino, ...atual].slice(0, 20)),
+      )
+      .subscribe()
+    return () => { void supabase.removeChannel(canal) }
+  }, [perfil?.email])
 
   // Próximos eventos (14 dias) e comunicados (30 dias) — a RLS já filtra por perfil
   useEffect(() => {
@@ -159,18 +186,34 @@ export default function NotificacoesSino() {
   }, [])
 
   const naoLidasGestao = notificacoes.filter((n) => !n.lida_em)
+  const naoLidasPessoais = pessoais.filter((n) => !n.lida_em)
   const itensNovos = [
     ...pagamentos.map((p) => p.chave),
     ...eventos.map((e) => `ev:${e.id}`),
     ...comunicados.map((c) => `com:${c.id}`),
   ].filter((k) => !lidos.has(k))
-  const naoLidas = { length: naoLidasGestao.length + itensNovos.length }
+  const naoLidas = { length: naoLidasGestao.length + naoLidasPessoais.length + itensNovos.length }
 
   function marcarItem(k: string) {
     if (lidos.has(k)) return
     const prox = new Set(lidos).add(k)
     setLidos(prox)
     localStorage.setItem(CHAVE_LIDOS, JSON.stringify(Array.from(prox)))
+  }
+
+  // Marca como lido e leva à tela do assunto
+  function abrirItem(k: string, link: string) {
+    marcarItem(k)
+    setAberto(false)
+    navigate(link)
+  }
+
+  async function abrirPessoal(n: PessoalSino) {
+    setAberto(false)
+    if (n.link) navigate(n.link)
+    if (n.lida_em) return
+    setPessoais((atual) => atual.map((x) => (x.id === n.id ? { ...x, lida_em: new Date().toISOString() } : x)))
+    await supabase.from('notificacoes_usuario').update({ lida_em: new Date().toISOString() }).eq('id', n.id)
   }
 
   async function ativarPush() {
@@ -200,6 +243,11 @@ export default function NotificacoesSino() {
     const prox = new Set([...lidos, ...pagamentos.map((p) => p.chave), ...eventos.map((e) => `ev:${e.id}`), ...comunicados.map((c) => `com:${c.id}`)])
     setLidos(prox)
     localStorage.setItem(CHAVE_LIDOS, JSON.stringify(Array.from(prox)))
+    const idsPessoais = naoLidasPessoais.map((n) => n.id)
+    if (idsPessoais.length > 0) {
+      setPessoais((atual) => atual.map((x) => (x.lida_em ? x : { ...x, lida_em: new Date().toISOString() })))
+      await supabase.from('notificacoes_usuario').update({ lida_em: new Date().toISOString() }).in('id', idsPessoais)
+    }
     const ids = naoLidasGestao.map((n) => n.id)
     if (ids.length === 0) return
     setNotificacoes((atual) => atual.map((x) => (x.lida_em ? x : { ...x, lida_em: new Date().toISOString() })))
@@ -257,13 +305,26 @@ export default function NotificacoesSino() {
           )}
 
           <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
-            {notificacoes.length === 0 && eventos.length === 0 && comunicados.length === 0 && pagamentos.length === 0 && (
+            {notificacoes.length === 0 && eventos.length === 0 && comunicados.length === 0 && pagamentos.length === 0 && pessoais.length === 0 && (
               <p className="px-4 py-6 text-center text-sm text-gray-400">Nenhuma notificação por aqui.</p>
             )}
+            {pessoais.map((n) => (
+              <div key={n.id} onClick={() => void abrirPessoal(n)} className={`px-4 py-3 text-sm cursor-pointer ${n.lida_em ? 'bg-white' : 'bg-brand-50/60'} hover:bg-gray-50`}>
+                <div className="flex items-start gap-2">
+                  <span className="text-base leading-none mt-0.5">🔔</span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`${n.lida_em ? 'font-medium text-gray-700' : 'font-semibold text-gray-900'} truncate`}>{n.titulo}</p>
+                    {n.mensagem && <p className="text-gray-500 text-xs mt-0.5 whitespace-pre-line">{n.mensagem}</p>}
+                    <p className="text-gray-400 text-[11px] mt-1">{fmtDataHora(n.created_at)}</p>
+                  </div>
+                  {!n.lida_em && <span className="w-2 h-2 rounded-full bg-brand-500 mt-1.5 flex-shrink-0" />}
+                </div>
+              </div>
+            ))}
             {pagamentos.map((p) => {
               const novo = !lidos.has(p.chave)
               return (
-                <div key={p.chave} onClick={() => marcarItem(p.chave)} className={`px-4 py-3 text-sm cursor-pointer ${novo ? 'bg-brand-50/60' : 'bg-white'} hover:bg-gray-50`}>
+                <div key={p.chave} onClick={() => abrirItem(p.chave, p.link)} className={`px-4 py-3 text-sm cursor-pointer ${novo ? 'bg-brand-50/60' : 'bg-white'} hover:bg-gray-50`}>
                   <div className="flex items-start gap-2">
                     <span className="text-base leading-none mt-0.5">{p.atrasado ? '🔴' : '💳'}</span>
                     <div className="flex-1 min-w-0">
@@ -279,7 +340,7 @@ export default function NotificacoesSino() {
               const k = `ev:${e.id}`
               const novo = !lidos.has(k)
               return (
-                <div key={k} onClick={() => marcarItem(k)} className={`px-4 py-3 text-sm cursor-pointer ${novo ? 'bg-brand-50/60' : 'bg-white'} hover:bg-gray-50`}>
+                <div key={k} onClick={() => abrirItem(k, '/agenda')} className={`px-4 py-3 text-sm cursor-pointer ${novo ? 'bg-brand-50/60' : 'bg-white'} hover:bg-gray-50`}>
                   <div className="flex items-start gap-2">
                     <span className="text-base leading-none mt-0.5">🗓️</span>
                     <div className="flex-1 min-w-0">
@@ -298,7 +359,7 @@ export default function NotificacoesSino() {
               const k = `com:${c.id}`
               const novo = !lidos.has(k)
               return (
-                <div key={k} onClick={() => marcarItem(k)} className={`px-4 py-3 text-sm cursor-pointer ${novo ? 'bg-brand-50/60' : 'bg-white'} hover:bg-gray-50`}>
+                <div key={k} onClick={() => abrirItem(k, '/gestao/comunicados')} className={`px-4 py-3 text-sm cursor-pointer ${novo ? 'bg-brand-50/60' : 'bg-white'} hover:bg-gray-50`}>
                   <div className="flex items-start gap-2">
                     <span className="text-base leading-none mt-0.5">📢</span>
                     <div className="flex-1 min-w-0">
@@ -314,7 +375,7 @@ export default function NotificacoesSino() {
             {notificacoes.map((n) => (
               <div
                 key={n.id}
-                onClick={() => marcarLida(n)}
+                onClick={() => { void marcarLida(n); setAberto(false); navigate('/gestao/reunioes') }}
                 className={`px-4 py-3 text-sm cursor-pointer ${n.lida_em ? 'bg-white' : 'bg-brand-50/60'} hover:bg-gray-50`}
               >
                 <div className="flex items-start gap-2">
