@@ -33,6 +33,10 @@ interface ReposicaoPendente {
   id: string; aluno_nome: string; instrumento: string | null
   data_reposicao: string; hora_reposicao: string
 }
+interface ReposicaoProf {
+  id: string; aluno_nome: string; instrumento: string | null; status: string
+  data_falta: string | null; data_reposicao: string | null; hora_reposicao: string | null
+}
 
 const DIAS_SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
 const DIAS_ORDEM = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
@@ -149,6 +153,8 @@ export default function PortalProfessor() {
   // reposições aguardando confirmação
   const [reposicoesPendentes, setReposicoesPendentes] = useState<ReposicaoPendente[]>([])
   const [confirmandoRepId, setConfirmandoRepId] = useState<string|null>(null)
+  const [reposicoesProf, setReposicoesProf] = useState<ReposicaoProf[]>([])
+  const [propondoRep, setPropondoRep] = useState<{id:string;data:string;hora:string}|null>(null)
 
   async function loadReposicoesPendentes() {
     if (!professor_id) return
@@ -159,6 +165,33 @@ export default function PortalProfessor() {
       .eq('status', 'aguardando_confirmacao')
       .order('data_reposicao')
     setReposicoesPendentes((data || []) as ReposicaoPendente[])
+    const { data: minhas } = await supabase
+      .from('reposicoes')
+      .select('id, aluno_nome, instrumento, status, data_falta, data_reposicao, hora_reposicao')
+      .eq('professor_id', professor_id)
+      .in('status', ['pendente', 'agendada'])
+      .order('data_reposicao', { ascending: true, nullsFirst: false })
+    setReposicoesProf((minhas || []) as ReposicaoProf[])
+  }
+
+  async function proporReposicao() {
+    if (!propondoRep || !propondoRep.data || !propondoRep.hora) return
+    const { data, error } = await supabase.rpc('reposicao_professor_propor', {
+      p_reposicao_id: propondoRep.id, p_data: propondoRep.data, p_hora: propondoRep.hora,
+    })
+    if (error) { alert('Erro: ' + error.message); return }
+    const r = data as { ok: boolean; mensagem: string }
+    if (!r?.ok) { alert(r?.mensagem || 'Não foi possível agendar.'); return }
+    setPropondoRep(null)
+    loadReposicoesPendentes()
+  }
+
+  async function realizarReposicao(id: string) {
+    const { data, error } = await supabase.rpc('reposicao_professor_realizar', { p_reposicao_id: id })
+    if (error) { alert('Erro: ' + error.message); return }
+    const r = data as { ok: boolean; mensagem: string }
+    if (!r?.ok) { alert(r?.mensagem || 'Não foi possível registrar.'); return }
+    loadReposicoesPendentes()
   }
 
   useEffect(() => { loadReposicoesPendentes() }, [professor_id])
@@ -642,6 +675,48 @@ export default function PortalProfessor() {
                   <XCircle className="w-3 h-3" /> Recusar
                 </button>
               </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Reposições dos meus alunos: agendadas (inclusive pelo admin) e pendentes (propor horário é opcional) */}
+      {reposicoesProf.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
+            <Repeat className="w-4 h-4" /> Reposições dos meus alunos
+          </h3>
+          <p className="text-xs text-blue-700">Se tiver um horário livre, você pode propor a reposição das pendentes. É opcional: as que ficarem sem horário continuam com a administração.</p>
+          {reposicoesProf.map(rep => (
+            <div key={rep.id} className="bg-white rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{rep.aluno_nome} — {rep.instrumento || 'aula'}</p>
+                  <p className="text-xs text-gray-500">
+                    {rep.status === 'agendada' && rep.data_reposicao
+                      ? `Agendada: ${fmtData(rep.data_reposicao)} às ${(rep.hora_reposicao||'').slice(0,5)}`
+                      : `Pendente — falta de ${rep.data_falta ? fmtData(rep.data_falta) : '—'}`}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  {rep.status === 'agendada' && rep.data_reposicao && rep.data_reposicao <= new Date().toLocaleDateString('en-CA') && (
+                    <button onClick={() => realizarReposicao(rep.id)} className="text-xs px-3 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200 inline-flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Realizada
+                    </button>
+                  )}
+                  <button onClick={() => setPropondoRep({ id: rep.id, data: '', hora: '' })} className="text-xs px-3 py-1.5 rounded bg-blue-100 text-blue-800 hover:bg-blue-200">
+                    {rep.status === 'agendada' ? 'Remarcar' : 'Propor horário'}
+                  </button>
+                </div>
+              </div>
+              {propondoRep?.id === rep.id && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input type="date" min={new Date().toLocaleDateString('en-CA')} value={propondoRep.data} onChange={e => setPropondoRep(p => p && ({ ...p, data: e.target.value }))} className="border border-gray-200 rounded-lg px-2 py-1 text-sm" />
+                  <input type="time" value={propondoRep.hora} onChange={e => setPropondoRep(p => p && ({ ...p, hora: e.target.value }))} className="border border-gray-200 rounded-lg px-2 py-1 text-sm" />
+                  <button onClick={proporReposicao} disabled={!propondoRep.data || !propondoRep.hora} className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white disabled:opacity-50">Agendar</button>
+                  <button onClick={() => setPropondoRep(null)} className="text-xs px-3 py-1.5 rounded border border-gray-200 text-gray-600">Cancelar</button>
+                </div>
+              )}
             </div>
           ))}
         </div>
