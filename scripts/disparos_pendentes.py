@@ -36,6 +36,7 @@ TIPOS_PERMITIDOS = [
     "cobranca_atraso",
     "comunicado_interno",
     "aviso_sem_aula",
+    "aviso_reposicao",
 ]
 
 SB_HEADERS = {
