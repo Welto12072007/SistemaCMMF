@@ -260,7 +260,7 @@ export default function Mensalidades() {
     loadMensalidades()
   }
 
-  async function criarCobrancaAsaas(m: Mensalidade, billing_type: 'CREDIT_CARD' | 'PIX') {
+  async function criarCobrancaAsaas(m: Mensalidade, billing_type: 'CREDIT_CARD' | 'PIX' | 'UNDEFINED') {
     setBillingModal(null)
     setPaymentLoading(m.id)
     const { data, error } = await supabase.functions.invoke('asaas-create-charge', {
@@ -1224,16 +1224,16 @@ function BillingTypeModal({
   nome: string
   loading: boolean
   onClose: () => void
-  onSelect: (type: 'CREDIT_CARD' | 'PIX') => void
+  onSelect: (type: 'CREDIT_CARD' | 'PIX' | 'UNDEFINED') => void
 }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
         <div className="px-5 py-4 border-b">
           <h2 className="text-lg font-semibold">Tipo de cobrança</h2>
           <p className="text-sm text-gray-500">{nome}</p>
         </div>
-        <div className="p-5 grid grid-cols-2 gap-3">
+        <div className="p-5 grid grid-cols-3 gap-3">
           <button
             disabled={loading}
             onClick={() => onSelect('CREDIT_CARD')}
@@ -1250,7 +1250,16 @@ function BillingTypeModal({
             <QrCode className="w-8 h-8 text-green-600" />
             <span className="text-sm font-medium">PIX</span>
           </button>
+          <button
+            disabled={loading}
+            onClick={() => onSelect('UNDEFINED')}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 hover:border-orange-400 hover:bg-orange-50 disabled:opacity-50"
+          >
+            <MessageSquare className="w-8 h-8 text-orange-600" />
+            <span className="text-sm font-medium text-center">Perguntar ao cliente</span>
+          </button>
         </div>
+        <p className="px-5 pb-4 text-xs text-gray-500">"Perguntar ao cliente": o cliente escolhe PIX, cartão ou boleto ao abrir o link.</p>
         <div className="px-5 py-3 border-t flex justify-end">
           <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">Cancelar</button>
         </div>
