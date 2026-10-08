@@ -1157,7 +1157,7 @@ function BillingTypeModal({
 }
 
 function AvulsaModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ nome: '', telefone: '', email: '', valor: '', vencimento: new Date().toISOString().slice(0,10), billing_type: 'UNDEFINED' as 'PIX' | 'CREDIT_CARD' | 'UNDEFINED', descricao: '' })
+  const [form, setForm] = useState({ nome: '', telefone: '', email: '', valor: '', vencimento: new Date().toISOString().slice(0,10), billing_type: 'UNDEFINED' as 'PIX' | 'CREDIT_CARD' | 'UNDEFINED', descricao: '', cpf: '' })
   const [alunoId, setAlunoId] = useState<string | null>(null)
   const [sugestoes, setSugestoes] = useState<{ id: string; nome: string; telefone: string | null; email: string | null }[]>([])
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false)
@@ -1195,10 +1195,15 @@ function AvulsaModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
     if (!form.nome || !form.telefone || !form.valor) { alert('Preencha nome, telefone e valor'); return }
     setLoading(true)
     const { data, error } = await supabase.functions.invoke('asaas-create-charge', {
-      body: { avulsa: true, aluno_id: alunoId ?? undefined, nome: form.nome, telefone: form.telefone, email: form.email || undefined, valor: parseFloat(form.valor), vencimento: form.vencimento, billing_type: form.billing_type, descricao: form.descricao || undefined },
+      body: { avulsa: true, aluno_id: alunoId ?? undefined, nome: form.nome, telefone: form.telefone, email: form.email || undefined, cpf: form.cpf || undefined, valor: parseFloat(form.valor), vencimento: form.vencimento, billing_type: form.billing_type, descricao: form.descricao || undefined },
     })
     setLoading(false)
-    if (error || !data?.ok) { alert(`Erro: ${error?.message ?? data?.error}`); return }
+    if (error || !data?.ok) {
+      let msg = data?.error ?? error?.message
+      try { const body = await (error as any)?.context?.json?.(); if (body?.error) msg = body.error } catch { /* ignora */ }
+      alert(`Erro: ${msg}`)
+      return
+    }
     setResult({ payment_url: data.payment_url, pix_copy_paste: data.pix_copy_paste, vinculada: !!data.mensalidade_id })
     if (data.mensalidade_id) onSaved()
   }
@@ -1274,6 +1279,7 @@ function AvulsaModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
               </div>
             </Field>
             <Field label="Telefone"><input value={form.telefone} onChange={e => setForm({...form, telefone: e.target.value})} className="w-full px-3 py-2 border rounded" placeholder="51999999999" /></Field>
+            <Field label="CPF/CNPJ (obrigatório se o cliente ainda não tiver no Asaas)"><input value={form.cpf} onChange={e => setForm({...form, cpf: e.target.value})} className="w-full px-3 py-2 border rounded" placeholder="000.000.000-00" /></Field>
             <Field label="E-mail (opcional)"><input value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full px-3 py-2 border rounded" placeholder="email@exemplo.com" /></Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Valor (R$)"><input type="number" step="0.01" value={form.valor} onChange={e => setForm({...form, valor: e.target.value})} className="w-full px-3 py-2 border rounded" /></Field>

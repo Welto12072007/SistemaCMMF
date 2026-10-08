@@ -98,6 +98,7 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════════════════════════════
     if (body.avulsa) {
       const { aluno_id, nome, telefone, email = '', valor, vencimento, descricao = 'Cobrança CMMF' } = body
+      const cpfInformado: string = String(body.cpf ?? '').replace(/\D/g, '')
       if (!nome || !valor || !vencimento) throw new Error('nome, valor e vencimento são obrigatórios')
 
       // Se veio de um aluno selecionado no autocomplete, reutiliza o mesmo customer
@@ -112,14 +113,23 @@ Deno.serve(async (req) => {
           .eq('id', aluno_id)
           .single()
         extRef = aluno_id
+        const cpfFinal = (aluno?.cpf ?? '').replace(/\D/g, '') || cpfInformado || undefined
         customerId = aluno?.asaas_customer_id
-          ?? await getOrCreateCustomer(nome, telefone ?? '', email, extRef, aluno?.cpf ?? undefined)
+          ?? await getOrCreateCustomer(nome, telefone ?? '', email, extRef, cpfFinal)
         if (aluno && !aluno.asaas_customer_id) {
           await supabase.from('alunos').update({ asaas_customer_id: customerId }).eq('id', aluno_id)
         }
+        if (cpfInformado) {
+          await fetch(`${ASAAS_BASE}/customers/${customerId}`, {
+            method: 'PUT',
+            headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cpfCnpj: cpfInformado }),
+          })
+          if (aluno && !aluno.cpf) await supabase.from('alunos').update({ cpf: cpfInformado }).eq('id', aluno_id)
+        }
       } else {
         extRef = `avulsa_${telefone.replace(/\D/g, '')}_${Date.now()}`
-        customerId = await getOrCreateCustomer(nome, telefone ?? '', email, extRef)
+        customerId = await getOrCreateCustomer(nome, telefone ?? '', email, extRef, cpfInformado || undefined)
       }
 
       const chargeResp = await fetch(`${ASAAS_BASE}/payments`, {
