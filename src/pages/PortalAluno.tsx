@@ -132,6 +132,38 @@ export default function PortalAluno() {
     if (searchParams.get('tab') === 'pagamentos') setAba('pagamentos')
   }, [searchParams])
 
+  const [gerandoPagto, setGerandoPagto] = useState<string | null>(null)
+
+  async function pagarMensalidade(m: Mensalidade) {
+    if (m.asaas_payment_url) {
+      window.open(m.asaas_payment_url, '_blank', 'noopener')
+      return
+    }
+    setGerandoPagto(m.id)
+    const win = window.open('', '_blank')
+    const { data, error } = await supabase.functions.invoke('asaas-create-charge', {
+      body: { mensalidade_id: m.id, billing_type: 'UNDEFINED', reuse_existing: true },
+    })
+    setGerandoPagto(null)
+    if (error || !data?.ok || !data?.payment_url) {
+      win?.close()
+      alert(data?.sem_cpf
+        ? 'Não foi possível gerar o link: seu cadastro está sem CPF. Fale com a secretaria.'
+        : 'Não foi possível gerar o link de pagamento agora. Tente novamente ou fale com a secretaria.')
+      return
+    }
+    if (win) win.location.href = data.payment_url
+    loadMensalidades()
+  }
+
+  useEffect(() => {
+    if (aba !== 'pagamentos') return
+    const refresh = () => { if (document.visibilityState === 'visible') loadMensalidades() }
+    const timer = setInterval(refresh, 20000)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh) }
+  }, [aba, perfil?.email])
+
   useEffect(() => {
     loadAulas()
     loadUltimaRemarcacao()
@@ -539,15 +571,14 @@ export default function PortalAluno() {
                         {m.status === 'pago' && <CheckCircle className="w-3 h-3" />}
                         {MENS_STATUS_LABEL[m.status] || m.status}
                       </span>
-                      {m.status !== 'pago' && m.status !== 'cancelado' && m.asaas_payment_url && (
-                        <a
-                          href={m.asaas_payment_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs px-3 py-1.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 flex items-center gap-1"
+                      {(m.status === 'pendente' || m.status === 'atrasado') && (
+                        <button
+                          onClick={() => pagarMensalidade(m)}
+                          disabled={gerandoPagto === m.id}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-60 flex items-center gap-1"
                         >
-                          Pagar <ExternalLink className="w-3 h-3" />
-                        </a>
+                          {gerandoPagto === m.id ? 'Gerando...' : 'Pagar'} <ExternalLink className="w-3 h-3" />
+                        </button>
                       )}
                     </div>
                   </div>
