@@ -242,7 +242,7 @@ Deno.serve(async (req) => {
       .select(`
         id, aluno_id, valor, desconto, data_vencimento, referencia, tipo, items,
         asaas_charge_id, asaas_payment_url, asaas_pix_copy_paste,
-        alunos!inner(id, nome, telefone, email, cpf, asaas_customer_id)
+        alunos!inner(id, nome, telefone, email, cpf, cpf_responsavel, responsavel_financeiro, asaas_customer_id)
       `)
       .eq('id', mensalidade_id)
       .single()
@@ -261,7 +261,7 @@ Deno.serve(async (req) => {
 
     const aluno = (mensa as any).alunos
     let asaas_customer_id: string = aluno.asaas_customer_id ?? ''
-    const cpf = (aluno.cpf ?? '').replace(/\D/g, '')
+    const cpf = String((aluno.responsavel_financeiro === 'pai_mae' ? aluno.cpf_responsavel || aluno.cpf : aluno.cpf) ?? '').replace(/\D/g, '')
 
     if (!asaas_customer_id) {
       if (!cpf) {
@@ -277,6 +277,26 @@ Deno.serve(async (req) => {
         headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({ cpfCnpj: cpf }),
       })
+    }
+
+    // Reaproveita cobrança já gerada no Asaas (ex.: assinatura) em vez de criar duplicada
+    if (body.reuse_existing) {
+      const mes = String(mensa.data_vencimento).substring(0, 7)
+      const listResp = await fetch(
+        `${ASAAS_BASE}/payments?customer=${asaas_customer_id}&dueDate%5Bge%5D=${mes}-01&dueDate%5Ble%5D=${mes}-31&limit=20`,
+        { headers: { access_token: ASAAS_KEY } },
+      )
+      const list = listResp.ok ? (await listResp.json())?.data ?? [] : []
+      const aberta = list.find((p: any) => p.status === 'PENDING' || p.status === 'OVERDUE')
+      if (aberta) {
+        await supabase.from('mensalidades').update({
+          asaas_charge_id: aberta.id,
+          asaas_payment_url: aberta.invoiceUrl ?? null,
+          asaas_billing_type: aberta.billingType ?? null,
+          asaas_created_at: new Date().toISOString(),
+        }).eq('id', mensalidade_id)
+        return jsonResp({ ok: true, existing: true, charge_id: aberta.id, payment_url: aberta.invoiceUrl })
+      }
     }
 
     const valor = Number(mensa.valor) - Number(mensa.desconto ?? 0)
