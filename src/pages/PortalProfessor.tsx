@@ -37,6 +37,8 @@ interface ReposicaoPendente {
 const DIAS_SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
 const DIAS_ORDEM = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+// Padrão da equipe para honorário extra (proporcional à duração)
+const VALOR_HORA_EXTRA = 26.66
 const TIPOS_FALTA = [
   { value: 'falta_injustificada', label: 'Faltou sem avisar' },
   { value: 'falta_justificada', label: 'Faltou com aviso' },
@@ -101,6 +103,7 @@ export default function PortalProfessor() {
   const [mesSel, setMesSel] = useState(new Date().getMonth()+1)
   const [anoSel, setAnoSel] = useState(new Date().getFullYear())
   const [registrosMes, setRegistrosMes] = useState<RegistroMes[]>([])
+  const [reposRealizadasMes, setReposRealizadasMes] = useState(0)
   const [loadingMes, setLoadingMes] = useState(false)
 
   // alterar senha
@@ -335,6 +338,9 @@ export default function PortalProfessor() {
     const {data} = await supabase.from('presencas').select('data,aluno_nome,instrumento,presente,tipo_falta,observacoes')
       .eq('professor_id',professor_id).gte('data',p1).lte('data',p2).order('data',{ascending:false})
     setRegistrosMes((data||[]) as RegistroMes[])
+    const {count} = await supabase.from('reposicoes').select('id',{count:'exact',head:true})
+      .eq('professor_id',professor_id).eq('status','realizada').gte('data_reposicao',p1).lte('data_reposicao',p2)
+    setReposRealizadasMes(count||0)
     setLoadingMes(false)
   }
 
@@ -344,6 +350,13 @@ export default function PortalProfessor() {
       .select('*').eq('professor_id', professor_id).order('criado_em', {ascending:false})
     setPropostas((data||[]) as PropostaExtra[])
   }
+
+  const valorProposta = useMemo(() => {
+    const {hora_inicio:i,hora_fim:f} = formProposta
+    if (!i||!f) return 0
+    const [h1=0,m1=0]=i.split(':').map(Number), [h2=0,m2=0]=f.split(':').map(Number)
+    return Math.max((h2*60+m2)-(h1*60+m1),0)/60*VALOR_HORA_EXTRA
+  }, [formProposta.hora_inicio, formProposta.hora_fim])
 
   async function salvarProposta() {
     if (!professor_id) return
@@ -360,7 +373,6 @@ export default function PortalProfessor() {
       aluno_nome: f.aluno_nome.trim(),
       instrumento: f.instrumento.trim()||null,
       justificativa: f.justificativa.trim(),
-      valor_extra: parseFloat(f.valor_extra)||0,
     })
     setSalvandoProposta(false)
     if (error) { alert('Erro: '+error.message); return }
@@ -482,10 +494,10 @@ export default function PortalProfessor() {
   }),[aulas])
 
   const statsMes = useMemo(()=>{
-    const r=registrosMes.filter(r=>r.presente).length
+    const r=registrosMes.filter(r=>r.presente||r.tipo_falta==='falta_injustificada').length
     const f=registrosMes.filter(r=>!r.presente).length
-    return {aulasRealizadas:r,aulasFaltadas:f,total:registrosMes.length,estimativa:r*valorHoraAula}
-  },[registrosMes,valorHoraAula])
+    return {aulasRealizadas:r,aulasFaltadas:f,total:registrosMes.length,estimativa:(r+reposRealizadasMes)*valorHoraAula}
+  },[registrosMes,valorHoraAula,reposRealizadasMes])
 
   const gradeAgrupadaPorDia = useMemo(()=>{
     const g:Record<string,HorarioGrade[]>={}
@@ -1141,9 +1153,10 @@ export default function PortalProfessor() {
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">Valor extra (R$)</label>
-                  <input type="number" step="0.01" value={formProposta.valor_extra} onChange={e=>setFormProposta(f=>({...f,valor_extra:e.target.value}))}
-                    placeholder="0,00" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/>
+                  <label className="text-xs text-gray-500 block mb-1">Valor (pelas horas)</label>
+                  <div className="w-full border border-gray-100 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700">
+                    {fmtMoeda(valorProposta)}
+                  </div>
                 </div>
               </div>
               <div>

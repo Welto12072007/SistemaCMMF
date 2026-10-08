@@ -287,25 +287,14 @@ export default function Financeiro() {
     // ao aprovar, contabiliza o honorário extra (senão a solicitação some sem virar pagamento)
     if (status === 'aprovada' && proposta) {
       const descricao = `Aula extra — ${proposta.aluno_nome} (${proposta.justificativa})`.slice(0, 200)
-      await Promise.all([
-        // conta no total desta página (Lançamentos)
-        supabase.from('trabalhos_extras').insert({
-          professor_id: proposta.professor_id,
-          descricao,
-          valor: proposta.valor_extra || 0,
-          data: proposta.data_aula,
-          aprovado: true,
-        }),
-        // conta no total da aba Pagamento Prof. (por mês/ano)
-        supabase.from('extras_professor').insert({
-          professor_id: proposta.professor_id,
-          mes: Number(proposta.data_aula.slice(5, 7)),
-          ano: Number(proposta.data_aula.slice(0, 4)),
-          descricao,
-          valor: proposta.valor_extra || 0,
-          aprovado: true,
-        }),
-      ])
+      // extras_professor (aba Pagamento Prof.) é criado pelo trigger trg_proposta_extra_aprovada
+      await supabase.from('trabalhos_extras').insert({
+        professor_id: proposta.professor_id,
+        descricao,
+        valor: proposta.valor_extra || 0,
+        data: proposta.data_aula,
+        aprovado: true,
+      })
     }
     loadPropostasExtras()
     if (status === 'aprovada') loadProfPagamentos()

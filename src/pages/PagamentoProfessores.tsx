@@ -7,6 +7,8 @@ import {
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { valorDoSlot, professorCompareceu } from '@/lib/pagamentoProfessor'
+import ExtratoProfessorModal from '@/components/ExtratoProfessorModal'
 
 // ─── tipos ─────────────────────────────────────────────────────────────────
 
@@ -26,6 +28,7 @@ interface PresencaRaw {
   horario_id: string | null
   hora_inicio: string | null
   presente: boolean
+  tipo_falta: string | null
 }
 
 interface Extra {
@@ -89,12 +92,15 @@ export default function PagamentoProfessores() {
 
   const [professores, setProfessores] = useState<Professor[]>([])
   const [presencasRaw, setPresencasRaw] = useState<PresencaRaw[]>([])
+  const [reposRealizadas, setReposRealizadas] = useState<{ professor_id: string }[]>([])
   const [extras, setExtras] = useState<Extra[]>([])
   const [fechamentos, setFechamentos] = useState<Fechamento[]>([])
 
   // modal extra
   const [modalExtra, setModalExtra] = useState<Professor | null>(null)
   const [formExtra, setFormExtra] = useState({ descricao: '', valor: '' })
+
+  const [modalExtrato, setModalExtrato] = useState<Professor | null>(null)
 
   // modal fechar pagamento
   const [modalFechar, setModalFechar] = useState<Professor | null>(null)
@@ -104,6 +110,7 @@ export default function PagamentoProfessores() {
   // solicitações de honorário extra feitas pelo professor (Portal do Professor)
   const [propostas, setPropostas] = useState<PropostaExtra[]>([])
   const [obsProposta, setObsProposta] = useState<Record<string, string>>({})
+  const [valorProposta, setValorProposta] = useState<Record<string, string>>({})
 
   useEffect(() => { carregar(); carregarPropostas() }, [mes, ano])
 
@@ -120,24 +127,16 @@ export default function PagamentoProfessores() {
 
   async function aprovarProposta(p: PropostaExtra, status: 'aprovada' | 'rejeitada') {
     const obs = obsProposta[p.id]?.trim() || null
-    await supabase.from('propostas_horario_extra').update({ status, observacao_admin: obs }).eq('id', p.id)
-    if (status === 'aprovada') {
-      await supabase.from('extras_professor').insert({
-        professor_id: p.professor_id,
-        mes: Number(p.data_aula.slice(5, 7)),
-        ano: Number(p.data_aula.slice(0, 4)),
-        descricao: `Aula extra — ${p.aluno_nome} (${p.justificativa})`.slice(0, 200),
-        valor: p.valor_extra || 0,
-        aprovado: true,
-      })
-    }
+    const valor = Number((valorProposta[p.id] ?? String(p.valor_extra)).replace(',', '.')) || 0
+    // o trigger trg_proposta_extra_aprovada cria o lançamento em extras_professor usando valor_extra
+    await supabase.from('propostas_horario_extra').update({ status, observacao_admin: obs, valor_extra: valor }).eq('id', p.id)
     carregarPropostas()
     carregar()
   }
 
   async function carregar() {
     setLoading(true)
-    const [{ data: profs }, { data: pres }, { data: ext }, { data: fech }] = await Promise.all([
+    const [{ data: profs }, { data: pres }, { data: ext }, { data: fech }, { data: repos }] = await Promise.all([
       supabase
         .from('professores')
         .select('id,nome,tipo_professor,valor_hora_aula,bonificacao_grupo,chave_pix,pix_tipo')
@@ -147,7 +146,7 @@ export default function PagamentoProfessores() {
       // buscar presenças confirmadas no mês com detalhes para agrupar por slot
       supabase
         .from('presencas')
-        .select('professor_id,data,horario_id,hora_inicio,presente')
+        .select('professor_id,data,horario_id,hora_inicio,presente,tipo_falta')
         .gte('data', `${ano}-${String(mes).padStart(2, '0')}-01`)
         .lte('data', `${ano}-${String(mes).padStart(2, '0')}-${new Date(ano, mes, 0).getDate()}`),
 
@@ -162,12 +161,21 @@ export default function PagamentoProfessores() {
         .select('*')
         .eq('mes', mes)
         .eq('ano', ano),
+
+      // reposição realizada: professor recebe na data da recuperação
+      supabase
+        .from('reposicoes')
+        .select('professor_id')
+        .eq('status', 'realizada')
+        .gte('data_reposicao', `${ano}-${String(mes).padStart(2, '0')}-01`)
+        .lte('data_reposicao', `${ano}-${String(mes).padStart(2, '0')}-${new Date(ano, mes, 0).getDate()}`),
     ])
 
     setProfessores((profs ?? []) as Professor[])
     setExtras((ext ?? []) as Extra[])
     setFechamentos((fech ?? []) as Fechamento[])
     setPresencasRaw((pres ?? []) as PresencaRaw[])
+    setReposRealizadas((repos ?? []) as { professor_id: string }[])
 
     setLoading(false)
   }
@@ -180,7 +188,8 @@ export default function PagamentoProfessores() {
       // Conta o TAMANHO REAL da turma naquele dia (todos os alunos com chamada feita,
       // presentes ou faltantes) — uma falta não pode rebaixar o valor do grupo (ex.:
       // turma de 3 onde 1 faltou continua sendo uma aula de grupo de 3, não de 2).
-      // Só entra no pagamento se pelo menos 1 aluno compareceu (aula realmente aconteceu).
+      // Só entra no pagamento se algum aluno compareceu ou faltou sem avisar (professor esteve lá).
+      // Falta justificada/cancelamento não paga no dia; paga na reposição realizada.
       const presProf = presencasRaw.filter(x => x.professor_id === p.id)
       const slots = new Map<string, { totalAlunos: number; algumPresente: boolean }>()
       presProf.forEach(pr => {
@@ -189,38 +198,24 @@ export default function PagamentoProfessores() {
           : `${pr.data}_${pr.hora_inicio ?? 'x'}`
         const atual = slots.get(key) ?? { totalAlunos: 0, algumPresente: false }
         atual.totalAlunos += 1
-        if (pr.presente) atual.algumPresente = true
+        if (professorCompareceu(pr.presente, pr.tipo_falta)) atual.algumPresente = true
         slots.set(key, atual)
       })
 
-      // Calcular valor por slot baseado no número de alunos da turma
-      const bonif = p.bonificacao_grupo ?? { '2': 20, '3': 25, '4': 30 }
       let valorAulas = 0
       let qtdAulasIndividual = 0
       let qtdAulasGrupo = 0
 
       slots.forEach(({ totalAlunos, algumPresente }) => {
         if (!algumPresente) return // ninguém compareceu nesse slot, não paga
-        if (totalAlunos <= 1) {
-          // Individual: usa valor_hora_aula
-          valorAulas += p.valor_hora_aula
-          qtdAulasIndividual++
-        } else {
-          // Grupo: busca valor na bonificação, ou usa o maior definido
-          const key = String(totalAlunos)
-          let valorSlot: number
-          if (bonif[key] != null) {
-            valorSlot = bonif[key] as number
-          } else {
-            // Se não há valor exato para esse tamanho, usa o maior definido
-            const chaves = Object.keys(bonif).map(Number).filter(n => !isNaN(n)).sort((a, b) => b - a)
-            const maiorKey = chaves.find(k => k <= totalAlunos) ?? chaves[0]
-            valorSlot = maiorKey != null ? (bonif[String(maiorKey)] as number) : p.valor_hora_aula
-          }
-          valorAulas += valorSlot
-          qtdAulasGrupo++
-        }
+        valorAulas += valorDoSlot(p, totalAlunos)
+        if (totalAlunos <= 1) qtdAulasIndividual++
+        else qtdAulasGrupo++
       })
+
+      const qtdRepos = reposRealizadas.filter(r => r.professor_id === p.id).length
+      valorAulas += qtdRepos * p.valor_hora_aula
+      qtdAulasIndividual += qtdRepos
 
       const qtdAulas = qtdAulasIndividual + qtdAulasGrupo
       const extrasProf = extras.filter(e => e.professor_id === p.id && e.aprovado)
@@ -229,7 +224,7 @@ export default function PagamentoProfessores() {
       const fechado = fechamentos.find(f => f.professor_id === p.id)
       return { prof: p, qtdAulas, qtdAulasIndividual, qtdAulasGrupo, valorExtras, valorAulas, total, extrasProf, fechado }
     })
-  }, [professores, presencasRaw, extras, fechamentos])
+  }, [professores, presencasRaw, reposRealizadas, extras, fechamentos])
 
   const totalGeral = linhas.reduce((s, l) => s + l.total, 0)
   const totalPago = linhas.filter(l => l.fechado?.status === 'pago').reduce((s, l) => s + l.total, 0)
@@ -386,6 +381,13 @@ export default function PagamentoProfessores() {
                 <p className="text-xs text-gray-600 italic">{p.justificativa}</p>
                 <div className="flex items-center gap-2">
                   <input
+                    value={valorProposta[p.id] ?? (p.valor_extra > 0 ? String(p.valor_extra) : '')}
+                    onChange={e => setValorProposta(v => ({ ...v, [p.id]: e.target.value }))}
+                    placeholder="Valor R$"
+                    inputMode="decimal"
+                    className="w-24 border border-gray-200 rounded-lg px-2 py-1 text-xs"
+                  />
+                  <input
                     value={obsProposta[p.id] ?? ''}
                     onChange={e => setObsProposta(o => ({ ...o, [p.id]: e.target.value }))}
                     placeholder="Observação (opcional)"
@@ -519,7 +521,13 @@ export default function PagamentoProfessores() {
                       <span title={prof.chave_pix}>{prof.pix_tipo ? `(${prof.pix_tipo}) ` : ''}{prof.chave_pix}</span>
                     ) : '—'}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 space-y-1">
+                    <button
+                      onClick={() => setModalExtrato(prof)}
+                      className="block text-xs text-blue-600 font-medium hover:underline"
+                    >
+                      Extrato
+                    </button>
                     {fechado?.status === 'pago' ? (
                       <button
                         onClick={() => reabrirPagamento(prof.id)}
@@ -549,6 +557,10 @@ export default function PagamentoProfessores() {
           </table>
         </div>
       </div>
+
+      {modalExtrato && (
+        <ExtratoProfessorModal prof={modalExtrato} mes={mes} ano={ano} onClose={() => setModalExtrato(null)} />
+      )}
 
       {/* Modal: adicionar extra */}
       {modalExtra && (
