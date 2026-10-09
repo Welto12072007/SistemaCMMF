@@ -21,6 +21,7 @@ interface AulaItem {
 interface RegistroMes {
   data: string; aluno_nome: string; instrumento: string
   presente: boolean; tipo_falta: string | null; observacoes: string | null
+  horario_id?: string | null; hora_inicio?: string | null
 }
 interface HorarioGrade {
   id: string; dia_semana: string; hora_inicio: string; hora_fim: string
@@ -373,7 +374,7 @@ export default function PortalProfessor() {
     setLoadingMes(true)
     const p1=`${anoSel}-${String(mesSel).padStart(2,'0')}-01`
     const p2=new Date(anoSel,mesSel,0).toISOString().slice(0,10)
-    const {data} = await supabase.from('presencas').select('data,aluno_nome,instrumento,presente,tipo_falta,observacoes')
+    const {data} = await supabase.from('presencas').select('data,aluno_nome,instrumento,presente,tipo_falta,observacoes,horario_id,hora_inicio')
       .eq('professor_id',professor_id).gte('data',p1).lte('data',p2).order('data',{ascending:false})
     setRegistrosMes((data||[]) as RegistroMes[])
     const {count} = await supabase.from('reposicoes').select('id',{count:'exact',head:true})
@@ -532,9 +533,12 @@ export default function PortalProfessor() {
   }),[aulas])
 
   const statsMes = useMemo(()=>{
-    const r=registrosMes.filter(r=>r.presente||r.tipo_falta==='falta_injustificada').length
+    // Turma de grupo no mesmo horário conta como 1 aula (mesma regra do Pagamento Professores)
+    const slots=new Set<string>()
+    registrosMes.forEach(x=>{ if(x.presente||x.tipo_falta==='falta_injustificada') slots.add(x.horario_id?`${x.data}_${x.horario_id}`:`${x.data}_${x.hora_inicio??'x'}`) })
+    const r=slots.size+reposRealizadasMes
     const f=registrosMes.filter(r=>!r.presente).length
-    return {aulasRealizadas:r,aulasFaltadas:f,total:registrosMes.length,estimativa:(r+reposRealizadasMes)*valorHoraAula}
+    return {aulasRealizadas:r,aulasFaltadas:f,total:registrosMes.length,estimativa:r*valorHoraAula}
   },[registrosMes,valorHoraAula,reposRealizadasMes])
 
   const gradeAgrupadaPorDia = useMemo(()=>{
