@@ -49,6 +49,13 @@ export default function DefinirSenha() {
     }
 
     // Fluxo legado (links antigos já enviados antes da V87, via sessão de recovery do Supabase)
+    const { data: sess } = await supabase.auth.getSession()
+    if (!sess.session) {
+      setError('Este link é antigo ou já foi usado. Peça ao administrador para enviar um novo link de acesso.')
+      setLoading(false)
+      return
+    }
+
     const { error } = await supabase.auth.updateUser({ password })
 
     if (error) {
