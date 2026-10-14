@@ -90,6 +90,7 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
   const [obsGrupoTexto, setObsGrupoTexto] = useState('')
   const [feriadoHoje, setFeriadoHoje] = useState<{ titulo: string; tipo: string } | null>(null)
   const [forcarChamada, setForcarChamada] = useState(false)
+  const [professoresAusentes, setProfessoresAusentes] = useState<string[]>([])
 
   useEffect(() => {
     loadProfessores()
@@ -110,6 +111,11 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
       .or(`data_fim.gte.${dataAtual},data_fim.is.null`)
     const encontrado = (data || []).find((e: any) => (e.data_fim || e.data_inicio) >= dataAtual)
     setFeriadoHoje(encontrado ? { titulo: encontrado.titulo, tipo: encontrado.tipo } : null)
+    const { data: aus } = await supabase
+      .from('ausencias_professor')
+      .select('periodo, professor:professores(nome)')
+      .eq('data_ausencia', dataAtual)
+    setProfessoresAusentes((aus || []).map((a: any) => `${a.professor?.nome ?? '—'} (${a.periodo === 'dia' ? 'dia todo' : a.periodo})`))
   }
 
   useEffect(() => {
@@ -668,6 +674,15 @@ export default function Presencas({ embedded = false }: { embedded?: boolean } =
               />
             </div>
           </div>
+
+          {professoresAusentes.length > 0 && (
+            <div className="flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+              <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0" />
+              <span className="text-sm text-orange-700 font-medium">
+                Professor ausente neste dia: {professoresAusentes.join(', ')}. As aulas foram canceladas e estão em Reposições para remarcar.
+              </span>
+            </div>
+          )}
 
           {feriadoHoje && (
             <div className="flex flex-wrap items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">

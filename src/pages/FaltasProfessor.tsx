@@ -68,6 +68,7 @@ interface Reposicao {
   criado_por?: string
   professor_confirmou_at?: string
   created_at?: string
+  por_ausencia_professor?: boolean
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -391,13 +392,15 @@ export default function FaltasProfessor() {
   async function salvarAgendamento() {
     if (!agendandoReposicao || !formAgendar.data_reposicao || !formAgendar.hora_reposicao) return
     setSaving(true)
-    const { error } = await supabase.from('reposicoes').update({
-      data_reposicao: formAgendar.data_reposicao,
-      hora_reposicao: formAgendar.hora_reposicao,
-      status: 'agendada',
-    }).eq('id', agendandoReposicao.id)
+    const { data, error } = await supabase.rpc('reposicao_staff_agendar', {
+      p_reposicao_id: agendandoReposicao.id,
+      p_data: formAgendar.data_reposicao,
+      p_hora: formAgendar.hora_reposicao,
+    })
     setSaving(false)
     if (error) { alert(`Erro ao agendar:\n${error.message}`); return }
+    const r = data as { ok: boolean; mensagem: string }
+    if (!r?.ok) { alert(r?.mensagem || 'Não foi possível agendar.'); return }
     setAgendandoReposicao(null)
     load()
   }
@@ -582,6 +585,39 @@ export default function FaltasProfessor() {
                       {isOpen && (
                         <tr key={`${a.id}-imp`} className="bg-orange-50">
                           <td colSpan={isAdmin ? 6 : 5} className="px-6 py-3">
+                            {(() => {
+                              const reps = reposicoes.filter(r => r.por_ausencia_professor && r.professor_id === a.professor_id && r.data_falta === a.data_ausencia && r.status !== 'cancelada')
+                              if (reps.length === 0) return null
+                              return (
+                                <div className="mb-3">
+                                  <p className="text-xs font-semibold text-orange-700 mb-2">
+                                    Aulas a remarcar ({reps.filter(r => r.status === 'pendente').length} sem nova data):
+                                  </p>
+                                  <div className="space-y-1.5">
+                                    {reps.map(r => (
+                                      <div key={r.id} className="bg-white border border-orange-200 rounded-lg px-3 py-2 flex items-center gap-3 text-sm">
+                                        <span className="font-medium text-gray-900 flex-1">{r.aluno_nome}{r.instrumento ? ` • ${r.instrumento}` : ''}</span>
+                                        {r.data_reposicao ? (
+                                          <span className="text-teal-700 font-medium">{fmtDate(r.data_reposicao)} às {fmtTime(r.hora_reposicao ?? '')}</span>
+                                        ) : (
+                                          <span className="text-yellow-700 text-xs">Aguardando nova data</span>
+                                        )}
+                                        {r.status === 'realizada' ? (
+                                          <span className="text-xs text-green-700">Realizada</span>
+                                        ) : (
+                                          <button
+                                            onClick={() => { setAgendandoReposicao(r); setFormAgendar({ data_reposicao: r.data_reposicao ?? '', hora_reposicao: r.hora_reposicao?.slice(0, 5) ?? '' }) }}
+                                            className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
+                                          >
+                                            <CalendarPlus className="w-3.5 h-3.5" /> {r.data_reposicao ? 'Reagendar' : 'Remarcar'}
+                                          </button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            })()}
                             {impactados.length === 0 ? (
                               <p className="text-sm text-gray-500 italic">Nenhum aluno com aula agendada neste dia da semana.</p>
                             ) : (
@@ -800,6 +836,11 @@ export default function FaltasProfessor() {
                         }`}>
                           {r.status}
                         </span>
+                        {r.por_ausencia_professor && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200">
+                            Ausência do professor
+                          </span>
+                        )}
                         {r.professor_confirmou_at && r.status === 'agendada' && (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
                             ✓ Professor confirmou
@@ -831,12 +872,12 @@ export default function FaltasProfessor() {
                         </button>
                       )}
                       {/* Admin agenda reposição pendente */}
-                      {isAdmin && r.status === 'pendente' && (
+                      {isAdmin && ['pendente', 'agendada', 'aguardando_confirmacao'].includes(r.status) && (
                         <button
-                          onClick={() => { setAgendandoReposicao(r); setFormAgendar({ data_reposicao: '', hora_reposicao: '' }) }}
+                          onClick={() => { setAgendandoReposicao(r); setFormAgendar({ data_reposicao: r.data_reposicao ?? '', hora_reposicao: r.hora_reposicao?.slice(0, 5) ?? '' }) }}
                           className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
                         >
-                          <CalendarPlus className="w-3.5 h-3.5" /> Agendar
+                          <CalendarPlus className="w-3.5 h-3.5" /> {r.data_reposicao ? 'Reagendar' : 'Agendar'}
                         </button>
                       )}
                       {/* Marcar realizada */}

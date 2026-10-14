@@ -41,6 +41,7 @@ interface ReposicaoProf {
 
 const DIAS_SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
 const DIAS_ORDEM = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
+const PERIODO_AUSENCIA: Record<string,string> = { dia:'Dia todo', manha:'Manhã', tarde:'Tarde', noite:'Noite' }
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 // Padrão da equipe para honorário extra (proporcional à duração)
 const VALOR_HORA_EXTRA = 26.66
@@ -125,6 +126,7 @@ export default function PortalProfessor() {
   const [semanaOffset, setSemanaOffset] = useState(0)
   const [experimentaisAgenda, setExperimentaisAgenda] = useState<{id:string;nome:string;instrumento:string;hora_inicio:string;hora_fim:string;data_aula:string;status:string}[]>([])
   const [feriadosSemana, setFeriadosSemana] = useState<Record<string,{titulo:string;tipo:string}>>({})
+  const [ausenciasSemana, setAusenciasSemana] = useState<Record<string,{periodo:string;motivo:string|null}>>({})
 
   // feriado/recesso no dia da chamada (explica por que não tem aula, em vez de sumir)
   const [feriadoChamada, setFeriadoChamada] = useState<{titulo:string;tipo:string}|null>(null)
@@ -239,7 +241,15 @@ export default function PortalProfessor() {
       .lte('data_inicio', dataAtual)
       .or(`data_fim.gte.${dataAtual},data_fim.is.null`)
     const encontrado = (data || []).find((e:any) => (e.data_fim || e.data_inicio) >= dataAtual)
-    setFeriadoChamada(encontrado ? { titulo: encontrado.titulo, tipo: encontrado.tipo } : null)
+    if (encontrado) { setFeriadoChamada({ titulo: encontrado.titulo, tipo: encontrado.tipo }); return }
+    const { data: aus } = await supabase
+      .from('ausencias_professor')
+      .select('periodo, motivo')
+      .eq('professor_id', professor_id)
+      .eq('data_ausencia', dataAtual)
+      .limit(1)
+    const a = aus?.[0]
+    setFeriadoChamada(a ? { titulo: `${PERIODO_AUSENCIA[a.periodo] ?? a.periodo}${a.motivo ? ` (${a.motivo})` : ''}`, tipo: 'ausencia' } : null)
   }
 
   async function loadChamada() {
@@ -478,6 +488,13 @@ export default function PortalProfessor() {
       }
     }
     setFeriadosSemana(mapa)
+    const {data:ausencias} = await supabase
+      .from('ausencias_professor')
+      .select('data_ausencia,periodo,motivo')
+      .eq('professor_id',professor_id).gte('data_ausencia',from).lte('data_ausencia',to)
+    const mapaAus: Record<string,{periodo:string;motivo:string|null}> = {}
+    for (const a of (ausencias||[]) as any[]) mapaAus[a.data_ausencia] = { periodo: a.periodo, motivo: a.motivo }
+    setAusenciasSemana(mapaAus)
   }
 
   async function confirmarExperimental(expId: string, realizada: boolean) {
@@ -752,7 +769,9 @@ export default function PortalProfessor() {
             <div className="flex flex-wrap items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
               <span className="text-sm text-red-700 font-medium">
-                {feriadoChamada.tipo==='feriado'?'Feriado':'Recesso/Férias'}: {feriadoChamada.titulo} — não há aula neste dia, as aulas desta data foram canceladas automaticamente.
+                {feriadoChamada.tipo==='ausencia'
+                  ? `Ausência registrada: ${feriadoChamada.titulo} — as aulas deste período foram canceladas e serão remarcadas pela secretaria.`
+                  : `${feriadoChamada.tipo==='feriado'?'Feriado':'Recesso/Férias'}: ${feriadoChamada.titulo} — não há aula neste dia, as aulas desta data foram canceladas automaticamente.`}
               </span>
               {!forcarChamada && (
                 <button onClick={()=>setForcarChamada(true)} className="ml-auto text-xs font-medium text-red-600 hover:underline shrink-0">
@@ -946,6 +965,7 @@ export default function PortalProfessor() {
                 const isHoje = date===hojeStr
                 const isPast = date<hojeStr
                 const feriado = feriadosSemana[date]
+                const ausencia = ausenciasSemana[date]
                 return (
                   <div key={dia} className={`bg-white rounded-xl border-2 overflow-hidden ${feriado?'border-red-200':isHoje?'border-brand-300':isPast?'border-gray-100':'border-gray-200'}`}>
                     <div className={`px-4 py-2.5 flex items-center justify-between ${feriado?'bg-red-50':isHoje?'bg-brand-50':isPast?'bg-gray-50/50':'bg-gray-50'}`}>
@@ -967,6 +987,11 @@ export default function PortalProfessor() {
                       </div>
                     ) : (auls.length>0||exps.length>0) && (
                       <div className="divide-y divide-gray-100">
+                        {ausencia && (
+                          <div className="px-4 py-2.5 text-sm text-orange-700 bg-orange-50">
+                            Ausência registrada ({PERIODO_AUSENCIA[ausencia.periodo]??ausencia.periodo}){ausencia.motivo?` — ${ausencia.motivo}`:''}. Aulas desse período canceladas; a secretaria vai remarcar com os alunos.
+                          </div>
+                        )}
                         {auls.map(h=>{
                           const isNovo = alunosNovos.has(h.aluno_nome)
                           return (

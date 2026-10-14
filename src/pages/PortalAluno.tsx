@@ -206,7 +206,7 @@ export default function PortalAluno() {
       .select('*, professor:professores(nome)')
       .eq('aluno_id', alunoRes.id)
       .gte('data_aula', new Date().toISOString().slice(0, 10))
-      .or('status.neq.cancelado,observacoes.ilike.%feriado/recesso%')
+      .or('status.neq.cancelado,observacoes.ilike.%feriado/recesso%,observacoes.ilike.%Professor ausente%')
       .order('data_aula', { ascending: true })
 
     if (data) {
@@ -731,7 +731,9 @@ export default function PortalAluno() {
 
                 {aula.observacoes && (
                   <p className={`text-xs mb-3 italic ${canceladaFeriado ? 'text-red-500' : 'text-gray-500'}`}>
-                    {canceladaFeriado ? 'Feriado/Recesso — não há aula nesta data.' : aula.observacoes}
+                    {canceladaFeriado
+                      ? (aula.observacoes.includes('Professor ausente') ? 'Professor ausente nesta data — entraremos em contato para remarcar.' : 'Feriado/Recesso — não há aula nesta data.')
+                      : aula.observacoes}
                   </p>
                 )}
 
