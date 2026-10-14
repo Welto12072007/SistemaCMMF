@@ -218,11 +218,12 @@ export default function PagamentoProfessores() {
       qtdAulasIndividual += qtdRepos
 
       const qtdAulas = qtdAulasIndividual + qtdAulasGrupo
+      const qtdPresencas = presProf.filter(x => x.presente).length
       const extrasProf = extras.filter(e => e.professor_id === p.id && e.aprovado)
       const valorExtras = extrasProf.reduce((s, e) => s + e.valor, 0)
       const total = valorAulas + valorExtras
       const fechado = fechamentos.find(f => f.professor_id === p.id)
-      return { prof: p, qtdAulas, qtdAulasIndividual, qtdAulasGrupo, valorExtras, valorAulas, total, extrasProf, fechado }
+      return { prof: p, qtdPresencas, qtdAulas, qtdAulasIndividual, qtdAulasGrupo, valorExtras, valorAulas, total, extrasProf, fechado }
     })
   }, [professores, presencasRaw, reposRealizadas, extras, fechamentos])
 
@@ -455,6 +456,7 @@ export default function PagamentoProfessores() {
                 <th className="px-4 py-3 font-medium text-right">Aulas</th>
                 <th className="px-4 py-3 font-medium text-right">Individual</th>
                 <th className="px-4 py-3 font-medium text-right">Grupo</th>
+                <th className="px-4 py-3 font-medium text-right" title="Alunos presentes (cada aluno conta 1)">Presenças</th>
                 <th className="px-4 py-3 font-medium text-right">Valor Aulas</th>
                 <th className="px-4 py-3 font-medium text-right">Extras</th>
                 <th className="px-4 py-3 font-medium text-right">Total</th>
@@ -464,7 +466,7 @@ export default function PagamentoProfessores() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {linhas.map(({ prof, qtdAulas, qtdAulasIndividual, qtdAulasGrupo, valorAulas, valorExtras, total, extrasProf, fechado }) => (
+              {linhas.map(({ prof, qtdPresencas, qtdAulas, qtdAulasIndividual, qtdAulasGrupo, valorAulas, valorExtras, total, extrasProf, fechado }) => (
                 <tr key={prof.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-900">{prof.nome}</td>
                   <td className="px-4 py-3 text-center">
@@ -475,6 +477,7 @@ export default function PagamentoProfessores() {
                   <td className="px-4 py-3 text-right font-semibold">{qtdAulas}</td>
                   <td className="px-4 py-3 text-right text-gray-600">{qtdAulasIndividual}</td>
                   <td className="px-4 py-3 text-right text-blue-600 font-medium">{qtdAulasGrupo > 0 ? qtdAulasGrupo : '—'}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{qtdPresencas}</td>
                   <td className="px-4 py-3 text-right">{fmtMoeda(valorAulas)}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">

@@ -578,7 +578,7 @@ export default function PortalProfessor() {
     registrosMes.forEach(x=>{ if(x.presente||x.tipo_falta==='falta_injustificada') slots.add(x.horario_id?`${x.data}_${x.horario_id}`:`${x.data}_${x.hora_inicio??'x'}`) })
     const r=slots.size+reposRealizadasMes
     const f=registrosMes.filter(r=>!r.presente).length
-    return {aulasRealizadas:r,aulasFaltadas:f,total:registrosMes.length,estimativa:r*valorHoraAula}
+    return {aulasRealizadas:r,aulasFaltadas:f,total:registrosMes.length,presencas:registrosMes.filter(x=>x.presente).length,estimativa:r*valorHoraAula}
   },[registrosMes,valorHoraAula,reposRealizadasMes])
 
   const gradeAgrupadaPorDia = useMemo(()=>{
@@ -1178,8 +1178,8 @@ export default function PortalProfessor() {
 
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-              <p className="text-2xl font-bold text-brand-600">{statsMes.total}</p>
-              <p className="text-xs text-gray-500 mt-1">Registros</p>
+              <p className="text-2xl font-bold text-brand-600">{statsMes.presencas}</p>
+              <p className="text-xs text-gray-500 mt-1">Presenças (alunos)</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
               <p className="text-2xl font-bold text-green-600">{statsMes.aulasRealizadas}</p>
