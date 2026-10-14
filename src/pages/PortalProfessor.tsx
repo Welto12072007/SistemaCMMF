@@ -127,6 +127,7 @@ export default function PortalProfessor() {
   const [experimentaisAgenda, setExperimentaisAgenda] = useState<{id:string;nome:string;instrumento:string;hora_inicio:string;hora_fim:string;data_aula:string;status:string}[]>([])
   const [feriadosSemana, setFeriadosSemana] = useState<Record<string,{titulo:string;tipo:string}>>({})
   const [ausenciasSemana, setAusenciasSemana] = useState<Record<string,{periodo:string;motivo:string|null}>>({})
+  const [remarcSemana, setRemarcSemana] = useState<{saem:{data:string;nome:string;hora:string;para:string}[];entram:{data:string;nome:string;hora_inicio:string;instrumento:string}[]}>({saem:[],entram:[]})
 
   // feriado/recesso no dia da chamada (explica por que não tem aula, em vez de sumir)
   const [feriadoChamada, setFeriadoChamada] = useState<{titulo:string;tipo:string}|null>(null)
@@ -506,6 +507,17 @@ export default function PortalProfessor() {
     const mapaAus: Record<string,{periodo:string;motivo:string|null}> = {}
     for (const a of (ausencias||[]) as any[]) mapaAus[a.data_ausencia] = { periodo: a.periodo, motivo: a.motivo }
     setAusenciasSemana(mapaAus)
+
+    const [{data:rSaem},{data:rEntram}] = await Promise.all([
+      supabase.from('remarcacoes').select('data_original,hora_original,data_nova,aluno:alunos(nome),agendamento:agendamentos!inner(professor_id)')
+        .eq('agendamento.professor_id',professor_id).gte('data_original',from).lte('data_original',to),
+      supabase.from('agendamentos').select('data_aula,hora_inicio,instrumento,aluno:alunos(nome)')
+        .eq('professor_id',professor_id).gte('data_aula',from).lte('data_aula',to).neq('status','cancelado').ilike('observacoes','%Remarcado%'),
+    ])
+    setRemarcSemana({
+      saem: ((rSaem||[]) as any[]).filter(r=>r.aluno?.nome).map(r=>({data:r.data_original,nome:r.aluno.nome,hora:r.hora_original||'',para:r.data_nova})),
+      entram: ((rEntram||[]) as any[]).filter(r=>r.aluno?.nome).map(r=>({data:r.data_aula,nome:r.aluno.nome,hora_inicio:r.hora_inicio||'',instrumento:r.instrumento||''})),
+    })
   }
 
   async function confirmarExperimental(expId: string, realizada: boolean) {
@@ -970,9 +982,11 @@ export default function PortalProfessor() {
           ) : (
             <div className="space-y-3">
               {semanaAtual.map(({dia,date,label})=>{
-                const auls = (gradeAgrupadaPorDia[dia]||[])
+                const saem = remarcSemana.saem.filter(r=>r.data===date)
+                const entram = remarcSemana.entram.filter(r=>r.data===date)
+                const auls = (gradeAgrupadaPorDia[dia]||[]).filter(h=>!saem.some(s=>s.nome===h.aluno_nome))
                 const exps = experimentaisAgenda.filter(e=>e.data_aula===date)
-                const total = auls.length + exps.length
+                const total = auls.length + exps.length + entram.length
                 const isHoje = date===hojeStr
                 const isPast = date<hojeStr
                 const feriado = feriadosSemana[date]
@@ -996,7 +1010,7 @@ export default function PortalProfessor() {
                       <div className="px-4 py-3 text-sm text-red-600 bg-red-50/60">
                         {feriado.titulo} — não há aula neste dia{auls.length>0?` (${auls.length} aula${auls.length!==1?'s':''} da grade cancelada${auls.length!==1?'s':''})`:''}.
                       </div>
-                    ) : (auls.length>0||exps.length>0) && (
+                    ) : (auls.length>0||exps.length>0||entram.length>0||saem.length>0) && (
                       <div className="divide-y divide-gray-100">
                         {ausencia && (
                           <div className="px-4 py-2.5 text-sm text-orange-700 bg-orange-50">
@@ -1019,6 +1033,23 @@ export default function PortalProfessor() {
                             </div>
                           )
                         })}
+                        {entram.map((r,i)=>(
+                          <div key={'rem'+i} className={`px-4 py-2.5 flex items-center gap-3 bg-blue-50/40 ${isPast?'opacity-60':''}`}>
+                            <span className="text-sm font-mono text-gray-500 w-11 shrink-0">{fmtHora(r.hora_inicio)}</span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-gray-900 truncate">{r.nome}</p>
+                              {r.instrumento && <p className="text-xs text-gray-400">{r.instrumento}</p>}
+                            </div>
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full shrink-0">Remarcada p/ cá</span>
+                          </div>
+                        ))}
+                        {saem.map((r,i)=>(
+                          <div key={'sai'+i} className="px-4 py-2 flex items-center gap-3 text-xs text-gray-400">
+                            <span className="font-mono w-11 shrink-0">{r.hora?fmtHora(r.hora):''}</span>
+                            <span className="line-through truncate">{r.nome}</span>
+                            <span className="ml-auto shrink-0">remarcou p/ {r.para.slice(8,10)}/{r.para.slice(5,7)}</span>
+                          </div>
+                        ))}
                         {exps.map(exp=>(
                           <div key={exp.id} className={`px-4 py-2.5 flex items-center gap-3 bg-purple-50/40 ${isPast?'opacity-60':''}`}>
                             <span className="text-sm font-mono text-gray-500 w-11 shrink-0">{fmtHora(exp.hora_inicio)}</span>
