@@ -124,7 +124,7 @@ export default function FaltasProfessor() {
   const [ausencias, setAusencias] = useState<Ausencia[]>([])
   const [extras, setExtras] = useState<HorarioExtra[]>([])
   const [horarioGrid, setHorarioGrid] = useState<HorarioGrid[]>([])
-
+  const [experimentais, setExperimentais] = useState<{ id: string; nome: string | null; telefone: string | null; professor_id: string; data_aula: string; hora_inicio: string | null; instrumento: string | null }[]>([])
   // Filtros
   const [filtroProfessor, setFiltroProfessor] = useState('')
   const [filtroMes, setFiltroMes] = useState(() => {
@@ -178,14 +178,18 @@ export default function FaltasProfessor() {
   async function load() {
     setLoading(true)
 
-    const [profRes, ausRes, extRes, gridRes, reposRes] = await Promise.all([
+    const [profRes, ausRes, extRes, gridRes, reposRes, expRes] = await Promise.all([
       supabase.from('professores').select('id, nome, instrumentos, ativo').eq('ativo', true).order('nome'),
       supabase.from('ausencias_professor').select('*').order('data_ausencia', { ascending: false }),
       supabase.from('horarios_extras').select('*').order('data_proposta', { ascending: false }),
       supabase.from('horarios').select('id, professor_id, dia_semana, hora_inicio, aluno_nome, status').eq('status', 'ocupado'),
       supabase.from('reposicoes').select('*').order('created_at', { ascending: false }),
+      supabase.from('aulas_experimentais').select('id, nome, telefone, professor_id, data_aula, hora_inicio, instrumento')
+        .gte('data_aula', new Date().toISOString().slice(0, 10))
+        .not('status', 'in', '(cancelado,cancelada,rejeitado,concluido,pago,remarcada)'),
     ])
 
+    if (expRes.data) setExperimentais(expRes.data)
     if (profRes.data) setProfessores(profRes.data)
     if (gridRes.data) setHorarioGrid(gridRes.data)
 
@@ -572,6 +576,9 @@ export default function FaltasProfessor() {
                             className="flex items-center gap-1 text-sm text-brand-600 hover:text-brand-800"
                           >
                             Ver {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            {experimentais.some(e => e.professor_id === a.professor_id && e.data_aula === a.data_ausencia) && (
+                              <span className="ml-1 text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">exp.</span>
+                            )}
                           </button>
                         </td>
                         {isAdmin && (
@@ -585,6 +592,27 @@ export default function FaltasProfessor() {
                       {isOpen && (
                         <tr key={`${a.id}-imp`} className="bg-orange-50">
                           <td colSpan={isAdmin ? 6 : 5} className="px-6 py-3">
+                            {(() => {
+                              const exps = experimentais.filter(e => e.professor_id === a.professor_id && e.data_aula === a.data_ausencia)
+                              if (exps.length === 0) return null
+                              return (
+                                <div className="mb-3 bg-purple-50 border border-purple-200 rounded-lg p-3">
+                                  <p className="text-xs font-semibold text-purple-700 mb-2">
+                                    Atenção: {exps.length} aula{exps.length > 1 ? 's' : ''} experimental{exps.length > 1 ? 'is' : ''} neste dia. Avise o lead e remarque manualmente:
+                                  </p>
+                                  <div className="space-y-1">
+                                    {exps.map(e => (
+                                      <div key={e.id} className="text-sm text-purple-900 flex flex-wrap gap-x-3">
+                                        <span className="font-medium">{e.nome ?? '—'}</span>
+                                        <span>{fmtTime(e.hora_inicio ?? '')}</span>
+                                        {e.instrumento && <span>{e.instrumento}</span>}
+                                        {e.telefone && <span className="font-mono">{e.telefone}</span>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            })()}
                             {(() => {
                               const reps = reposicoes.filter(r => r.por_ausencia_professor && r.professor_id === a.professor_id && r.data_falta === a.data_ausencia && r.status !== 'cancelada')
                               if (reps.length === 0) return null
