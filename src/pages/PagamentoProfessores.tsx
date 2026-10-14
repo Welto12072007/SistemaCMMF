@@ -165,7 +165,7 @@ export default function PagamentoProfessores() {
       // reposição realizada: professor recebe na data da recuperação
       supabase
         .from('reposicoes')
-        .select('professor_id')
+        .select('professor_id, professor_reposicao_id')
         .eq('status', 'realizada')
         .gte('data_reposicao', `${ano}-${String(mes).padStart(2, '0')}-01`)
         .lte('data_reposicao', `${ano}-${String(mes).padStart(2, '0')}-${new Date(ano, mes, 0).getDate()}`),
@@ -175,7 +175,8 @@ export default function PagamentoProfessores() {
     setExtras((ext ?? []) as Extra[])
     setFechamentos((fech ?? []) as Fechamento[])
     setPresencasRaw((pres ?? []) as PresencaRaw[])
-    setReposRealizadas((repos ?? []) as { professor_id: string }[])
+    setReposRealizadas(((repos ?? []) as { professor_id: string; professor_reposicao_id: string | null }[])
+      .map(r => ({ professor_id: r.professor_reposicao_id ?? r.professor_id })))
 
     setLoading(false)
   }

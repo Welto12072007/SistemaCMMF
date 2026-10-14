@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { splitNomesGrupo } from '@/lib/utils'
+import AutogestaoProfessor from '@/components/AutogestaoProfessor'
 import {
   CheckCircle2, XCircle, Clock, ChevronLeft, ChevronRight,
   BookOpen, DollarSign, CalendarCheck, Loader2, AlertCircle,
@@ -37,6 +38,7 @@ interface ReposicaoPendente {
 interface ReposicaoProf {
   id: string; aluno_nome: string; instrumento: string | null; status: string
   data_falta: string | null; data_reposicao: string | null; hora_reposicao: string | null
+  professor_id?: string | null; professor_reposicao_id?: string | null
 }
 
 const DIAS_SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
@@ -57,7 +59,7 @@ function fmtMoeda(v: number) { return v.toLocaleString('pt-BR',{style:'currency'
 function fmtHora(t: string) { return t?.slice(0,5)??'' }
 function iniciais(nome: string) { return nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase() }
 
-type TabKey = 'chamada'|'agenda'|'alunos'|'mes'
+type TabKey = 'chamada'|'agenda'|'gestao'|'alunos'|'mes'
 
 interface PropostaExtra {
   id: string
@@ -165,14 +167,14 @@ export default function PortalProfessor() {
     const { data } = await supabase
       .from('reposicoes')
       .select('id, aluno_nome, instrumento, data_reposicao, hora_reposicao')
-      .eq('professor_id', professor_id)
+      .or(`professor_reposicao_id.eq.${professor_id},and(professor_reposicao_id.is.null,professor_id.eq.${professor_id})`)
       .eq('status', 'aguardando_confirmacao')
       .order('data_reposicao')
     setReposicoesPendentes((data || []) as ReposicaoPendente[])
     const { data: minhas } = await supabase
       .from('reposicoes')
-      .select('id, aluno_nome, instrumento, status, data_falta, data_reposicao, hora_reposicao')
-      .eq('professor_id', professor_id)
+      .select('id, aluno_nome, instrumento, status, data_falta, data_reposicao, hora_reposicao, professor_id, professor_reposicao_id')
+      .or(`professor_reposicao_id.eq.${professor_id},and(professor_reposicao_id.is.null,professor_id.eq.${professor_id})`)
       .in('status', ['pendente', 'agendada'])
       .order('data_reposicao', { ascending: true, nullsFirst: false })
     setReposicoesProf((minhas || []) as ReposicaoProf[])
@@ -400,7 +402,7 @@ export default function PortalProfessor() {
       .eq('professor_id',professor_id).gte('data',p1).lte('data',p2).order('data',{ascending:false})
     setRegistrosMes((data||[]) as RegistroMes[])
     const {count} = await supabase.from('reposicoes').select('id',{count:'exact',head:true})
-      .eq('professor_id',professor_id).eq('status','realizada').gte('data_reposicao',p1).lte('data_reposicao',p2)
+      .or(`professor_reposicao_id.eq.${professor_id},and(professor_reposicao_id.is.null,professor_id.eq.${professor_id})`).eq('status','realizada').gte('data_reposicao',p1).lte('data_reposicao',p2)
     setReposRealizadasMes(count||0)
     setLoadingMes(false)
   }
@@ -635,6 +637,7 @@ export default function PortalProfessor() {
   const TABS=[
     {key:'chamada' as TabKey, label:'Chamada', icon:<ClipboardCheck className="w-4 h-4"/>},
     {key:'agenda'  as TabKey, label:'Minha Semana', icon:<CalendarRange className="w-4 h-4"/>},
+    {key:'gestao'  as TabKey, label:'Minha Grade', icon:<CalendarDays className="w-4 h-4"/>},
     {key:'alunos'  as TabKey, label:'Meus Alunos', icon:<Users className="w-4 h-4"/>, badge: alunosNovos.size},
     {key:'mes'     as TabKey, label:'Meu Mês', icon:<DollarSign className="w-4 h-4"/>},
   ]
@@ -740,7 +743,11 @@ export default function PortalProfessor() {
             <div key={rep.id} className="bg-white rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{rep.aluno_nome} — {rep.instrumento || 'aula'}</p>
+                  <p className="text-sm font-medium text-gray-900">{rep.aluno_nome} — {rep.instrumento || 'aula'}
+                    {rep.professor_reposicao_id === professor_id && rep.professor_id !== professor_id && (
+                      <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">Substituição</span>
+                    )}
+                  </p>
                   <p className="text-xs text-gray-500">
                     {rep.status === 'agendada' && rep.data_reposicao
                       ? `Agendada: ${fmtData(rep.data_reposicao)} às ${(rep.hora_reposicao||'').slice(0,5)}`
@@ -1072,6 +1079,8 @@ export default function PortalProfessor() {
           )}
         </div>
       )}
+
+      {tab==='gestao' && professor_id && <AutogestaoProfessor professorId={professor_id} />}
 
       {/* ── MEUS ALUNOS ── */}
       {tab==='alunos' && (

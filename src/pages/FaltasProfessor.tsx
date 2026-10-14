@@ -1,6 +1,7 @@
 import { useEffect, useState, Fragment } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import AgendarReposicaoStaffModal from '@/components/AgendarReposicaoStaffModal'
 import {
   UserX, CalendarPlus, Clock, CheckCircle2, XCircle, AlertCircle,
   RefreshCw, Plus, Trash2, ChevronDown, ChevronUp, Check, X, User,
@@ -69,6 +70,8 @@ interface Reposicao {
   professor_confirmou_at?: string
   created_at?: string
   por_ausencia_professor?: boolean
+  professor_reposicao_id?: string | null
+  professor_reposicao_nome?: string | null
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -169,7 +172,6 @@ export default function FaltasProfessor() {
   const [alunoQuery, setAlunoQuery] = useState('')
   const [alunoResultados, setAlunoResultados] = useState<{ id: string; nome: string; instrumento_interesse: string }[]>([])
   const [agendandoReposicao, setAgendandoReposicao] = useState<Reposicao | null>(null)
-  const [formAgendar, setFormAgendar] = useState({ data_reposicao: '', hora_reposicao: '' })
 
   const [saving, setSaving] = useState(false)
 
@@ -207,6 +209,7 @@ export default function FaltasProfessor() {
       setReposicoes(reposRes.data.map(r => ({
         ...r,
         professor_nome: r.professor_id ? (profMap[r.professor_id] ?? r.professor_nome ?? '-') : (r.professor_nome ?? '-'),
+        professor_reposicao_nome: r.professor_reposicao_id ? (profMap[r.professor_reposicao_id] ?? null) : null,
       })))
     }
 
@@ -390,22 +393,6 @@ export default function FaltasProfessor() {
     if (!confirm('Cancelar esta reposição?')) return
     const { error } = await supabase.from('reposicoes').update({ status: 'cancelada' }).eq('id', id)
     if (error) { alert(`Erro ao cancelar:\n${error.message}`); return }
-    load()
-  }
-
-  async function salvarAgendamento() {
-    if (!agendandoReposicao || !formAgendar.data_reposicao || !formAgendar.hora_reposicao) return
-    setSaving(true)
-    const { data, error } = await supabase.rpc('reposicao_staff_agendar', {
-      p_reposicao_id: agendandoReposicao.id,
-      p_data: formAgendar.data_reposicao,
-      p_hora: formAgendar.hora_reposicao,
-    })
-    setSaving(false)
-    if (error) { alert(`Erro ao agendar:\n${error.message}`); return }
-    const r = data as { ok: boolean; mensagem: string }
-    if (!r?.ok) { alert(r?.mensagem || 'Não foi possível agendar.'); return }
-    setAgendandoReposicao(null)
     load()
   }
 
@@ -634,7 +621,7 @@ export default function FaltasProfessor() {
                                           <span className="text-xs text-green-700">Realizada</span>
                                         ) : (
                                           <button
-                                            onClick={() => { setAgendandoReposicao(r); setFormAgendar({ data_reposicao: r.data_reposicao ?? '', hora_reposicao: r.hora_reposicao?.slice(0, 5) ?? '' }) }}
+                                            onClick={() => setAgendandoReposicao(r)}
                                             className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
                                           >
                                             <CalendarPlus className="w-3.5 h-3.5" /> {r.data_reposicao ? 'Reagendar' : 'Remarcar'}
@@ -878,6 +865,11 @@ export default function FaltasProfessor() {
                       <div className="flex flex-wrap gap-3 text-sm text-gray-600">
                         {r.instrumento && <span className="flex items-center gap-1"><BookOpen className="w-3.5 h-3.5" />{r.instrumento}</span>}
                         {r.professor_nome && r.professor_nome !== '-' && <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />{r.professor_nome}</span>}
+                        {r.professor_reposicao_nome && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                            {r.status === 'aguardando_confirmacao' ? 'Aguardando' : 'Substituto'}: {r.professor_reposicao_nome}
+                          </span>
+                        )}
                         {r.data_falta && <span className="text-gray-500">Falta: {fmtDate(r.data_falta)}</span>}
                         {r.data_reposicao && (
                           <span className="flex items-center gap-1 font-medium text-teal-700">
@@ -902,7 +894,7 @@ export default function FaltasProfessor() {
                       {/* Admin agenda reposição pendente */}
                       {isAdmin && ['pendente', 'agendada', 'aguardando_confirmacao'].includes(r.status) && (
                         <button
-                          onClick={() => { setAgendandoReposicao(r); setFormAgendar({ data_reposicao: r.data_reposicao ?? '', hora_reposicao: r.hora_reposicao?.slice(0, 5) ?? '' }) }}
+                          onClick={() => setAgendandoReposicao(r)}
                           className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
                         >
                           <CalendarPlus className="w-3.5 h-3.5" /> {r.data_reposicao ? 'Reagendar' : 'Agendar'}
@@ -1064,37 +1056,12 @@ export default function FaltasProfessor() {
         </div>
       )}
 
-      {/* Modal Agendar Reposição Pendente */}
       {agendandoReposicao && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-gray-900">Agendar Reposição</h2>
-              <button onClick={() => setAgendandoReposicao(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
-            </div>
-            <p className="text-sm text-gray-600">Aluno: <strong>{agendandoReposicao.aluno_nome}</strong></p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Data <span className="text-red-500">*</span></label>
-                <input type="date" value={formAgendar.data_reposicao} onChange={e => setFormAgendar(f => ({...f, data_reposicao: e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Horário <span className="text-red-500">*</span></label>
-                <input type="time" value={formAgendar.hora_reposicao} onChange={e => setFormAgendar(f => ({...f, hora_reposicao: e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setAgendandoReposicao(null)} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Cancelar</button>
-              <button
-                onClick={salvarAgendamento}
-                disabled={saving || !formAgendar.data_reposicao || !formAgendar.hora_reposicao}
-                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
-              >
-                {saving ? 'Salvando...' : 'Confirmar'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <AgendarReposicaoStaffModal
+          rep={agendandoReposicao}
+          onClose={() => setAgendandoReposicao(null)}
+          onDone={() => { setAgendandoReposicao(null); load() }}
+        />
       )}
 
       {/* Modal Registrar Ausência */}

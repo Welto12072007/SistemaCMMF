@@ -267,12 +267,12 @@ export default function PortalAluno() {
 
     const { data } = await supabase
       .from('reposicoes')
-      .select('id, professor_id, professor_nome, instrumento, data_falta, data_reposicao, hora_reposicao, status')
+      .select('id, professor_id, professor_nome, instrumento, data_falta, data_reposicao, hora_reposicao, status, professor_reposicao:professores!reposicoes_professor_reposicao_id_fkey(nome)')
       .eq('aluno_id', alunoRes.id)
       .in('status', ['pendente', 'aguardando_confirmacao', 'agendada'])
       .order('created_at', { ascending: false })
 
-    setReposicoes((data || []) as ReposicaoAluno[])
+    setReposicoes(((data || []) as any[]).map(r => ({ ...r, professor_nome: r.professor_reposicao?.nome ?? r.professor_nome })) as ReposicaoAluno[])
   }
 
   async function abrirEscolherHorario(rep: ReposicaoAluno) {

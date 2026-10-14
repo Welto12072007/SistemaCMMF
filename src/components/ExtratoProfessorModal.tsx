@@ -43,7 +43,7 @@ export default function ExtratoProfessorModal({ prof, mes, ano, onClose }: Props
         .order('data').order('hora_inicio'),
       supabase.from('reposicoes')
         .select('id,aluno_nome,instrumento,data_reposicao,hora_reposicao,data_falta')
-        .eq('professor_id', prof.id).eq('status', 'realizada')
+        .or(`professor_reposicao_id.eq.${prof.id},and(professor_reposicao_id.is.null,professor_id.eq.${prof.id})`).eq('status', 'realizada')
         .gte('data_reposicao', ini).lte('data_reposicao', fim)
         .order('data_reposicao'),
       supabase.from('extras_professor')
