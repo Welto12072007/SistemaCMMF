@@ -45,7 +45,6 @@ interface HorarioDisponivel {
 }
 
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
-const SEMANAS_FUTURO = 4 // mostrar próximas 4 semanas
 
 interface EventoAgenda {
   id: string
@@ -113,6 +112,7 @@ export default function PortalAluno() {
   const [loading, setLoading] = useState(true)
   const [remarcandoId, setRemarcandoId] = useState<string | null>(null)
   const [horariosDisponiveis, setHorariosDisponiveis] = useState<HorarioDisponivel[]>([])
+  const [carregandoHorarios, setCarregandoHorarios] = useState(false)
   const [ultimaRemarcacao, setUltimaRemarcacao] = useState<string | null>(null)
   const [mensagem, setMensagem] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null)
   const [eventosAgenda, setEventosAgenda] = useState<EventoAgenda[]>([])
@@ -334,64 +334,27 @@ export default function PortalAluno() {
     setTimeout(() => setMensagem(null), 4000)
   }
 
-  async function loadHorariosDisp(instrumento: string, professorId: string) {
-    if (!professorId) {
-      setHorariosDisponiveis([])
+  async function loadHorariosDisp(aula: AulaAgendada) {
+    setHorariosDisponiveis([])
+    setCarregandoHorarios(true)
+    const { data, error } = await supabase.rpc('horarios_remarcacao', { p_agendamento_id: aula.id })
+    setCarregandoHorarios(false)
+    if (error) {
+      console.error('[PortalAluno] horarios_remarcacao error:', error)
+      setMensagem({ tipo: 'erro', texto: 'Não foi possível carregar os horários. Tente novamente.' })
       return
     }
-
-    const hoje = new Date()
-    const proximas4semanas: HorarioDisponivel[] = []
-
-    for (let i = 0; i < SEMANAS_FUTURO * 7; i++) {
-      const data = new Date(hoje)
-      data.setDate(data.getDate() + i + 1) // começar amanhã
-      const diaSemana = data.getDay()
-
-      // Buscar horários disponíveis para este dia da semana
-      const { data: hors } = await supabase
-        .from('horarios_disponiveis')
-        .select('*')
-        .eq('professor_id', professorId)
-        .eq('dia_semana', diaSemana)
-        .eq('instrumento', instrumento)
-        .eq('ativo', true)
-
-      if (hors) {
-        const professorRes = await supabase
-          .from('professores')
-          .select('nome')
-          .eq('id', professorId)
-          .single()
-
-        for (const h of hors) {
-          // Contar quantas aulas já estão agendadas nesse horário nessa data
-          const { count } = await supabase
-            .from('agendamentos')
-            .select('id', { count: 'exact' })
-            .eq('horario_id', h.id)
-            .eq('data_aula', data.toISOString().slice(0, 10))
-            .neq('status', 'cancelado')
-
-          const vagas = (h.max_alunos || 1) - (count || 0)
-          if (vagas > 0) {
-            proximas4semanas.push({
-              id: h.id,
-              professor_id: professorId,
-              professor_nome: (professorRes.data as any)?.nome || '—',
-              dia_semana: diaSemana,
-              hora_inicio: h.hora_inicio,
-              hora_fim: h.hora_fim,
-              instrumento: h.instrumento,
-              vagas_disponiveis: vagas,
-              data_concreta: data.toISOString().slice(0, 10),
-            })
-          }
-        }
-      }
-    }
-
-    setHorariosDisponiveis(proximas4semanas)
+    setHorariosDisponiveis(((data || []) as any[]).map((h) => ({
+      id: h.horario_id,
+      professor_id: aula.professor_id || '',
+      professor_nome: aula.professor_nome || '—',
+      dia_semana: new Date(h.data_slot + 'T12:00:00').getDay(),
+      hora_inicio: h.hora_inicio,
+      hora_fim: h.hora_fim,
+      instrumento: aula.instrumento,
+      vagas_disponiveis: h.vagas,
+      data_concreta: h.data_slot,
+    })))
   }
 
   async function handleRemarcar(aula: AulaAgendada, slotKey: string) {
@@ -744,13 +707,13 @@ export default function PortalAluno() {
                     horariosDisponiveis={horariosDisponiveis}
                     onRemarcar={(horarioId) => handleRemarcar(aula, horarioId)}
                     onCancel={() => setRemarcandoId(null)}
-                    loading={horariosDisponiveis.length === 0 && remarcandoId === aula.id}
+                    loading={carregandoHorarios}
                   />
                 ) : (
                   <button
                     onClick={() => {
                       setRemarcandoId(aula.id)
-                      loadHorariosDisp(aula.instrumento, aula.professor_id || '')
+                      loadHorariosDisp(aula)
                     }}
                     disabled={!podRemarcar}
                     className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"

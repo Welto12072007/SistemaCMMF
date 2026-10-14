@@ -257,14 +257,18 @@ export default function PortalProfessor() {
     setLoadingChamada(true)
     const date = new Date(dataAtual+'T12:00:00')
     const diaSemana = DIAS_SEMANA[date.getDay()]
-    const [{data:horarios},{data:presencasExistentes},{data:experimentais}] = await Promise.all([
+    const [{data:horarios},{data:presencasExistentes},{data:experimentais},{data:remarcSaiu},{data:remarcEntrou}] = await Promise.all([
       supabase.from('horarios').select('id,dia_semana,hora_inicio,hora_fim,status,aluno_nome,aluno_ids,tipo,instrumento')
         .eq('professor_id',professor_id).eq('dia_semana',diaSemana).eq('status','ocupado').order('hora_inicio'),
       supabase.from('presencas').select('*').eq('professor_id',professor_id).eq('data',dataAtual),
       supabase.from('aulas_experimentais').select('id,nome,instrumento,hora_inicio,hora_fim,status')
         .eq('professor_id',professor_id).eq('data_aula',dataAtual)
         .not('status','in','(cancelada,remarcada)').order('hora_inicio'),
+      supabase.from('remarcacoes').select('aluno_id,hora_original').eq('data_original',dataAtual),
+      supabase.from('agendamentos').select('aluno_id,horario_id,hora_inicio,hora_fim,instrumento,aluno:alunos(nome)')
+        .eq('professor_id',professor_id).eq('data_aula',dataAtual).neq('status','cancelado').ilike('observacoes','%Remarcado%'),
     ])
+    const saiuDaData = new Set((remarcSaiu||[]).map((r:any)=>r.aluno_id))
     const idsReferenciados = Array.from(new Set((horarios||[]).flatMap((h:any)=>h.aluno_ids||[])))
     const matriculaPorId = new Map<string,string|null>()
     const alunoPorId = new Map<string,{nome:string;status:string|null}>()
@@ -288,8 +292,15 @@ export default function PortalProfessor() {
         const px = (presencasExistentes||[]).find((p:any)=>p.horario_id===h.id&&(isGrupo?((alunoId&&p.aluno_id===alunoId)||p.aluno_nome===nome):true))
         const statusAluno = alunoId ? alunoPorId.get(alunoId)?.status : null
         if (vinculados.length>0 && !px && statusAluno && statusAluno!=='ativo') continue
+        if (!px && alunoId && saiuDaData.has(alunoId)) continue
         lista.push({ id:isGrupo?h.id+'_'+nome:h.id, horario_id:h.id, aluno_nome:nome, instrumento:h.instrumento||'', hora_inicio:h.hora_inicio||'', hora_fim:h.hora_fim||'', presente:px?px.presente:null, tipo_falta:px?.tipo_falta||'', observacoes:px?.observacoes||'', presenca_id:px?.id, tipo_aula:isGrupo?'grupo':'individual' })
       }
+    }
+    for (const ag of (remarcEntrou||[]) as any[]) {
+      const nome = ag.aluno?.nome
+      if (!nome || !ag.horario_id) continue
+      const px = (presencasExistentes||[]).find((p:any)=>p.horario_id===ag.horario_id&&p.aluno_id===ag.aluno_id)
+      lista.push({ id:'rem_'+ag.horario_id+'_'+ag.aluno_id, horario_id:ag.horario_id, aluno_nome:nome, instrumento:ag.instrumento||'', hora_inicio:ag.hora_inicio||'', hora_fim:ag.hora_fim||'', presente:px?px.presente:null, tipo_falta:px?.tipo_falta||'', observacoes:px?.observacoes||'', presenca_id:px?.id, tipo_aula:'individual' })
     }
     for (const exp of (experimentais||[])) {
       const realizada = exp.status==='realizada'||exp.status==='concluida'
