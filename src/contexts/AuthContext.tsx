@@ -72,24 +72,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setUser(session?.user ?? null)
       if (session?.user) {
-        loadPerfil(session.user.id)
+        // adiado: chamar o supabase dentro do callback pode travar o lock de auth
+        setTimeout(() => loadPerfil(session.user.id), 0)
       } else {
         setPerfil(null)
         setLoading(false)
       }
     })
 
-    return () => subscription.unsubscribe()
+    // Rede de segurança: nunca ficar eternamente em "carregando"
+    const safety = setTimeout(() => setLoading(false), 8000)
+
+    return () => {
+      clearTimeout(safety)
+      subscription.unsubscribe()
+    }
   }, [])
 
   async function loadPerfil(userId: string) {
-    const { data } = await supabase
-      .from('perfis')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
-    setPerfil(data)
-    setLoading(false)
+    try {
+      const { data } = await supabase
+        .from('perfis')
+        .select('*')
+        .eq('user_id', userId)
+        .single()
+      setPerfil(data)
+    } catch {
+      setPerfil(null)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function signIn(email: string, password: string) {
