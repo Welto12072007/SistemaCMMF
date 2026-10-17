@@ -132,8 +132,8 @@ export default function CRMFunil() {
     load()
   }
 
-  async function load() {
-    setLoading(true)
+  async function load(silent = true) {
+    if (!silent) setLoading(true)
     const [funilRes, listasRes, convRes] = await Promise.all([
       supabase.from('vw_crm_funil').select('*').limit(1500),
       supabase.from('vw_listas_quentes_instrumento').select('*'),

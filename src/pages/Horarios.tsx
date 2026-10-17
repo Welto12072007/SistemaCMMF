@@ -114,8 +114,8 @@ export default function Horarios() {
   const disparoRef = useRef<HTMLDivElement>(null)
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
+  const fetchData = useCallback(async (silent = true) => {
+    if (!silent) setLoading(true)
     const [{ data: profs }, { data: hrs }, { data: als }] = await Promise.all([
       supabase.from('professores').select('*').eq('ativo', true).order('nome'),
       supabase.from('horarios').select('*').order('hora_inicio'),
@@ -127,7 +127,7 @@ export default function Horarios() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => { fetchData(false) }, [fetchData])
 
   // Auto-refresh every 60s + on window focus
   useEffect(() => {

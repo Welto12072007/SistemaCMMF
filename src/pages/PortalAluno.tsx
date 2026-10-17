@@ -148,9 +148,9 @@ export default function PortalAluno() {
     loadMensalidades()
   }, [perfil?.id])
 
-  async function loadMensalidades() {
+  async function loadMensalidades(silent = true) {
     if (!perfil?.email) return
-    setLoadingMensalidades(true)
+    if (!silent) setLoadingMensalidades(true)
 
     const { data: alunoRes } = await supabase
       .from('alunos')
