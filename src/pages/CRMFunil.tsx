@@ -322,7 +322,7 @@ export default function CRMFunil() {
           <TrendingUp className="w-6 h-6 text-brand-600" />
           <h1 className="text-2xl font-bold text-gray-900">CRM — Funil Comercial</h1>
         </div>
-        <button onClick={load} className="p-2 text-gray-400 hover:text-gray-600">
+        <button onClick={() => load(false)} className="p-2 text-gray-400 hover:text-gray-600">
           <RefreshCw className="w-4 h-4" />
         </button>
       </div>
