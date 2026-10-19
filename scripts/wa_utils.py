@@ -1,4 +1,8 @@
-"""Helpers compartilhados por automacoes.py e disparos_pendentes.py."""
+"""Helpers compartilhados por automacoes.py e disparos_pendentes.py.
+
+Envio de WhatsApp passa pela Edge Function `whatsapp-send` (API oficial da Meta),
+que registra tudo em wa_mensagens e respeita a janela de 24h / modelos aprovados.
+"""
 import os
 import re
 import logging
@@ -6,9 +10,8 @@ import requests
 
 log = logging.getLogger(__name__)
 
-EVO_URL = os.environ.get("EVOLUTION_API_URL", "https://api.centrodemusicamurilofinger.com")
-EVO_KEY = os.environ.get("EVOLUTION_API_KEY", "")
-EVO_INSTANCE = os.environ.get("EVOLUTION_INSTANCE", "CentroMusica")
+SB_URL = os.environ.get("SUPABASE_URL", "")
+SB_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 
 def normalizar_tel(tel: str) -> str | None:
@@ -21,17 +24,29 @@ def normalizar_tel(tel: str) -> str | None:
     return clean if len(clean) == 13 else None
 
 
-def enviar_whatsapp(number: str, text: str) -> bool:
+def enviar(number: str, text: str, origem: str | None = None,
+           template: dict | None = None) -> tuple[bool, str | None]:
+    """Retorna (ok, motivo_da_falha). template = {"nome": ..., "params": [...]}."""
+    body: dict = {"to": number, "texto": text, "origem": origem}
+    if template:
+        body["template"] = template
     try:
         r = requests.post(
-            f"{EVO_URL}/message/sendText/{EVO_INSTANCE}",
-            json={"number": number, "text": text},
-            headers={"apikey": EVO_KEY, "Content-Type": "application/json"},
-            timeout=15,
+            f"{SB_URL}/functions/v1/whatsapp-send",
+            json=body,
+            headers={"Authorization": f"Bearer {SB_KEY}", "apikey": SB_KEY, "Content-Type": "application/json"},
+            timeout=30,
         )
-        if r.status_code >= 300:
-            log.error(f"Evolution API {r.status_code}: {r.text[:200]}")
-        return r.status_code < 300
+        if r.status_code < 300:
+            return True, None
+        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        motivo = data.get("codigo") or f"HTTP {r.status_code}"
+        log.error(f"whatsapp-send {r.status_code} ({origem}): {data.get('erro') or r.text[:200]}")
+        return False, f"{motivo}: {data.get('erro') or ''}".strip(": ")
     except Exception as e:
-        log.error(f"Erro Evolution API: {e}")
-        return False
+        log.error(f"Erro whatsapp-send: {e}")
+        return False, str(e)
+
+
+def enviar_whatsapp(number: str, text: str, origem: str | None = None) -> bool:
+    return enviar(number, text, origem)[0]

@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { adminClient, enviar } from '../_shared/whatsapp.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SUPABASE_SERVICE_KEY = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -6,9 +7,6 @@ const ASAAS_BASE = Deno.env.get('ASAAS_SANDBOX') === 'true'
   ? 'https://sandbox.asaas.com/api/v3'
   : 'https://api.asaas.com/v3'
 const ASAAS_KEY = Deno.env.get('ASAAS_API_KEY') ?? ''
-const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL') ?? 'https://api.centrodemusicamurilofinger.com'
-const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY') ?? ''
-const EVOLUTION_INSTANCE = Deno.env.get('EVOLUTION_INSTANCE') ?? 'CentroMusica'
 
 function saudacao(): string {
   const h = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false })
@@ -29,22 +27,8 @@ function formatBRL(v: number): string {
 }
 
 async function enviarWhatsApp(telefone: string, mensagem: string): Promise<{ ok: boolean; detail?: string }> {
-  const num = telefone.replace(/\D/g, '')
-  const number = num.length >= 12 ? num : `55${num}`
-  try {
-    const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
-      body: JSON.stringify({ number, text: mensagem }),
-    })
-    if (!resp.ok) {
-      const txt = await resp.text().catch(() => '')
-      return { ok: false, detail: `HTTP ${resp.status}: ${txt.slice(0, 200)}` }
-    }
-    return { ok: true }
-  } catch (e: any) {
-    return { ok: false, detail: e?.message ?? 'fetch error' }
-  }
+  const r = await enviar(adminClient(), { to: telefone, texto: mensagem, autor: 'automacao', origem: 'automacao:cobranca_pendente' })
+  return r.ok ? { ok: true } : { ok: false, detail: r.erro }
 }
 
 async function fetchPaymentDetails(chargeId: string): Promise<any | null> {
@@ -187,7 +171,7 @@ Deno.serve(async (req) => {
       telefone_destinatario: aluno.telefone,
       status: sent ? 'enviado' : 'erro',
       processado_em: new Date().toISOString(),
-      erro: sent ? null : (result.detail ?? 'Falha Evolution API'),
+      erro: sent ? null : (result.detail ?? 'Falha no envio WhatsApp'),
     })
 
     resultados.push({ nome: aluno.nome, status: sent ? 'enviado' : 'erro', erro: sent ? undefined : result.detail })

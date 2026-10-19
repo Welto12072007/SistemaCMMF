@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { adminClient, enviar } from '../_shared/whatsapp.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SUPABASE_SERVICE_KEY = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -8,10 +9,6 @@ const ASAAS_BASE = Deno.env.get('ASAAS_SANDBOX') === 'true'
   ? 'https://sandbox.asaas.com/api/v3'
   : 'https://api.asaas.com/v3'
 const ASAAS_KEY = Deno.env.get('ASAAS_API_KEY') ?? ''
-
-const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL') ?? 'https://api.centrodemusicamurilofinger.com'
-const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY') ?? ''
-const EVOLUTION_INSTANCE = Deno.env.get('EVOLUTION_INSTANCE') ?? 'CentroMusica'
 
 // Eventos que significam "pagamento confirmado"
 const PAID_EVENTS = new Set([
@@ -46,18 +43,8 @@ function formatBRL(v: number): string {
 }
 
 async function enviarWhatsApp(telefone: string, mensagem: string): Promise<boolean> {
-  const num = telefone.replace(/\D/g, '')
-  const number = num.length >= 12 ? num : `55${num}`
-  try {
-    const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
-      body: JSON.stringify({ number, text: mensagem }),
-    })
-    return resp.ok
-  } catch {
-    return false
-  }
+  const r = await enviar(adminClient(), { to: telefone, texto: mensagem, autor: 'automacao', origem: 'automacao:confirmacao_pagamento' })
+  return r.ok
 }
 
 async function fetchPixCopyPaste(paymentId: string): Promise<string | null> {
@@ -117,7 +104,7 @@ async function notificarAluno(supabase: any, payment: any, mensaId: string, alun
     telefone_destinatario: aluno.telefone,
     status: sent ? 'enviado' : 'erro',
     processado_em: new Date().toISOString(),
-    erro: sent ? null : 'Falha no envio Evolution API',
+    erro: sent ? null : 'Falha no envio WhatsApp',
   })
 }
 

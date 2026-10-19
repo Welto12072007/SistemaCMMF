@@ -227,7 +227,7 @@ export default function Comunicados() {
         if (!confirm(`Enviar este comunicado por WhatsApp para ${total} destinatário(s)?`)) { setEnviando(false); return }
 
         if (temMidia) {
-          // Mídia (imagem/vídeo/áudio) precisa de envio direto via Evolution API — a fila
+          // Mídia (imagem/vídeo/áudio) precisa de envio direto (/api/whatsapp-send) — a fila
           // disparos_pendentes (processada pelo GitHub Actions) só manda texto.
           let falhas = 0
           for (const d of destinatarios) {

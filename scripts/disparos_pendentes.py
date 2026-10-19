@@ -14,7 +14,7 @@ import os
 import logging
 import datetime as dt
 import requests
-from wa_utils import normalizar_tel, enviar_whatsapp
+from wa_utils import normalizar_tel, enviar
 
 logging.basicConfig(
     level=logging.INFO,
@@ -183,13 +183,16 @@ def processar_pendentes() -> tuple[int, int]:
             erros += 1
             continue
 
-        ok = enviar_whatsapp(tel_norm, item.get("mensagem") or "")
+        ok, motivo = enviar(tel_norm, item.get("mensagem") or "", origem=f'disparo:{item.get("tipo")}')
         if ok:
             marcar_pendente(item["id"], "enviado")
             log.info(f'[pendentes] enviado {item["id"]} → {tel_norm}')
             enviados += 1
+        elif motivo and motivo.startswith("nao_configurado"):
+            log.warning("[pendentes] WhatsApp oficial ainda não configurado — fila mantida como pendente")
+            break
         else:
-            marcar_pendente(item["id"], "erro", "Falha na Evolution API")
+            marcar_pendente(item["id"], "erro", motivo or "Falha no envio")
             log.error(f'[pendentes] falha {item["id"]} → {tel_norm}')
             erros += 1
 

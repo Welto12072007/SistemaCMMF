@@ -143,7 +143,7 @@ def lembretes_amanha() -> None:
                 f"Oi {nome}! 🎶 Lembrete: amanhã é dia de aula de "
                 f"*{instr}* às *{horario}*. Te esperamos! 😊"
             )
-        if send_whatsapp(tel, msg):
+        if send_whatsapp(tel, msg, origem="automacao:lembrete_aula_amanha"):
             rpc("marcar_lembrete_enviado", {"p_agendamento_id": aula.get("agendamento_id")})
             log.info(f"Lembrete amanhã → {tel}")
 
@@ -171,7 +171,7 @@ def confirmacao_3h() -> None:
                 f"Oi {nome}! ⏰ Sua aula de *{instr}* começa em 3 horas. "
                 f"Te esperamos! 🎵"
             )
-        if send_whatsapp(tel, msg):
+        if send_whatsapp(tel, msg, origem="automacao:confirmacao_3h"):
             rpc("marcar_confirmacao_3h", {"p_agendamento_id": aula.get("agendamento_id")})
             log.info(f"Confirmação 3h → {tel}")
 
@@ -191,7 +191,7 @@ def followup_experimental() -> None:
             f"Oi {nome}! 😊 Como foi sua aula experimental ontem? "
             f"Ficou com alguma dúvida sobre o CMMF? Estamos aqui para ajudar! 🎶"
         )
-        send_whatsapp(tel, msg)
+        send_whatsapp(tel, msg, origem="automacao:followup_experimental")
         log.info(f"Follow-up experimental → {tel}")
 
 
@@ -210,7 +210,7 @@ def fechamento() -> None:
             f"👤 {nome}\n🎸 {instr}\n📅 {data}\n\n"
             f"Entre em contato para converter em aluno!"
         )
-        send_whatsapp(CHEFE_TEL, msg)
+        send_whatsapp(CHEFE_TEL, msg, origem="automacao:fechamento_diario")
         rpc("marcar_experimental_concluida", {"p_aula_id": aula.get("aula_id")})
         log.info(f"Fechamento notificado: {nome}")
 
@@ -236,7 +236,7 @@ def alertas_faltas() -> None:
         tel = normalizar_tel(a.get("telefone", ""))
         if not tel:
             continue
-        if send_whatsapp(tel, a.get("mensagem_sugerida", "")):
+        if send_whatsapp(tel, a.get("mensagem_sugerida", ""), origem="automacao:alerta_falta"):
             sb_patch("alertas_faltas_fila", {"id": f"eq.{a['id']}"}, {"status": "enviado"})
             enviados += 1
             log.info(f"Alerta falta → {tel}")
@@ -381,7 +381,7 @@ def processar_disparos_programados(br: dt.datetime) -> None:
                 .replace("{data_evento}", data_evento)
             )
 
-            if send_whatsapp(tel, texto):
+            if send_whatsapp(tel, texto, origem=f"disparo_programado:{d.get('tipo')}"):
                 enviados += 1
                 sb_post("disparos_programados_log", {
                     "disparo_id": d["id"],
@@ -597,7 +597,7 @@ def lembretes_vencimento_mensalidade() -> None:
             .replace("{data_vencimento}", venc_fmt)
             .replace("{link_pagamento}", link_txt)
         )
-        if send_whatsapp(tel, msg):
+        if send_whatsapp(tel, msg, origem="automacao:lembrete_vencimento"):
             rpc("marcar_notificacao_mensalidade", {
                 "p_mensalidade_id": r["mensalidade_id"],
                 "p_tipo": "vencimento",
@@ -665,7 +665,7 @@ def cobrar_inadimplentes_mensalidade() -> None:
             .replace("{dias_atraso}", f"{dias} dia{'s' if dias != 1 else ''}")
             .replace("{link_pagamento}", link_txt)
         )
-        if send_whatsapp(tel, msg):
+        if send_whatsapp(tel, msg, origem="automacao:cobranca_atraso"):
             rpc("marcar_notificacao_mensalidade", {
                 "p_mensalidade_id": r["mensalidade_id"],
                 "p_tipo": "cobranca",
