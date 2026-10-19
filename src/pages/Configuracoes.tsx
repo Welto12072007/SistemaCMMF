@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { adminListUsers, adminCreateUser, adminDeleteUser, criarConviteSenha } from '@/lib/adminApi'
-import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard, Shield, Mail, Target, Copy, CheckCircle2, Link } from 'lucide-react'
+import { Plus, Pencil, Trash2, Users, Music, MapPin, CreditCard, Shield, Mail, Target, Copy, CheckCircle2, Link, Bot, MessageSquareText } from 'lucide-react'
 import { maskPhone, normalizePhone, formatPhoneDisplay, maskPixKey, normalizePixKey } from '@/lib/utils'
 import { getLabelGrupoBase } from '@/lib/crmSegmentos'
+import ConfigIA from '@/components/config/ConfigIA'
+import ModelosWhatsApp from '@/components/config/ModelosWhatsApp'
 import { MODULOS, ROLES_CUSTOMIZAVEIS, PERMISSOES_PADRAO_POR_ROLE } from '@/lib/permissoes'
 import type { Professor, Curso, Sala, Plano, Perfil, UserRole } from '@/types'
 import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
 
-type Tab = 'acessos' | 'professores' | 'cursos' | 'salas' | 'planos' | 'segmentos'
+type Tab = 'acessos' | 'professores' | 'cursos' | 'salas' | 'planos' | 'segmentos' | 'ia' | 'whatsapp'
 
 export default function Configuracoes() {
   const [tab, setTab] = useState<Tab>('acessos')
@@ -20,6 +22,8 @@ export default function Configuracoes() {
     { key: 'salas', label: 'Salas', icon: <MapPin className="w-4 h-4" /> },
     { key: 'planos', label: 'Planos', icon: <CreditCard className="w-4 h-4" /> },
     { key: 'segmentos', label: 'Segmentos CRM', icon: <Target className="w-4 h-4" /> },
+    { key: 'ia', label: 'IA (Antonia)', icon: <Bot className="w-4 h-4" /> },
+    { key: 'whatsapp', label: 'Modelos WhatsApp', icon: <MessageSquareText className="w-4 h-4" /> },
   ]
 
   return (
@@ -30,7 +34,7 @@ export default function Configuracoes() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -51,6 +55,8 @@ export default function Configuracoes() {
       {tab === 'salas' && <SalasTab />}
       {tab === 'planos' && <PlanosTab />}
       {tab === 'segmentos' && <SegmentosTab />}
+      {tab === 'ia' && <ConfigIA />}
+      {tab === 'whatsapp' && <ModelosWhatsApp />}
     </div>
   )
 }

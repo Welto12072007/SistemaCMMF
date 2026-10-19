@@ -33,6 +33,7 @@ const FaltasProfessor = lazy(() => import('./pages/FaltasProfessor'))
 const FluxoCaixa = lazy(() => import('./pages/FluxoCaixa'))
 const ContatosLabels = lazy(() => import('./pages/ContatosLabels'))
 const CRMFunil = lazy(() => import('./pages/CRMFunil'))
+const Conversas = lazy(() => import('./pages/Conversas'))
 const HorariosExtras = lazy(() => import('./pages/HorariosExtras'))
 const FluxoAlunos = lazy(() => import('./pages/FluxoAlunos'))
 const AvaliacoesSatisfacao = lazy(() => import('./pages/AvaliacoesSatisfacao'))
@@ -122,6 +123,7 @@ export default function App() {
         <Route path="/faltas" element={<Guard roles={['admin', 'recepcao', 'professor']} modulo="presencas"><Suspense fallback={<PageLoader />}><PresencasFaltasHub /></Suspense></Guard>} />
         <Route path="/faltas-professor" element={<Navigate to="/presencas" replace />} />
         <Route path="/contatos-labels" element={<Navigate to="/contatos" replace />} />
+        <Route path="/conversas" element={<Guard roles={['admin', 'recepcao']} modulo="conversas"><Suspense fallback={<PageLoader />}><Conversas /></Suspense></Guard>} />
         <Route path="/crm-funil" element={<Guard roles={['admin', 'recepcao']} modulo="crm-funil"><Suspense fallback={<PageLoader />}><CRMFunil /></Suspense></Guard>} />
         <Route path="/portal-aluno" element={<Guard roles={['aluno']}><Suspense fallback={<PageLoader />}><PortalAluno /></Suspense></Guard>} />
         <Route path="/portal-professor" element={<Guard roles={['professor', 'admin']}><Suspense fallback={<PageLoader />}><PortalProfessor /></Suspense></Guard>} />

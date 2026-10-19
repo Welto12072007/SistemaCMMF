@@ -8,7 +8,7 @@ const TOKEN = Deno.env.get('WHATSAPP_TOKEN') ?? ''
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' }
 const json = (d: unknown, status = 200) => new Response(JSON.stringify(d), { status, headers: { 'Content-Type': 'application/json', ...CORS } })
 
-interface Tpl { nome: string; idioma: string; categoria: string; corpo: string; exemplo: string[]; botoes: string[]; rodape: string | null }
+interface Tpl { nome: string; idioma: string; categoria: string; corpo: string; exemplo: string[]; botoes: string[]; rodape: string | null; meta_id: string | null }
 
 function componentes(t: Tpl) {
   const c: Record<string, unknown>[] = [{ type: 'BODY', text: t.corpo, ...(t.exemplo.length ? { example: { body_text: [t.exemplo] } } : {}) }]
@@ -32,19 +32,20 @@ Deno.serve(async (req) => {
   const auth = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }
 
   if (b.acao === 'enviar') {
-    let q = sb.from('wa_templates').select('nome, idioma, categoria, corpo, exemplo, botoes, rodape')
-    q = b.nomes?.length ? q.in('nome', b.nomes) : q.in('status_meta', ['rascunho', 'REJECTED'])
+    let q = sb.from('wa_templates').select('nome, idioma, categoria, corpo, exemplo, botoes, rodape, meta_id')
+    q = b.nomes?.length ? q.in('nome', b.nomes) : q.in('status_meta', ['rascunho', 'REJECTED', 'ERRO_ENVIO'])
     const { data: lista } = await q
     const resultado = []
     for (const t of (lista ?? []) as Tpl[]) {
-      const r = await fetch(`${GRAPH}/${WABA_ID}/message_templates`, {
+      // Já existe na Meta: edita pelo id (criar de novo com o mesmo nome dá erro)
+      const r = await fetch(t.meta_id ? `${GRAPH}/${t.meta_id}` : `${GRAPH}/${WABA_ID}/message_templates`, {
         method: 'POST', headers: auth,
-        body: JSON.stringify({ name: t.nome, language: t.idioma, category: t.categoria, components: componentes(t) }),
+        body: JSON.stringify(t.meta_id ? { components: componentes(t) } : { name: t.nome, language: t.idioma, category: t.categoria, components: componentes(t) }),
       })
       const d = await r.json().catch(() => ({}))
       const status = r.ok ? (d.status ?? 'PENDING') : 'ERRO_ENVIO'
       await sb.from('wa_templates').update({
-        status_meta: status, meta_id: d.id ?? null, motivo_rejeicao: r.ok ? null : (d.error?.error_user_msg ?? d.error?.message ?? 'erro'),
+        status_meta: status, meta_id: d.id ?? t.meta_id, motivo_rejeicao: r.ok ? null : (d.error?.error_user_msg ?? d.error?.message ?? 'erro'),
         ...(r.ok && d.category ? { categoria: d.category } : {}), updated_at: new Date().toISOString(),
       }).eq('nome', t.nome)
       resultado.push({ nome: t.nome, status, erro: r.ok ? undefined : d.error?.error_user_msg ?? d.error?.message })

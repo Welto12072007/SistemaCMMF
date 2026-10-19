@@ -81,7 +81,7 @@ export default function CRMFunil() {
   const [conversao, setConversao] = useState<ConversaoProf[]>([])
 
   const [tab, setTab] = useState<'funil' | 'gargalos' | 'instrumento' | 'conversao' | 'semanal' | 'followup'>('funil')
-  const [busca, setBusca] = useState('')
+  const [busca, setBusca] = useState(() => new URLSearchParams(window.location.search).get('telefone') ?? '')
   const [filtroInstr, setFiltroInstr] = useState('')
   const [filtroEtapa, setFiltroEtapa] = useState<string>('')
   const [apenasFollowup, setApenasFollowup] = useState(false)
