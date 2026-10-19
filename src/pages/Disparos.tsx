@@ -7,6 +7,7 @@ import type { MediaType } from '@/lib/disparosMedia'
 import type { CRMSegmento, GrupoBaseSegmento } from '@/lib/crmSegmentos'
 import AudioRecorder from '@/components/AudioRecorder'
 import CameraCaptureModal from '@/components/CameraCaptureModal'
+import { normalizarTelefone } from '@/modules/atendimento/lib/whatsapp'
 import {
   Send,
   Users,
@@ -63,6 +64,11 @@ const INSTRUMENTOS = [
   'Cavaquinho',
 ]
 
+interface ModeloAprovado { nome: string; corpo: string; variaveis: string[]; categoria: string }
+
+// Modelo da Meta exibido com os nomes das variáveis no lugar de {{1}}, {{2}}...
+const corpoLegivel = (m: ModeloAprovado) => m.corpo.replace(/\{\{(\d+)\}\}/g, (_, n) => `{${m.variaveis[Number(n) - 1] ?? n}}`)
+
 export default function Disparos() {
   const [contatos, setContatos] = useState<Destinatario[]>([])
   const [segmentos, setSegmentos] = useState<CRMSegmento[]>([])
@@ -80,6 +86,10 @@ export default function Disparos() {
   const [publicos, setPublicos] = useState<{ id: string; nome: string; ativo: boolean }[]>([])
   const [publicoMembros, setPublicoMembros] = useState<Record<string, Set<string>>>({})
   const [showCamera, setShowCamera] = useState(false)
+  const [modelos, setModelos] = useState<ModeloAprovado[]>([])
+  const [modeloNome, setModeloNome] = useState('')
+  const [optOut, setOptOut] = useState<Set<string>>(new Set())
+  const modelo = modelos.find((m) => m.nome === modeloNome) ?? null
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -111,6 +121,10 @@ export default function Disparos() {
     void loadContatos()
     void loadSegmentos()
     void loadPublicos()
+    supabase.from('wa_templates').select('nome, corpo, variaveis, categoria').eq('status_meta', 'APPROVED')
+      .not('uso', 'like', 'regua:%').order('nome').then(({ data }) => setModelos((data ?? []) as ModeloAprovado[]))
+    supabase.from('wa_contatos').select('telefone').eq('opt_out', true)
+      .then(({ data }) => setOptOut(new Set((data ?? []).map((r) => r.telefone))))
   }, [])
 
   useEffect(() => {
@@ -273,8 +287,8 @@ export default function Disparos() {
       )
     }
 
-    // Only include contacts with valid phone
-    lista = lista.filter((c) => (c.telefone || '').replace(/\D/g, '').length >= 10)
+    // Only include contacts with valid phone; quem respondeu SAIR fica de fora
+    lista = lista.filter((c) => (c.telefone || '').replace(/\D/g, '').length >= 10 && !optOut.has(normalizarTelefone(c.telefone)))
 
     if (busca) {
       const term = busca.toLowerCase()
@@ -284,7 +298,7 @@ export default function Disparos() {
     }
 
     return lista
-  }, [contatos, segmentos, grupoBase, instrumentosSelecionados, busca, publicoMembros])
+  }, [contatos, segmentos, grupoBase, instrumentosSelecionados, busca, publicoMembros, optOut])
 
   const selecionados = contatos.filter((c) => c.selected)
   const semNome = selecionados.filter((c) => !c.nome?.trim())
@@ -317,7 +331,7 @@ export default function Disparos() {
   }
 
   async function enviarDisparos() {
-    const temTexto = Boolean(mensagem.trim())
+    const temTexto = Boolean(mensagem.trim()) || Boolean(modelo)
     const temMidia = mediaType !== 'text' && Boolean(mediaUrl.trim())
     if (selecionados.length === 0 || (!temTexto && !temMidia)) return
 
@@ -337,6 +351,20 @@ export default function Disparos() {
         if (tel.length !== 13) {
           erroDetalhes.push(`${dest.nome}: telefone inválido (${dest.telefone})`)
           erro++
+          continue
+        }
+
+        if (modelo) {
+          const primeiro = (dest.nome ?? '').trim().split(/\s+/)[0] || 'tudo bem'
+          const vars: Record<string, string> = { nome: primeiro, instrumento: (dest.instrumento_interesse || 'música').toLowerCase() }
+          const params = modelo.variaveis.map((v) => vars[v] ?? '-')
+          const texto = modelo.corpo.replace(/\{\{(\d+)\}\}/g, (_, n) => params[Number(n) - 1] ?? '')
+          const { error } = await supabase.functions.invoke('whatsapp-send', {
+            body: { to: tel, texto, template: { nome: modelo.nome, params }, origem: `campanha:${modelo.nome}` },
+          })
+          if (error) { erroDetalhes.push(`${dest.nome || dest.telefone}: ${error.message}`); erro++ } else sucesso++
+          // espaçamento entre envios protege a qualidade do número na Meta
+          await new Promise((r) => setTimeout(r, 1200))
           continue
         }
 
@@ -703,6 +731,18 @@ export default function Disparos() {
               </div>
             )}
 
+            {/* Modelo aprovado: obrigatório para quem não falou com a gente nas últimas 24h */}
+            <div className="mb-3">
+              <label className="text-xs text-gray-500 block mb-1">Modelo aprovado pela Meta (campanhas e listas)</label>
+              <select value={modeloNome} onChange={(e) => setModeloNome(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <option value="">Texto livre (só chega para quem falou com a gente nas últimas 24h)</option>
+                {modelos.map((m) => <option key={m.nome} value={m.nome}>{m.nome} ({m.categoria === 'MARKETING' ? 'marketing' : 'utilidade'})</option>)}
+              </select>
+              {modelo && <p className="mt-1.5 p-2.5 bg-gray-50 border rounded-lg text-xs text-gray-700 whitespace-pre-wrap">{corpoLegivel(modelo)}</p>}
+              {modelos.length === 0 && <p className="text-[11px] text-gray-400 mt-1">Nenhum modelo aprovado ainda (Configurações &gt; Modelos WhatsApp).</p>}
+            </div>
+
+            {!modelo && <>
             {/* Chips de variáveis */}
             <div className="flex flex-wrap gap-1.5 mb-2">
               <span className="text-xs text-gray-400 self-center">Inserir:</span>
@@ -762,6 +802,7 @@ export default function Disparos() {
               </div>
             )}
 
+            </>}
             <p className="text-xs text-gray-400 mt-1">
               {mensagem.length} caracteres
               {mediaType !== 'text' && mediaUrl && ' • com mídia'}
@@ -769,7 +810,7 @@ export default function Disparos() {
 
             <button
               onClick={enviarDisparos}
-              disabled={enviando || selecionados.length === 0 || (!mensagem.trim() && !(mediaType !== 'text' && mediaUrl.trim()))}
+              disabled={enviando || selecionados.length === 0 || (!modelo && !mensagem.trim() && !(mediaType !== 'text' && mediaUrl.trim()))}
               className="w-full mt-3 flex items-center justify-center gap-2 bg-brand-500 text-white px-4 py-2.5 rounded-lg hover:bg-brand-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {enviando ? (
