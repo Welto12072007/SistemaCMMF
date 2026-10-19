@@ -11,6 +11,7 @@ outros tipos (pos_experimental etc.) na fila que não devem ser reenviados sem
 revisão manual antes.
 """
 import os
+import re
 import logging
 import datetime as dt
 import requests
@@ -123,24 +124,46 @@ def aula_experimental_ainda_confirmada(aula_id: str) -> bool:
 
 
 def buscar_tel_aluno(aluno_id: str) -> str | None:
+    return (buscar_aluno(aluno_id) or {}).get("telefone")
+
+
+def buscar_aluno(aluno_id: str) -> dict | None:
     try:
         r = requests.get(
             f"{SB_URL}/rest/v1/alunos",
-            params={"select": "telefone,contato_invalido", "id": f"eq.{aluno_id}"},
+            params={"select": "nome,telefone,contato_invalido", "id": f"eq.{aluno_id}"},
             headers=SB_HEADERS,
             timeout=10,
         )
         r.raise_for_status()
         rows = r.json()
-        if not rows:
+        if not rows or rows[0].get("contato_invalido"):
             return None
-        row = rows[0]
-        if row.get("contato_invalido"):
-            return None
-        return row.get("telefone")
+        return rows[0]
     except Exception as e:
-        log.error(f"buscar_tel_aluno erro: {e}")
+        log.error(f"buscar_aluno erro: {e}")
         return None
+
+
+def vars_modelo(item: dict) -> dict:
+    """Variáveis do modelo aprovado (usado só fora da janela de 24h)."""
+    aluno = buscar_aluno(item["aluno_id"]) if item.get("aluno_id") else None
+    v = {"nome": ((aluno or {}).get("nome") or "").split(" ")[0] or "Aluno"}
+    if item.get("aula_experimental_id"):
+        try:
+            r = requests.get(f"{SB_URL}/rest/v1/aulas_experimentais",
+                             params={"select": "nome,hora_inicio", "id": f"eq.{item['aula_experimental_id']}"},
+                             headers=SB_HEADERS, timeout=10)
+            aula = (r.json() or [{}])[0]
+            v["hora"] = str(aula.get("hora_inicio") or "")[:5]
+            if not aluno and aula.get("nome"):
+                v["nome"] = aula["nome"].split(" ")[0]
+        except Exception as e:
+            log.error(f"vars_modelo aula erro: {e}")
+    m = re.search(r"aula em: (.+?)\. Qualquer", item.get("mensagem") or "")
+    if m:
+        v["datas"] = m.group(1)
+    return v
 
 
 def marcar_pendente(disparo_id: str, status: str, motivo: str | None = None) -> None:
@@ -183,7 +206,8 @@ def processar_pendentes() -> tuple[int, int]:
             erros += 1
             continue
 
-        ok, motivo = enviar(tel_norm, item.get("mensagem") or "", origem=f'disparo:{item.get("tipo")}')
+        ok, motivo = enviar(tel_norm, item.get("mensagem") or "", origem=f'disparo:{item.get("tipo")}',
+                            vars=vars_modelo(item))
         if ok:
             marcar_pendente(item["id"], "enviado")
             log.info(f'[pendentes] enviado {item["id"]} → {tel_norm}')

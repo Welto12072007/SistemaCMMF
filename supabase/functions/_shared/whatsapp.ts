@@ -34,6 +34,8 @@ export interface EnvioOpts {
   to: string
   texto?: string
   template?: { nome: string; params?: string[]; idioma?: string }
+  // Modelo aprovado escolhido pelo tipo da automação; vars nomeadas viram {{1}}, {{2}}... na ordem de wa_templates.variaveis
+  modelo?: { uso: string; vars: Record<string, unknown> }
   midia?: { tipo: TipoMidia; url: string; legenda?: string; nomeArquivo?: string }
   autor: Autor
   origem?: string
@@ -44,7 +46,7 @@ export interface EnvioOpts {
 export interface EnvioResultado {
   ok: boolean
   wamid?: string
-  codigo?: 'nao_configurado' | 'telefone_invalido' | 'opt_out' | 'fora_da_janela' | 'modelo_inexistente' | 'erro_meta' | 'vazio'
+  codigo?: 'nao_configurado' | 'telefone_invalido' | 'opt_out' | 'fora_da_janela' | 'modelo_inexistente' | 'modelo_nao_aprovado' | 'erro_meta' | 'vazio'
   erro?: string
 }
 
@@ -75,16 +77,26 @@ export async function enviar(sb: SupabaseClient, o: EnvioOpts): Promise<EnvioRes
   if (c.opt_out && o.autor === 'automacao') return { ok: false, codigo: 'opt_out', erro: 'Contato pediu para não receber mensagens' }
 
   const dentroDaJanela = !!c.ultima_entrada_em && Date.now() - new Date(c.ultima_entrada_em).getTime() < JANELA_MS
+
+  if (!o.template && o.modelo && !dentroDaJanela) {
+    const { data: tpl } = await sb.from('wa_templates').select('nome, variaveis')
+      .eq('uso', o.modelo.uso).eq('status_meta', 'APPROVED').limit(1).maybeSingle()
+    if (tpl) o = { ...o, template: { nome: tpl.nome, params: (tpl.variaveis as string[]).map((v) => String(o.modelo!.vars[v] ?? '')) } }
+  }
   const registro: Record<string, unknown> = {
     telefone: c.telefone, direcao: 'out', autor: o.autor, origem: o.origem ?? null,
     enviado_por: o.enviadoPor ?? null, responde_wamid: o.respondeA ?? null,
   }
 
+  // Com texto + modelo: texto livre dentro da janela de 24h, modelo aprovado fora dela
+  const usarModelo = !!o.template && (!o.texto?.trim() || !dentroDaJanela)
+
   let body: Record<string, unknown>
-  if (o.template) {
+  if (usarModelo && o.template) {
     const { data: tpl } = await sb.from('wa_templates').select('corpo, idioma, status_meta').eq('nome', o.template.nome).maybeSingle()
     if (!tpl) return { ok: false, codigo: 'modelo_inexistente', erro: `Modelo ${o.template.nome} não cadastrado` }
-    const params = (o.template.params ?? []).map((p) => String(p ?? '').trim() || '-')
+    if (tpl.status_meta !== 'APPROVED') return { ok: false, codigo: 'modelo_nao_aprovado', erro: `Modelo ${o.template.nome} ainda não aprovado pela Meta (${tpl.status_meta})` }
+    const params = (o.template.params ?? []).map((p) => String(p ?? '').replace(/\s*\n+\s*/g, ' ').replace(/ {4,}/g, ' ').trim() || '-')
     body = {
       type: 'template',
       template: {
@@ -137,7 +149,10 @@ export async function baixarMidia(sb: SupabaseClient, midiaId: string, mime: str
   return error ? null : path
 }
 
-export async function marcarComoLida(wamid: string) {
+export async function marcarComoLida(wamid: string, digitando = false) {
   if (!whatsappConfigurado()) return
-  await graph(`${PHONE_NUMBER_ID}/messages`, { messaging_product: 'whatsapp', status: 'read', message_id: wamid })
+  await graph(`${PHONE_NUMBER_ID}/messages`, {
+    messaging_product: 'whatsapp', status: 'read', message_id: wamid,
+    ...(digitando ? { typing_indicator: { type: 'text' } } : {}),
+  })
 }

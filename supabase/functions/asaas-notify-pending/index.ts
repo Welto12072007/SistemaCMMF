@@ -26,8 +26,8 @@ function formatBRL(v: number): string {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-async function enviarWhatsApp(telefone: string, mensagem: string): Promise<{ ok: boolean; detail?: string }> {
-  const r = await enviar(adminClient(), { to: telefone, texto: mensagem, autor: 'automacao', origem: 'automacao:cobranca_pendente' })
+async function enviarWhatsApp(telefone: string, mensagem: string, vars?: Record<string, string>): Promise<{ ok: boolean; detail?: string }> {
+  const r = await enviar(adminClient(), { to: telefone, texto: mensagem, autor: 'automacao', origem: 'automacao:mensalidade_disponivel', modelo: vars ? { uso: 'mensalidade_disponivel', vars } : undefined })
   return r.ok ? { ok: true } : { ok: false, detail: r.erro }
 }
 
@@ -160,7 +160,7 @@ Deno.serve(async (req) => {
       `\n⚠️ Importante: caso faça o pagamento para nossa chave pix, envie o comprovante respondendo esta mensagem para que possamos identificar e registrar o pagamento em nosso sistema.\n\n` +
       `Agradecemos por fazer parte do CMMF. Desejamos ótimos estudos! 🎶💙`
 
-    const result = await enviarWhatsApp(aluno.telefone, msg)
+    const result = await enviarWhatsApp(aluno.telefone, msg, { nome, valor, data_vencimento: vencimento, link_pagamento: linkCartao })
     const sent = result.ok
 
     await supabase.from('disparos_pendentes').insert({

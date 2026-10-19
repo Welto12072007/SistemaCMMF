@@ -1,7 +1,7 @@
 // Envio de WhatsApp pela API oficial. Quem pode chamar:
 //  - serviços internos (GitHub Actions, outras Edge Functions): Authorization: Bearer <SB_SECRET_KEY>
 //  - equipe logada no sistema (admin/recepcao/professor): Authorization: Bearer <access_token>
-// Corpo: { to, texto?, template?: {nome, params}, midia?: {tipo, url, legenda, nomeArquivo}, origem? }
+// Corpo: { to, texto?, template?: {nome, params}, modelo?: {uso, vars}, midia?: {tipo, url, legenda, nomeArquivo}, origem? }
 import { adminClient, enviar, SECRET_KEY, type Autor } from '../_shared/whatsapp.ts'
 
 const CORS = {
@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
   const b = await req.json().catch(() => ({}))
   if (!b?.to) return json({ error: 'to obrigatório' }, 400)
   const r = await enviar(sb, {
-    to: String(b.to), texto: b.texto, template: b.template, midia: b.midia,
+    to: String(b.to), texto: b.texto, template: b.template, modelo: b.modelo, midia: b.midia,
     autor: autor === 'automacao' && b.autor === 'ia' ? 'ia' : autor,
     origem: b.origem ?? (autor === 'humano' ? 'crm' : undefined), enviadoPor,
   })

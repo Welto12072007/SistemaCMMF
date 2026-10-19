@@ -2,7 +2,7 @@
 // e ecos do app WhatsApp Business (coexistência). Configurar na Meta:
 //   URL: https://<projeto>.supabase.co/functions/v1/whatsapp-webhook
 //   Verify token: WHATSAPP_VERIFY_TOKEN   |   Campos: messages, smb_message_echoes
-import { adminClient, baixarMidia, normalizarTelefone } from '../_shared/whatsapp.ts'
+import { adminClient, baixarMidia, normalizarTelefone, SECRET_KEY } from '../_shared/whatsapp.ts'
 
 const VERIFY_TOKEN = Deno.env.get('WHATSAPP_VERIFY_TOKEN') ?? ''
 const APP_SECRET = Deno.env.get('WHATSAPP_APP_SECRET') ?? ''
@@ -42,6 +42,14 @@ function extrair(m: any): { tipo: string; texto: string | null; midiaId?: string
 const STATUS: Record<string, string> = { sent: 'enviada', delivered: 'entregue', read: 'lida', failed: 'falhou' }
 const ORDEM: Record<string, number> = { pendente: 0, enviada: 1, entregue: 2, lida: 3, falhou: 4 }
 
+function acionarIA(telefone: string, wamid: string) {
+  return fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/antonia`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${SECRET_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ telefone, wamid }),
+  }).catch((e) => console.error('acionarIA', e))
+}
+
 // deno-lint-ignore no-explicit-any
 async function processar(payload: any) {
   const sb = adminClient()
@@ -73,6 +81,7 @@ async function processar(payload: any) {
             midias.push(baixarMidia(sb, x.midiaId, x.mime).then((path) =>
               path && sb.from('wa_mensagens').update({ midia_url: path }).eq('id', ins.id)))
           }
+          if (x.tipo !== 'reaction') midias.push(acionarIA(tel, m.id))
         }
 
         for (const s of v.statuses ?? []) {
@@ -83,6 +92,13 @@ async function processar(payload: any) {
           const erro = s.errors?.length ? s.errors.map((e: any) => `${e.code} ${e.title ?? ''} ${e.error_data?.details ?? ''}`.trim()).join('; ') : null
           await sb.from('wa_mensagens').update({ status: novo, status_em: new Date(Number(s.timestamp) * 1000).toISOString(), ...(erro ? { erro } : {}) }).eq('id', atual.id)
         }
+      }
+
+      if (change.field === 'message_template_status_update' && v.message_template_name) {
+        await sb.from('wa_templates').update({
+          status_meta: v.event, meta_id: String(v.message_template_id ?? ''), motivo_rejeicao: v.reason && v.reason !== 'NONE' ? v.reason : null,
+          updated_at: new Date().toISOString(),
+        }).eq('nome', v.message_template_name)
       }
 
       // Coexistência: mensagem enviada pela equipe no app WhatsApp Business do celular

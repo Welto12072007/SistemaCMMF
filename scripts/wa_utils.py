@@ -25,11 +25,18 @@ def normalizar_tel(tel: str) -> str | None:
 
 
 def enviar(number: str, text: str, origem: str | None = None,
-           template: dict | None = None) -> tuple[bool, str | None]:
-    """Retorna (ok, motivo_da_falha). template = {"nome": ..., "params": [...]}."""
+           template: dict | None = None, vars: dict | None = None,
+           uso: str | None = None) -> tuple[bool, str | None]:
+    """Retorna (ok, motivo_da_falha).
+
+    Fora da janela de 24h a Meta só aceita modelo aprovado: passe `vars` (mesmas variáveis do texto)
+    e o modelo é escolhido pelo tipo (`uso`, por padrão o que vem depois de ':' na origem).
+    """
     body: dict = {"to": number, "texto": text, "origem": origem}
     if template:
         body["template"] = template
+    if vars is not None:
+        body["modelo"] = {"uso": uso or (origem or "").split(":")[-1], "vars": vars}
     try:
         r = requests.post(
             f"{SB_URL}/functions/v1/whatsapp-send",
@@ -48,5 +55,6 @@ def enviar(number: str, text: str, origem: str | None = None,
         return False, str(e)
 
 
-def enviar_whatsapp(number: str, text: str, origem: str | None = None) -> bool:
-    return enviar(number, text, origem)[0]
+def enviar_whatsapp(number: str, text: str, origem: str | None = None,
+                    vars: dict | None = None, uso: str | None = None) -> bool:
+    return enviar(number, text, origem, vars=vars, uso=uso)[0]
