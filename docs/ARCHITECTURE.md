@@ -4,19 +4,33 @@
 
 ```mermaid
 graph TD
-    WA[WhatsApp - Evolution API] <--> N8N_ANT[n8n: Agente WhatsApp - Antonia]
-    N8N_ANT <--> DB[(Supabase Postgres)]
-    N8N_DISP[GitHub Actions: disparos_pendentes.py / automacoes.py] --> DB
-    N8N_DISP --> WA
-    CRM[SistemaCMMF - React/Vite] <--> DB
+    META[WhatsApp Cloud API - Meta] -- webhook --> WH[Edge Function whatsapp-webhook]
+    WH --> DB[(Supabase Postgres)]
+    WH --> ANT[Edge Function antonia - IA]
+    ANT <--> DB
+    ANT --> SEND[_shared/whatsapp.ts enviar]
+    GHA[GitHub Actions: disparos_pendentes.py / automacoes.py] --> WS[Edge Function whatsapp-send]
+    CRM[SistemaCMMF - React/Vite] --> WS
+    WS --> SEND
+    SEND --> META
+    CRM <--> DB
     CRM --> Vercel[Vercel Deploy]
     Asaas[Asaas - cobrança] <--> CRM
     Resend[Resend SMTP] --> Auth[Supabase Auth]
 ```
 
+## WhatsApp oficial + IA (out/2026, substitui Evolution API + n8n)
+
+- **Um único ponto de envio**: `supabase/functions/_shared/whatsapp.ts` (`enviar()`). Tudo que sai (IA, equipe, automações, Asaas) passa por ele e fica registrado em `wa_mensagens` com status (enviada/entregue/lida/falhou).
+- **Janela de 24h**: dentro dela vai texto livre; fora dela só modelo aprovado (`wa_templates`, aba Configurações > Modelos WhatsApp). Automações passam `vars` e o modelo é escolhido pelo tipo (`uso`).
+- **Recebimento**: `whatsapp-webhook` (assinatura HMAC da Meta) grava em `wa_contatos`/`wa_mensagens`, baixa mídias para o bucket privado `whatsapp-midia` e aciona a `antonia`.
+- **IA**: `antonia` junta mensagens (espera configurável), transcreve áudio, passa pelo portão `ia_gate()` (professor, aluno ativo, pausa, fechamento), monta o contexto (prompt versionado em `ia_prompt_versoes` + regras fixas no código + planos/cursos/horários do banco + ficha + histórico) e usa ferramentas que são funções do banco (`ia_horarios_livres`, `criar_agendamento_experimental`, `criar_encaminhamento` etc.). Modos por contato: automático, copiloto (sugestão aprovada na Caixa de entrada) ou só humano.
+- **Telas**: Caixa de entrada (`/conversas`), Configurações > IA (Antonia) e Configurações > Modelos WhatsApp.
+- **Segredos (Supabase Edge Functions)**: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_WABA_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `OPENAI_API_KEY`, `SB_SECRET_KEY`.
+
 ## Peças principais
 
-- **Antonia** — chatbot WhatsApp. Fluxo: Evolution API (WhatsApp) → webhook n8n (`Agente WhatsApp - Centro de Música`, id `gOwD7CVrfFShDyRDZ8y9H`) → consulta/grava direto no Supabase (sem Google Sheets, migrado em 01-02/09) → responde via Evolution API.
+- **Antonia** — ver seção acima (Edge Function `antonia`). O fluxo antigo no n8n (`gOwD7CVrfFShDyRDZ8y9H`) é desligado na virada para a API oficial.
 - **SistemaCMMF** — CRM em React/TypeScript/Vite/Tailwind, hospedado na Vercel, fala direto com Supabase (anon key no client, service role só em `api/*.js` serverless functions).
 - **Motor de disparos programados** — GitHub Actions (`scripts/disparos_pendentes.py`, `scripts/automacoes.py`), cron a cada 15min. Decisão de 24/08: **não usar mais n8n para isso** (custo de execuções). O workflow n8n equivalente (`Disparos Pendentes - CMMF`) foi desativado.
 - **Banco** — Supabase Postgres, migrations manuais numeradas em `agenteCMMF1/supabase/migration-vNN-*.sql`, aplicadas via `psql` direto (ver [DATABASE.md](./DATABASE.md)).

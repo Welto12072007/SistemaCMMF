@@ -1,9 +1,18 @@
 # Runbook — Incidentes Comuns
 
-## "Antonia não responde"
-Duas causas independentes, sempre checar as duas:
-1. **WhatsApp desconectado**: `GET /instance/connectionState/CentroMusica` (Evolution API). Se `state != "open"`, gerar novo QR via `GET /instance/connect/CentroMusica` e escanear com o celular do centro em "Aparelhos Conectados". Ação física, não dá pra resolver só por API.
-2. **Workflow n8n inativo**: `GET /workflows/{id}` (id `gOwD7CVrfFShDyRDZ8y9H`) → campo `active`. Workflows do n8n podem cair sozinhos após execuções com erro ("crashed"). Reativar com `POST /workflows/{id}/activate`.
+## "Antonia não responde" (WhatsApp oficial)
+1. **IA desligada ou contato pausado**: Configurações > IA (interruptor geral) e, na Caixa de entrada, o modo do contato. Professores, alunos ativos e contatos em fechamento pós-experimental vão de propósito para a equipe (`ia_gate()`).
+2. **Mensagem não chegou**: se não aparece na Caixa de entrada, o problema é antes do sistema — conferir o webhook no app da Meta (URL `.../functions/v1/whatsapp-webhook`, campos `messages`, `smb_message_echoes`, `message_template_status_update`) e o `WHATSAPP_APP_SECRET` (assinatura inválida = 401).
+3. **Chegou mas a IA falhou**: a mensagem de erro configurada vai pro cliente e a equipe recebe "Erro na IA" com o motivo (chave da OpenAI, limite, etc.). Logs: Supabase Dashboard > Edge Functions > `antonia`.
+4. **Mensagem com status "falhou"** na Caixa de entrada: o motivo vem da Meta na própria bolha. `fora_da_janela` = falta modelo aprovado para aquele tipo.
+
+## Virada Evolution → WhatsApp oficial (checklist)
+1. `supabase secrets set WHATSAPP_TOKEN=... WHATSAPP_PHONE_NUMBER_ID=... WHATSAPP_WABA_ID=... WHATSAPP_APP_SECRET=... OPENAI_API_KEY=...`
+2. App da Meta > WhatsApp > Configuração: webhook `https://oykrtlkksqekvjiiqafy.supabase.co/functions/v1/whatsapp-webhook` + verify token (`WHATSAPP_VERIFY_TOKEN`); assinar `messages`, `smb_message_echoes`, `message_template_status_update`.
+3. Configurações > Modelos WhatsApp > "Enviar rascunhos para aprovação"; aguardar aprovados.
+4. Deploy das Edge Functions `asaas-webhook` e `asaas-notify-pending`; merge do branch `feature/whatsapp-cloud-api` em `master`.
+5. Desligar no n8n: Antonia (`gOwD7CVrfFShDyRDZ8y9H`) e Disponibilidade (`vyzyYkdubZ5Gar1w`). Desconectar a instância `CentroMusica` da Evolution e remover os segredos `EVOLUTION_*` (Supabase, Vercel, GitHub Actions).
+6. Teste real: mandar "oi" do celular pessoal, ver na Caixa de entrada, ver resposta da IA e o status "lida".
 
 ## E-mails de acesso indo pro spam / sem link clicável
 - SPF/DKIM do domínio já estão corretos (Resend usa subdomínio `send.` próprio).
