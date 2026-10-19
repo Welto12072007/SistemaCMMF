@@ -63,7 +63,8 @@ function Hoje() {
               <td className="px-4 py-3"><p className="font-medium">{f.nome}</p><p className="text-xs text-gray-500">{f.regua_nome}</p></td>
               <td className="py-3 whitespace-nowrap">Contato {f.passo_atual} de {f.total_passos}<br /><span className={`text-[11px] px-2 py-0.5 rounded-full ${COR_TIPO[f.passo_tipo]}`}>{f.passo_tipo}</span></td>
               <td className="py-3 pr-4 text-gray-700 max-w-md">{preencher(f.passo_mensagem ?? '', f)}</td>
-              <td className="py-3 text-xs text-gray-500 whitespace-nowrap">{new Date(f.proximo_envio_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{f.envio_automatico && <><br />automático</>}</td>
+              <td className="py-3 text-xs text-gray-500 whitespace-nowrap">{new Date(f.proximo_envio_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{f.envio_automatico && <><br />automático</>}
+                {f.gratis_ate && <><br /><span className="text-emerald-700">grátis até {new Date(f.gratis_ate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span></>}</td>
               <td className="py-3 pr-4">
                 <div className="flex gap-1.5 justify-end">
                   <button disabled={ocupado === f.id} onClick={() => acao('enviar', f.id)} className="text-xs px-2.5 py-1.5 rounded-lg bg-brand-500 text-white flex items-center gap-1">{ocupado === f.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Enviar agora</button>
@@ -162,9 +163,7 @@ function Reguas() {
                     <span className="font-medium">Contato {i + 1}</span>
                     <input type="number" min={1} className={`${campo} w-20`} value={p.horas} onChange={(e) => setP(r.id, i, { horas: Number(e.target.value) })} />
                     <span>horas</span>
-                    <select className={campo} value={p.referencia} onChange={(e) => setP(r.id, i, { referencia: e.target.value as Passo['referencia'] })}>
-                      <option value="inicio">depois do silêncio/evento</option><option value="antes_aula">antes da aula</option>
-                    </select>
+                    <span className="text-gray-500">depois do silêncio/evento</span>
                     <select className={campo} value={p.tipo} onChange={(e) => setP(r.id, i, { tipo: e.target.value as TipoPasso })}>
                       {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
@@ -174,7 +173,7 @@ function Reguas() {
                   <textarea rows={2} className={`${campo} w-full`} value={p.mensagem} onChange={(e) => setP(r.id, i, { mensagem: e.target.value })} />
                 </div>
               ))}
-              <p className="text-xs text-gray-500">Use [nome], [modalidade] e [prova] no texto. Não termine a mensagem com um desses campos (regra da Meta). O passo "encerramento" marca o lead como perdido (ou libera a reserva).</p>
+              <p className="text-xs text-gray-500">Use [nome], [modalidade] e [prova] no texto. Não termine a mensagem com um desses campos (regra da Meta). O passo "encerramento" marca o lead como perdido. Dica de economia: um 1º contato de até 24h na régua "sem resposta" sai antes de a janela fechar, como texto grátis.</p>
               <div className="flex gap-2">
                 <button onClick={() => setPassos({ ...passos, [r.id]: [...(passos[r.id] ?? []), { ordem: (passos[r.id]?.length ?? 0) + 1, horas: 24, referencia: 'inicio', tipo: 'retomada', mensagem: 'Oi, [nome]! ' }] })} className="px-3 py-2 rounded-lg border text-sm flex items-center gap-1"><Plus className="w-4 h-4" /> Adicionar contato</button>
                 <button onClick={() => salvarRegua(r)} className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm flex items-center gap-1"><Save className="w-4 h-4" /> Salvar régua</button>

@@ -11,7 +11,8 @@ const CORS = {
 const json = (d: unknown, status = 200) => new Response(JSON.stringify(d), { status, headers: { 'Content-Type': 'application/json', ...CORS } })
 
 const STATUS_HTTP: Record<string, number> = {
-  nao_configurado: 503, telefone_invalido: 400, vazio: 400, opt_out: 409, fora_da_janela: 422, modelo_inexistente: 400, erro_meta: 502,
+  nao_configurado: 503, telefone_invalido: 400, vazio: 400, opt_out: 409, fora_da_janela: 422, aguardando_janela: 425,
+  modelo_inexistente: 400, modelo_nao_aprovado: 422, erro_meta: 502,
 }
 
 Deno.serve(async (req) => {

@@ -1,5 +1,4 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { adminClient, enviar } from '../_shared/whatsapp.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SUPABASE_SERVICE_KEY = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -26,9 +25,6 @@ function formatBRL(v: number): string {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-async function enviarWhatsApp(telefone: string, mensagem: string, vars?: Record<string, string>): Promise<{ ok: boolean; detail?: string }> {
-  const r = await enviar(adminClient(), { to: telefone, texto: mensagem, autor: 'automacao', origem: 'automacao:mensalidade_disponivel', modelo: vars ? { uso: 'mensalidade_disponivel', vars } : undefined })
-  return r.ok ? { ok: true } : { ok: false, detail: r.erro }
 }
 
 async function fetchPaymentDetails(chargeId: string): Promise<any | null> {
@@ -90,8 +86,8 @@ Deno.serve(async (req) => {
   const { data: jaEnviados } = await supabase
     .from('disparos_pendentes')
     .select('aluno_id')
-    .eq('tipo', 'boleto_disponivel')
-    .eq('status', 'enviado')
+    .in('tipo', ['boleto_disponivel', 'mensalidade_disponivel'])
+    .in('status', ['enviado', 'pendente'])
     .in('aluno_id', (mensas ?? []).map((m: any) => m.aluno_id))
 
   const enviadosSet = new Set((jaEnviados ?? []).map((d: any) => d.aluno_id))
@@ -160,26 +156,19 @@ Deno.serve(async (req) => {
       `\n⚠️ Importante: caso faça o pagamento para nossa chave pix, envie o comprovante respondendo esta mensagem para que possamos identificar e registrar o pagamento em nosso sistema.\n\n` +
       `Agradecemos por fazer parte do CMMF. Desejamos ótimos estudos! 🎶💙`
 
-    const result = await enviarWhatsApp(aluno.telefone, msg, { nome, valor, data_vencimento: vencimento, link_pagamento: linkCartao })
-    const sent = result.ok
-
-    await supabase.from('disparos_pendentes').insert({
+    // Vai pela fila: texto grátis se o aluno abrir a janela em até 48h, senão modelo aprovado
+    const { error: filaErr } = await supabase.from('disparos_pendentes').insert({
       aluno_id: m.aluno_id,
-      tipo: 'boleto_disponivel',
+      tipo: 'mensalidade_disponivel',
       canal: 'whatsapp',
       mensagem: msg,
       telefone_destinatario: aluno.telefone,
-      status: sent ? 'enviado' : 'erro',
-      processado_em: new Date().toISOString(),
-      erro: sent ? null : (result.detail ?? 'Falha no envio WhatsApp'),
+      status: 'pendente',
+      template_vars: { nome, valor, data_vencimento: vencimento, link_pagamento: linkCartao },
     })
-
-    resultados.push({ nome: aluno.nome, status: sent ? 'enviado' : 'erro', erro: sent ? undefined : result.detail })
-    if (sent) enviados++
-    else erros++
-
-    // Delay entre envios
-    await new Promise(r => setTimeout(r, 800))
+    resultados.push({ nome: aluno.nome, status: filaErr ? 'erro' : 'na_fila', erro: filaErr?.message })
+    if (filaErr) erros++
+    else enviados++
   }
 
   return new Response(JSON.stringify({

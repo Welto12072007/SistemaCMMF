@@ -34,8 +34,9 @@ export interface EnvioOpts {
   to: string
   texto?: string
   template?: { nome: string; params?: string[]; idioma?: string }
-  // Modelo aprovado escolhido pelo tipo da automação; vars nomeadas viram {{1}}, {{2}}... na ordem de wa_templates.variaveis
-  modelo?: { uso: string; vars: Record<string, unknown> }
+  // Modelo aprovado escolhido pelo tipo da automação; vars nomeadas viram {{1}}, {{2}}... na ordem de wa_templates.variaveis.
+  // desde = quando a mensagem ficou pronta: tipos não urgentes esperam a janela abrir (grátis) por wa_templates.esperar_janela_horas
+  modelo?: { uso: string; vars: Record<string, unknown>; desde?: string }
   midia?: { tipo: TipoMidia; url: string; legenda?: string; nomeArquivo?: string }
   autor: Autor
   origem?: string
@@ -46,7 +47,7 @@ export interface EnvioOpts {
 export interface EnvioResultado {
   ok: boolean
   wamid?: string
-  codigo?: 'nao_configurado' | 'telefone_invalido' | 'opt_out' | 'fora_da_janela' | 'modelo_inexistente' | 'modelo_nao_aprovado' | 'erro_meta' | 'vazio'
+  codigo?: 'nao_configurado' | 'telefone_invalido' | 'opt_out' | 'fora_da_janela' | 'aguardando_janela' | 'modelo_inexistente' | 'modelo_nao_aprovado' | 'erro_meta' | 'vazio'
   erro?: string
 }
 
@@ -79,9 +80,15 @@ export async function enviar(sb: SupabaseClient, o: EnvioOpts): Promise<EnvioRes
   const dentroDaJanela = !!c.ultima_entrada_em && Date.now() - new Date(c.ultima_entrada_em).getTime() < JANELA_MS
 
   if (!o.template && o.modelo && !dentroDaJanela) {
-    const { data: tpl } = await sb.from('wa_templates').select('nome, variaveis')
-      .eq('uso', o.modelo.uso).eq('status_meta', 'APPROVED').limit(1).maybeSingle()
-    if (tpl) o = { ...o, template: { nome: tpl.nome, params: (tpl.variaveis as string[]).map((v) => String(o.modelo!.vars[v] ?? '')) } }
+    const { data: tpl } = await sb.from('wa_templates').select('nome, variaveis, status_meta, esperar_janela_horas')
+      .eq('uso', o.modelo.uso).limit(1).maybeSingle()
+    const espera = Number(tpl?.esperar_janela_horas ?? 0)
+    if (espera > 0 && o.modelo.desde && Date.now() < new Date(o.modelo.desde).getTime() + espera * 3600_000) {
+      return { ok: false, codigo: 'aguardando_janela', erro: `Aguardando o contato abrir a janela (até ${espera}h) para enviar sem custo` }
+    }
+    if (tpl?.status_meta === 'APPROVED') {
+      o = { ...o, template: { nome: tpl.nome, params: (tpl.variaveis as string[]).map((v) => String(o.modelo!.vars[v] ?? '')) } }
+    }
   }
   const registro: Record<string, unknown> = {
     telefone: c.telefone, direcao: 'out', autor: o.autor, origem: o.origem ?? null,

@@ -37,7 +37,10 @@ TIPOS_PERMITIDOS = [
     "cobranca_atraso",
     "comunicado_interno",
     "aviso_sem_aula",
+    "mensalidade_disponivel",
 ]
+
+TIPOS_COM_HORA = {"lembrete_experimental_1d", "lembrete_experimental_3h"}
 
 SB_HEADERS = {
     "apikey": SB_KEY,
@@ -80,7 +83,7 @@ def buscar_pendentes() -> list:
         r = requests.get(
             f"{SB_URL}/rest/v1/disparos_pendentes",
             params={
-                "select": "id,aluno_id,tipo,canal,mensagem,telefone_destinatario,agendado_para,aula_experimental_id",
+                "select": "id,aluno_id,tipo,canal,mensagem,telefone_destinatario,agendado_para,aula_experimental_id,criado_em,template_vars",
                 "status": "eq.pendente",
                 "tipo": f"in.({','.join(TIPOS_PERMITIDOS)})",
                 "criado_em": f"gte.{cutoff}",
@@ -163,6 +166,7 @@ def vars_modelo(item: dict) -> dict:
     m = re.search(r"aula em: (.+?)\. Qualquer", item.get("mensagem") or "")
     if m:
         v["datas"] = m.group(1)
+    v.update(item.get("template_vars") or {})
     return v
 
 
@@ -184,10 +188,15 @@ def marcar_pendente(disparo_id: str, status: str, motivo: str | None = None) -> 
 
 def processar_pendentes() -> tuple[int, int]:
     pendentes = buscar_pendentes()
+    limite_atraso = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=6)).isoformat()
     log.info(f"[pendentes] {len(pendentes)} disparo(s)")
     enviados = erros = 0
 
     for item in pendentes:
+        # Lembrete de horário que já passou não serve mais (ex.: fila parada por dias)
+        if item.get("tipo") in TIPOS_COM_HORA and item.get("agendado_para") and item["agendado_para"] < limite_atraso:
+            marcar_pendente(item["id"], "cancelado", "Lembrete expirado: horário já passou")
+            continue
         if item.get("tipo") in ("lembrete_experimental_1d", "lembrete_experimental_3h") and item.get("aula_experimental_id"):
             if not aula_experimental_ainda_confirmada(item["aula_experimental_id"]):
                 marcar_pendente(item["id"], "cancelado", "Aula não está mais confirmada/agendada")
@@ -207,7 +216,10 @@ def processar_pendentes() -> tuple[int, int]:
             continue
 
         ok, motivo = enviar(tel_norm, item.get("mensagem") or "", origem=f'disparo:{item.get("tipo")}',
-                            vars=vars_modelo(item))
+                            vars=vars_modelo(item), desde=item.get("agendado_para") or item.get("criado_em"))
+        if motivo and motivo.startswith("aguardando_janela"):
+            log.info(f'[pendentes] aguardando o contato abrir a janela (envio grátis): {item["id"]}')
+            continue
         if ok:
             marcar_pendente(item["id"], "enviado")
             log.info(f'[pendentes] enviado {item["id"]} → {tel_norm}')

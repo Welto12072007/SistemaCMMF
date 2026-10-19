@@ -1,13 +1,12 @@
 import { supabase } from '@/lib/supabase'
 
-export type Gatilho = 'sem_resposta' | 'no_show' | 'realizada_sem_matricula' | 'reserva_sem_pagamento' | 'manual'
+export type Gatilho = 'sem_resposta' | 'no_show' | 'realizada_sem_matricula' | 'manual'
 export type TipoPasso = 'retomada' | 'prova' | 'oportunidade' | 'encerramento'
 
 export const GATILHOS: Record<Gatilho, string> = {
   sem_resposta: 'Lead ficou sem responder',
   no_show: 'Aula experimental marcada como no-show',
   realizada_sem_matricula: 'Fez a experimental e não matriculou',
-  reserva_sem_pagamento: 'Reserva aguardando pagamento',
   manual: 'Inscrição manual (ex.: prospecção)',
 }
 
@@ -15,7 +14,7 @@ export interface Regua { id: string; nome: string; gatilho: Gatilho; ativo: bool
 export interface Passo { id?: string; regua_id?: string; ordem: number; horas: number; referencia: 'inicio' | 'antes_aula'; tipo: TipoPasso; mensagem: string }
 export interface Followup {
   id: string; telefone: string; nome: string; instrumento: string | null; regua_nome: string; gatilho: Gatilho
-  passo_atual: number; total_passos: number; passo_tipo: TipoPasso; passo_mensagem: string; proximo_envio_em: string; envio_automatico: boolean
+  passo_atual: number; total_passos: number; passo_tipo: TipoPasso; passo_mensagem: string; proximo_envio_em: string; envio_automatico: boolean; gratis_ate: string | null
 }
 export interface Prova { id: string; titulo: string; tipo: string; perfil: string | null; instrumento: string | null; motivacao: string | null; conteudo: string; ativo: boolean; usos: number }
 

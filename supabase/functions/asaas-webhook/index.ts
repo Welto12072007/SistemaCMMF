@@ -1,5 +1,4 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { adminClient, enviar } from '../_shared/whatsapp.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SUPABASE_SERVICE_KEY = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -42,10 +41,6 @@ function formatBRL(v: number): string {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-async function enviarWhatsApp(telefone: string, mensagem: string, vars?: Record<string, string>): Promise<boolean> {
-  const r = await enviar(adminClient(), { to: telefone, texto: mensagem, autor: 'automacao', origem: 'automacao:mensalidade_disponivel', modelo: vars ? { uso: 'mensalidade_disponivel', vars } : undefined })
-  return r.ok
-}
 
 async function fetchPixCopyPaste(paymentId: string): Promise<string | null> {
   try {
@@ -92,19 +87,15 @@ async function notificarAluno(supabase: any, payment: any, mensaId: string, alun
     `\n⚠️ Importante: caso faça o pagamento para nossa chave pix, envie o comprovante respondendo esta mensagem para que possamos identificar e registrar o pagamento em nosso sistema.\n\n` +
     `Agradecemos por fazer parte do CMMF. Desejamos ótimos estudos! 🎶💙`
 
-  const sent = await enviarWhatsApp(aluno.telefone, msg, { nome, valor, data_vencimento: vencimento, link_pagamento: linkCartao })
-  console.log(`WhatsApp ${sent ? 'enviado' : 'FALHOU'} para ${aluno.nome} (${aluno.telefone})`)
-
-  // Logar no disparos_pendentes
+  // Vai pela fila: se o aluno falar com a gente em até 48h, sai como texto grátis; senão, como modelo aprovado
   await supabase.from('disparos_pendentes').insert({
     aluno_id: alunoId,
-    tipo: 'boleto_disponivel',
+    tipo: 'mensalidade_disponivel',
     canal: 'whatsapp',
     mensagem: msg,
     telefone_destinatario: aluno.telefone,
-    status: sent ? 'enviado' : 'erro',
-    processado_em: new Date().toISOString(),
-    erro: sent ? null : 'Falha no envio WhatsApp',
+    status: 'pendente',
+    template_vars: { nome, valor, data_vencimento: vencimento, link_pagamento: linkCartao },
   })
 }
 
