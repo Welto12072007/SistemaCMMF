@@ -32,7 +32,9 @@ const Configuracoes = lazy(() => import('./pages/Configuracoes'))
 const FaltasProfessor = lazy(() => import('./pages/FaltasProfessor'))
 const FluxoCaixa = lazy(() => import('./pages/FluxoCaixa'))
 const CRMFunil = lazy(() => import('./pages/CRMFunil'))
-const Conversas = lazy(() => import('./pages/Conversas'))
+const CaixaEntrada = lazy(() => import('./modules/atendimento/pages/CaixaEntrada'))
+const Followups = lazy(() => import('./modules/atendimento/pages/Followups'))
+const Encaminhamentos = lazy(() => import('./modules/atendimento/pages/Encaminhamentos'))
 const HorariosExtras = lazy(() => import('./pages/HorariosExtras'))
 const FluxoAlunos = lazy(() => import('./pages/FluxoAlunos'))
 const AvaliacoesSatisfacao = lazy(() => import('./pages/AvaliacoesSatisfacao'))
@@ -106,7 +108,8 @@ export default function App() {
         <Route path="/aulas-experimentais" element={<Guard roles={['admin', 'recepcao', 'professor']} modulo="aulas-experimentais"><Suspense fallback={<PageLoader />}><AulasExperimentais /></Suspense></Guard>} />
         <Route path="/horarios-extras" element={<Navigate to="/financeiro" replace />} />
         <Route path="/usuarios" element={<Guard roles={['admin', 'recepcao']} modulo="usuarios"><Suspense fallback={<PageLoader />}><Usuarios /></Suspense></Guard>} />
-        <Route path="/followup" element={<Navigate to="/crm-funil" replace />} />
+        <Route path="/followup" element={<Guard roles={['admin', 'recepcao']} modulo="followup"><Suspense fallback={<PageLoader />}><Followups /></Suspense></Guard>} />
+        <Route path="/encaminhamentos" element={<Guard roles={['admin', 'recepcao']} modulo="conversas"><Suspense fallback={<PageLoader />}><Encaminhamentos /></Suspense></Guard>} />
         <Route path="/disparos" element={<Guard roles={['admin', 'recepcao']} modulo="disparos"><Suspense fallback={<PageLoader />}><Disparos /></Suspense></Guard>} />
         <Route path="/disparos-programados" element={<Guard roles={['admin']}><Suspense fallback={<PageLoader />}><DisparosProgramados /></Suspense></Guard>} />
         <Route path="/horarios" element={<Guard roles={['admin', 'recepcao', 'professor']} modulo="horarios"><Suspense fallback={<PageLoader />}><Horarios /></Suspense></Guard>} />
@@ -122,7 +125,7 @@ export default function App() {
         <Route path="/faltas" element={<Guard roles={['admin', 'recepcao', 'professor']} modulo="presencas"><Suspense fallback={<PageLoader />}><PresencasFaltasHub /></Suspense></Guard>} />
         <Route path="/faltas-professor" element={<Navigate to="/presencas" replace />} />
         <Route path="/contatos-labels" element={<Navigate to="/contatos" replace />} />
-        <Route path="/conversas" element={<Guard roles={['admin', 'recepcao']} modulo="conversas"><Suspense fallback={<PageLoader />}><Conversas /></Suspense></Guard>} />
+        <Route path="/conversas" element={<Guard roles={['admin', 'recepcao']} modulo="conversas"><Suspense fallback={<PageLoader />}><CaixaEntrada /></Suspense></Guard>} />
         <Route path="/crm-funil" element={<Guard roles={['admin', 'recepcao']} modulo="crm-funil"><Suspense fallback={<PageLoader />}><CRMFunil /></Suspense></Guard>} />
         <Route path="/portal-aluno" element={<Guard roles={['aluno']}><Suspense fallback={<PageLoader />}><PortalAluno /></Suspense></Guard>} />
         <Route path="/portal-professor" element={<Guard roles={['professor', 'admin']}><Suspense fallback={<PageLoader />}><PortalProfessor /></Suspense></Guard>} />

@@ -1,6 +1,8 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   MessagesSquare,
+  Repeat,
+  Inbox,
   LayoutDashboard,
   Users,
   GraduationCap,
@@ -97,6 +99,8 @@ const sections: NavSection[] = [
       { to: '/conversas', label: 'Caixa de entrada', icon: MessagesSquare, roles: ['admin', 'recepcao'], modulo: 'conversas' },
       { to: '/contatos', label: 'Contatos', icon: Users, roles: ['admin', 'recepcao'], modulo: 'contatos' },
       { to: '/crm-funil', label: 'CRM — Funil', icon: TrendingUp, roles: ['admin', 'recepcao'], modulo: 'crm-funil' },
+      { to: '/followup', label: 'Follow-up', icon: Repeat, roles: ['admin', 'recepcao'], modulo: 'followup' },
+      { to: '/encaminhamentos', label: 'Encaminhamentos', icon: Inbox, roles: ['admin', 'recepcao'], modulo: 'conversas' },
       { to: '/disparos', label: 'Disparos', icon: Send, roles: ['admin', 'recepcao'], modulo: 'disparos' },
       { to: '/disparos-programados', label: 'Programados', icon: CalendarCheck, roles: ['admin'] },
       { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin'] },

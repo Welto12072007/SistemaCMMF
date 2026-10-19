@@ -63,3 +63,10 @@ export async function urlMidia(path: string) {
   const { data } = await supabase.storage.from('whatsapp-midia').createSignedUrl(path, 600)
   return data?.signedUrl ?? null
 }
+
+export function normalizarTelefone(tel: string) {
+  let v = String(tel ?? '').replace(/\D/g, '').replace(/^0+/, '')
+  if (!v.startsWith('55') && v.length >= 10) v = '55' + v
+  if (v.length === 12) v = v.slice(0, 4) + '9' + v.slice(4)
+  return v
+}

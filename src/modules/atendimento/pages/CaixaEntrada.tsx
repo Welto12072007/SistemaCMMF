@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bot, BotOff, Check, CheckCheck, Clock, Loader2, Send, Sparkles, UserRound, X, AlertCircle, Search } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { definirModo, enviarTexto, gerarSugestao, urlMidia, type ContatoCaixa, type MensagemWA, type ModoIA } from '@/lib/whatsapp'
+import { definirModo, enviarTexto, gerarSugestao, urlMidia, type ContatoCaixa, type MensagemWA, type ModoIA } from '../lib/whatsapp'
 
 type Filtro = 'todos' | 'aguardando' | 'ia' | 'humano' | 'leads' | 'outros'
 const FILTROS: [Filtro, string][] = [
@@ -47,11 +47,11 @@ function Midia({ m }: { m: MensagemWA }) {
 
 const AUTOR: Record<string, string> = { ia: 'IA', humano: 'Equipe', automacao: 'Automação', sistema: 'Sistema' }
 
-export default function Conversas() {
+export default function CaixaEntrada() {
   const [contatos, setContatos] = useState<ContatoCaixa[]>([])
   const [filtro, setFiltro] = useState<Filtro>('todos')
   const [busca, setBusca] = useState('')
-  const [sel, setSel] = useState<string | null>(null)
+  const [sel, setSel] = useState<string | null>(() => new URLSearchParams(window.location.search).get('telefone'))
   const [msgs, setMsgs] = useState<MensagemWA[]>([])
   const [texto, setTexto] = useState('')
   const [sugestao, setSugestao] = useState<{ id: string; original: string; texto: string } | null>(null)

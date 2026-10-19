@@ -75,6 +75,11 @@ export default function AulasExperimentais() {
     loadAulas()
   }
 
+  async function marcarNoShow(id: string) {
+    await supabase.from('aulas_experimentais').update({ status: 'no_show', no_show_em: new Date().toISOString() }).eq('id', id)
+    loadAulas()
+  }
+
   async function remarcar(id: string) {
     await supabase.from('aulas_experimentais').update({ status: 'remarcada' }).eq('id', id)
     loadAulas()
@@ -323,7 +328,7 @@ export default function AulasExperimentais() {
                   <Trash2 className="w-3.5 h-3.5" /> Excluir
                 </button>
               ))}
-              {isAdmin && ['agendada', 'confirmada'].includes(a.status?.toLowerCase()) && (
+              {isAdmin && ['agendada', 'confirmada', 'confirmado_professor'].includes(a.status?.toLowerCase()) && (
                 <>
                   <button
                     onClick={() => { setTrocarProfModal(a); setNovoProfId(a.professor_id ?? '') }}
@@ -333,6 +338,9 @@ export default function AulasExperimentais() {
                   </button>
                   <button onClick={() => remarcar(a.id)} className="text-xs px-3 py-1.5 border rounded-lg hover:bg-gray-50 transition-colors">
                     Remarcar
+                  </button>
+                  <button onClick={() => marcarNoShow(a.id)} className="text-xs px-3 py-1.5 border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-50 transition-colors">
+                    Marcar no-show
                   </button>
                   <button onClick={() => marcarRealizada(a.id)} className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
                     Marcar como Realizada
@@ -522,7 +530,7 @@ function NovaAulaForm({ professores, onSave, onClose }: {
 // ---------------------------------------------------------------------------
 // EditarAulaForm — edita qualquer aula experimental (manual ou gerada pela IA)
 // ---------------------------------------------------------------------------
-const STATUS_OPTIONS = ['agendada', 'confirmada', 'aguardando_professor', 'confirmado_professor', 'realizada', 'concluida', 'remarcada', 'cancelada']
+const STATUS_OPTIONS = ['agendada', 'confirmada', 'aguardando_professor', 'confirmado_professor', 'realizada', 'concluida', 'no_show', 'remarcada', 'cancelada']
 
 function EditarAulaForm({ aula, professores, onSave, onClose }: {
   aula: AulaExperimental

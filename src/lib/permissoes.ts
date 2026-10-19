@@ -12,6 +12,7 @@ export const MODULOS: ModuloInfo[] = [
   { key: 'conversas', label: 'Caixa de entrada (WhatsApp)', grupo: 'Comunicação' },
   { key: 'contatos', label: 'Contatos', grupo: 'Comunicação' },
   { key: 'crm-funil', label: 'CRM — Funil', grupo: 'Comunicação' },
+  { key: 'followup', label: 'Follow-up (réguas e Banco de Provas)', grupo: 'Comunicação' },
   { key: 'disparos', label: 'Disparos', grupo: 'Comunicação' },
   { key: 'avaliacoes', label: 'Avaliações', grupo: 'Comunicação' },
   { key: 'aulas-experimentais', label: 'Aulas Experimentais', grupo: 'Gestão de Alunos' },

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import KanbanLeads from '@/modules/atendimento/components/KanbanLeads'
+import DesempenhoIA from '@/modules/atendimento/components/DesempenhoIA'
 import {
   TrendingUp, RefreshCw, Search, Filter, Phone, Flame,
   CheckCircle2, Clock, AlertCircle, X, ExternalLink,
   ChevronRight, BarChart3, Trophy, ChevronLeft, PhoneForwarded, Edit2,
-  BotOff, Bot,
+  BotOff, Bot, Columns3, Sparkles,
 } from 'lucide-react'
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
@@ -35,6 +37,12 @@ interface FunilContato {
   data_exp_confirmada_at?: string
   data_aula_realizada_at?: string
   data_perdido_at?: string
+  proxima_acao?: string | null
+  proxima_acao_em?: string | null
+  data_matricula?: string | null
+  regua_nome?: string | null
+  regua_passo?: number | null
+  regua_total?: number | null
 }
 
 
@@ -80,7 +88,7 @@ export default function CRMFunil() {
   const [listas, setListas] = useState<ListaQuente[]>([])
   const [conversao, setConversao] = useState<ConversaoProf[]>([])
 
-  const [tab, setTab] = useState<'funil' | 'gargalos' | 'instrumento' | 'conversao' | 'semanal' | 'followup'>('funil')
+  const [tab, setTab] = useState<'kanban' | 'funil' | 'gargalos' | 'instrumento' | 'conversao' | 'semanal' | 'followup' | 'ia'>('kanban')
   const [busca, setBusca] = useState(() => new URLSearchParams(window.location.search).get('telefone') ?? '')
   const [filtroInstr, setFiltroInstr] = useState('')
   const [filtroEtapa, setFiltroEtapa] = useState<string>('')
@@ -330,10 +338,12 @@ export default function CRMFunil() {
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
         {([
+          { k: 'kanban', l: 'Kanban', i: Columns3 },
           { k: 'funil', l: 'Funil', i: TrendingUp },
           { k: 'gargalos', l: 'Gargalos', i: AlertCircle },          { k: 'followup', l: 'Follow-up', i: PhoneForwarded, badge: followupsPendentes.length },          { k: 'instrumento', l: 'Listas Quentes', i: Flame },
           { k: 'conversao', l: 'Conversão Professor', i: Trophy },
           { k: 'semanal', l: 'Relatório Semanal', i: BarChart3 },
+          { k: 'ia', l: 'Desempenho IA', i: Sparkles },
         ] as const).map(t => {
           const Icon = t.i
           return (
@@ -355,7 +365,7 @@ export default function CRMFunil() {
       </div>
 
       {/* Filtros (compartilhados) */}
-      {(tab === 'funil' || tab === 'gargalos') && (
+      {(tab === 'kanban' || tab === 'funil' || tab === 'gargalos') && (
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-48">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -396,6 +406,17 @@ export default function CRMFunil() {
           </label>
         </div>
       )}
+
+      {tab === 'kanban' && (
+        <KanbanLeads
+          onChange={() => load()}
+          contatos={contatos.filter(c =>
+            (!busca || (c.nome ?? '').toLowerCase().includes(busca.toLowerCase()) || (c.telefone ?? '').includes(busca))
+            && (!filtroInstr || c.instrumento_interesse === filtroInstr))}
+        />
+      )}
+
+      {tab === 'ia' && <DesempenhoIA />}
 
       {/* TAB FUNIL */}
       {tab === 'funil' && (

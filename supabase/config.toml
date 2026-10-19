@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.whatsapp-templates]
 verify_jwt = false
+
+[functions.crm-reguas]
+verify_jwt = false
